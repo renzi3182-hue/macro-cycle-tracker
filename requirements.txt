@@ -1,0 +1,6 @@
+requests>=2.31
+pandas>=2.2
+streamlit>=1.38
+matplotlib>=3.8
+pytest>=8.0
+requests-mock>=1.12

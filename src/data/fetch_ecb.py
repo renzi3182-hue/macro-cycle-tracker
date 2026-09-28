@@ -1,0 +1,55 @@
+# Nome file per aderenza allo spec ("ECB Statistical Data Warehouse + Eurostat"),
+# ma implementato via Eurostat REST (dataset ufficiali Eurostat, no API key, stesso dato).
+import pandas as pd
+import requests
+
+BASE_URL = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
+
+
+def _parse_eurostat_period(label: str) -> pd.Timestamp:
+    if "-Q" in label:
+        year, q = label.split("-Q")
+        month = (int(q) - 1) * 3 + 1
+        return pd.Timestamp(year=int(year), month=month, day=1)
+    if "M" in label:
+        year, month = label.split("M")
+        return pd.Timestamp(year=int(year), month=int(month), day=1)
+    if "-" in label:
+        year, month = label.split("-")
+        return pd.Timestamp(year=int(year), month=int(month), day=1)
+    return pd.Timestamp(year=int(label), month=1, day=1)
+
+
+def _parse_jsonstat(payload: dict) -> pd.Series:
+    time_index = payload["dimension"]["time"]["category"]["index"]
+    label_by_index = {v: k for k, v in time_index.items()}
+    values = payload["value"]
+    series_dict = {
+        label_by_index[int(flat_idx)]: val
+        for flat_idx, val in values.items()
+        if int(flat_idx) in label_by_index
+    }
+    dates = [_parse_eurostat_period(label) for label in series_dict]
+    return pd.Series(list(series_dict.values()), index=dates).sort_index()
+
+
+def fetch_growth_yoy(geo: str) -> pd.Series:
+    """geo: 'EA20' per Eurozona, 'IT' per Italia."""
+    resp = requests.get(
+        f"{BASE_URL}/namq_10_gdp",
+        params={"format": "JSON", "lang": "EN", "unit": "CLV_PCH_SM", "na_item": "B1GQ", "s_adj": "SCA", "geo": geo},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return _parse_jsonstat(resp.json())
+
+
+def fetch_inflation_yoy(geo: str) -> pd.Series:
+    """geo: 'EA' per Eurozona, 'IT' per Italia."""
+    resp = requests.get(
+        f"{BASE_URL}/prc_hicp_manr",
+        params={"format": "JSON", "lang": "EN", "coicop": "CP00", "geo": geo},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return _parse_jsonstat(resp.json())
