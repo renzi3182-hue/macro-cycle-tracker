@@ -12,13 +12,14 @@ from src.classify.cycle import classify_cycle
 from src.classify.leading import leading_risk
 from src.classify.recession import recession_confirmed
 from src.classify.regime import classify_regime
-from src.data import cache, fetch_boe, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_japan, fetch_market
+from src.data import cache, fetch_boe, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MARKET_AREA = "Mercati"
 CALENDAR_AREA = "Calendario"
+FX_AREA = "Valute"
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
@@ -117,6 +118,14 @@ def update_market_context(fred_key: str) -> None:
             cache.write_indicator_series(MARKET_AREA, indicator, fetch_fn())
         except Exception:
             logger.exception("%s: fetch fallito, salto e continuo", indicator)
+
+    fx_fetchers = {name: lambda name=name: fetch_fx.fetch_fx(name, fred_key) for name in fetch_fx.FX_SERIES}
+    fx_fetchers.update({f"rate_{c}": lambda c=c: fetch_fx.fetch_short_rate(c, fred_key) for c in fetch_fx.RATE_SERIES})
+    for indicator, fetch_fn in fx_fetchers.items():
+        try:
+            cache.write_indicator_series(FX_AREA, indicator, fetch_fn())
+        except Exception:
+            logger.exception("valute %s: fetch fallito, salto e continuo", indicator)
 
     # Calendario eventi: le date future stanno come indicatori (valore 1.0) sotto CALENDAR_AREA.
     events = {"FOMC": fetch_calendar.fetch_fomc_dates}

@@ -14,6 +14,7 @@ CONTRACTS = {  # nome -> cftc_contract_market_code
     "Petrolio WTI": "067651",
     "Euro": "099741",
     "Yen": "097741",
+    "Sterlina": "096742",
     "Dollaro (DXY)": "098662",
 }
 

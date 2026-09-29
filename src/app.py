@@ -9,6 +9,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_lightweight_charts import renderLightweightCharts
 
+from src.classify.currency import CURRENCIES, PAIRS, cot_component, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.gip import gip_view
 from src.classify.leading import leading_risk
 from src.classify.regime import direction_position, regime_history, regime_probabilities
@@ -378,7 +379,7 @@ else:
 
 st.divider()
 
-tabs = st.tabs(["🌍 Panoramica"] + [f"{flag} {area}" for area, flag in AREA_FLAGS.items()] + ["📊 Contesto mercato"])
+tabs = st.tabs(["🌍 Panoramica"] + [f"{flag} {area}" for area, flag in AREA_FLAGS.items()] + ["📊 Contesto mercato", "💱 Valute"])
 with tabs[0]:
     overview = overview_areas()
     if overview:
@@ -549,7 +550,7 @@ for tab, area in zip(tabs[1:], AREA_FLAGS):
             st.write(" · ".join(allocation))
 
 
-with tabs[-1]:
+with tabs[-2]:
     st.caption(
         "Solo informativo: non entra nella classificazione di regime e ciclo. "
         "COT = posizione netta degli speculatori (CFTC, aggiornata il venerdi', dato del martedi'), "
@@ -605,3 +606,77 @@ with tabs[-1]:
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     else:
         st.info("Nessun dato COT in cache. Esegui `python -m src.scheduler.update_data`.")
+
+
+CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}
+CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone"}
+LABEL_COLORS = {"Buy": "#34D399", "Sell": "#F87171", "Neutra": "#9CA3AF"}
+
+
+def _last(area: str, indicator: str) -> float | None:
+    ser = load_indicator(area, indicator)
+    return None if ser.empty else float(ser.iloc[-1])
+
+
+def currency_scores() -> dict[str, dict]:
+    try:
+        mom = momentum_returns(*(load_indicator("Valute", n) for n in ("eurusd", "gbpusd", "usdjpy")))
+    except Exception:  # serie assente o troppo corta
+        mom = {}
+    vix = load_indicator("Mercati", "vix")
+    vix_pct = None if vix.empty else percentile_rank(vix)
+    out = {}
+    for ccy in CURRENCIES:
+        cot = load_indicator("Mercati", f"cot_{CCY_COT[ccy]}")
+        rate, infl = _last("Valute", f"rate_{ccy}"), _last(CCY_AREA[ccy], "inflation_yoy")
+        real = None if rate is None or infl is None else rate - infl
+        res = strength_score(real, _last(CCY_AREA[ccy], "growth_yoy"), mom.get(ccy),
+                             cot_component(None if cot.empty else percentile_rank(cot)), vix_component(ccy, vix_pct))
+        res["real_rate"], res["rate"], res["inflation"] = real, rate, infl
+        out[ccy] = res
+    return out
+
+
+with tabs[-1]:
+    st.caption(
+        "Solo informativo, non e' consulenza. Forza 1-100 assoluta = 25% crescita PIL, 20% momentum 3 mesi del cambio, "
+        "25% COT (contrarian: speculatori affollati long = meno punti), 30% VIX (risk-off favorisce JPY/USD, penalizza GBP/EUR). "
+        "Il tasso reale e' mostrato ma pesa 0% (backtest: nessun potere predittivo). "
+        "Coppia: 50 + (forza base - forza quota)/2; "
+        "Buy >= 60, Sell <= 40, altrimenti Neutra."
+    )
+    scores = currency_scores()
+    if all(v["score"] is None for v in scores.values()):
+        st.info("Nessun dato valute in cache. Esegui `python -m src.scheduler.update_data`.")
+    else:
+        st.markdown("**Forza assoluta (1-100)**")
+        for col, (ccy, v) in zip(st.columns(len(scores)), scores.items()):
+            col.metric(ccy, "n/d" if v["score"] is None else v["score"])
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "Valuta": ccy,
+                    "Forza": v["score"],
+                    "Tasso breve %": None if v["rate"] is None else round(v["rate"], 2),
+                    "Inflazione %": None if v["inflation"] is None else round(v["inflation"], 2),
+                    "Tasso reale %": None if v["real_rate"] is None else round(v["real_rate"], 2),
+                    **{k: None if p is None else round(p) for k, p in zip(("Sub: tasso reale", "Sub: crescita", "Sub: momentum", "Sub: COT", "Sub: VIX"), v["parts"].values())},
+                }
+                for ccy, v in scores.items()
+            ]),
+            hide_index=True,
+            width="stretch",
+        )
+        st.markdown("**Coppie: punteggio direzionale (1-100)**")
+        rows = []
+        for base, quote in PAIRS:
+            if scores[base]["score"] is None or scores[quote]["score"] is None:
+                continue
+            view = pair_view(scores[base]["score"], scores[quote]["score"])
+            rows.append({"Coppia": f"{base}/{quote}", "Punteggio": view["score"], "Segnale": view["label"]})
+        pair_df = pd.DataFrame(rows)
+        st.dataframe(
+            pair_df.style.map(lambda x: f"color: {LABEL_COLORS.get(x, 'inherit')}; font-weight: 700", subset=["Segnale"]),
+            hide_index=True,
+            width="stretch",
+        )
