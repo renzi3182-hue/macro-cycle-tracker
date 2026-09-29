@@ -63,7 +63,7 @@ ASSET_SHORT_LABELS = {
     "Credito corporate": "Credito corp.",
 }
 
-PIE_R = 115
+PIE_R = 150
 
 
 @st.cache_data(ttl=300)
@@ -83,7 +83,7 @@ def pie_html(weights: dict, colors: list[str]) -> str:
     # accavallano quando piu' spicchi sottili sono vicini in angolo): vanno
     # invece in due colonne fisse (sinistra/destra), impilate verticalmente
     # con spaziatura minima forzata, collegate allo spicchio da una linea guida.
-    svg_w, svg_h = 540, 340
+    svg_w, svg_h = 780, 400
     cx, cy = svg_w / 2, svg_h / 2
     label_col_x = {"left": cx - (PIE_R + 58), "right": cx + (PIE_R + 58)}
     min_gap = 15
@@ -153,6 +153,7 @@ def pie_html(weights: dict, colors: list[str]) -> str:
 
     return f"""<!DOCTYPE html>
     <html><head><style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700&display=swap');
     html, body {{ margin: 0; padding: 0; background: transparent; overflow: hidden; }}
     .pie-slice {{
         opacity: 0;
@@ -164,13 +165,13 @@ def pie_html(weights: dict, colors: list[str]) -> str:
     @keyframes pie-in {{ to {{ opacity: 1; transform: translate(0, 0); }} }}
     .pie-label {{
         fill: #F1F5F9;
-        font: 700 12px sans-serif;
+        font: 700 14px 'Nunito', sans-serif;
         paint-order: stroke;
         stroke: #0F172A;
         stroke-width: 3px;
     }}
     </style></head><body>
-    <svg viewBox="0 0 {svg_w} {svg_h}" width="100%" height="300" style="overflow: visible;">{''.join(groups)}</svg>
+    <svg viewBox="0 0 {svg_w} {svg_h}" width="100%" height="360" style="overflow: visible;">{''.join(groups)}</svg>
     </body></html>
     """
 
@@ -320,7 +321,7 @@ if regimes_by_area:
         )
         components.html(
             pie_html(weights, ["#60A5FA", "#34D399", "#A78BFA", "#F87171", "#FBBF24", "#38BDF8", "#94A3B8"]),
-            height=340,
+            height=380,
         )
 else:
     st.info("Nessun dato in cache per calcolare il portafoglio.")

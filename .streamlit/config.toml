@@ -14,8 +14,8 @@ showSidebarBorder = true
 baseRadius = "12px"
 buttonRadius = "8px"
 
-font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-headingFont = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
+font = "'Nunito':https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap"
+headingFont = "'Nunito':https://fonts.googleapis.com/css2?family=Nunito:wght@600;700&display=swap"
 codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
 baseFontSize = 14
 baseFontWeight = 400
