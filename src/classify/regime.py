@@ -34,9 +34,7 @@ def _direction_series(series: pd.Series, window: int, deadband: float) -> pd.Ser
     return pd.Series(directions, index=series.index[window:])
 
 
-def classify_regime(growth: pd.Series, inflation: pd.Series) -> str:
-    growth_dir = _direction_series(growth, TREND_WINDOW, GROWTH_DEADBAND).iloc[-1]
-    inflation_dir = _direction_series(inflation, TREND_WINDOW, INFLATION_DEADBAND).iloc[-1]
+def _regime_name(growth_dir: str, inflation_dir: str) -> str:
     if growth_dir == "up" and inflation_dir == "down":
         return "Reflazione"
     if growth_dir == "up" and inflation_dir == "up":
@@ -44,6 +42,30 @@ def classify_regime(growth: pd.Series, inflation: pd.Series) -> str:
     if growth_dir == "down" and inflation_dir == "up":
         return "Stagflazione"
     return "Deflazione"
+
+
+def classify_regime(growth: pd.Series, inflation: pd.Series) -> str:
+    growth_dir = _direction_series(growth, TREND_WINDOW, GROWTH_DEADBAND).iloc[-1]
+    inflation_dir = _direction_series(inflation, TREND_WINDOW, INFLATION_DEADBAND).iloc[-1]
+    return _regime_name(growth_dir, inflation_dir)
+
+
+def regime_history(growth: pd.Series, inflation: pd.Series, quarters: int = 20) -> pd.Series:
+    """Regime per trimestre (ultimi `quarters`), stessa logica di classify_regime su serie trimestrali."""
+    df = pd.DataFrame({
+        "g": growth.resample("QE").last(),
+        "i": inflation.resample("QE").last(),
+    }).dropna()
+    g_dir = _direction_series(df["g"], TREND_WINDOW, GROWTH_DEADBAND)
+    i_dir = _direction_series(df["i"], TREND_WINDOW, INFLATION_DEADBAND)
+    return pd.Series([_regime_name(g, i) for g, i in zip(g_dir, i_dir)], index=g_dir.index).tail(quarters)
+
+
+def direction_position(growth: pd.Series, inflation: pd.Series, window: int = TREND_WINDOW) -> tuple[float, float]:
+    """(inflazione, crescita) come distanza dalla media precedente in unita' di deadband: +-1 = soglia di cambio direzione."""
+    dg = growth.iloc[-1] - growth.iloc[-window - 1:-1].mean()
+    di = inflation.iloc[-1] - inflation.iloc[-window - 1:-1].mean()
+    return di / INFLATION_DEADBAND, dg / GROWTH_DEADBAND
 
 
 def _prob_up(series: pd.Series, window: int, deadband: float) -> float:

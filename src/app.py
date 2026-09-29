@@ -11,13 +11,15 @@ from streamlit_lightweight_charts import renderLightweightCharts
 
 from src.classify.gip import gip_view
 from src.classify.leading import leading_risk
-from src.classify.regime import regime_probabilities
+from src.classify.regime import direction_position, regime_history, regime_probabilities
 from src.classify.recession import recession_confirmed, sahm_gap
 from src.classify.positioning import percentile_rank, positioning_label
 from src.data.fetch_cot import CONTRACTS
 from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, ASSET_ALLOCATION, combined_portfolio_weights
 from src.data import cache
+from src.ui.overview import overview_html, signal
 
+AREA_CODES = {"USA": "USA", "Eurozona": "EUR", "Italia": "ITA", "UK": "UK", "Giappone": "JP"}
 AREA_FLAGS = {
     "USA": "\U0001F1FA\U0001F1F8",
     "Eurozona": "\U0001F1EA\U0001F1FA",
@@ -184,6 +186,45 @@ def pie_html(weights: dict, colors: list[str]) -> str:
     """
 
 
+def area_probabilities(area: str, growth: pd.Series, inflation: pd.Series) -> tuple[dict | None, dict | None]:
+    probs = regime_probabilities(growth, inflation) if len(growth) > 3 and len(inflation) > 3 else None
+    gip = None
+    if area == "USA":
+        ip, ff = load_indicator(area, "industrial_production"), load_indicator(area, "fed_funds")
+        if len(ip) > 3 and len(inflation) > 3:
+            gip = gip_view(ip, inflation, ff)
+            if probs:  # media dei due modelli: PIL trimestrale + dati mensili
+                probs = {r: (probs[r] + gip["probabilities"][r]) / 2 for r in probs}
+    return probs, gip
+
+
+def overview_areas() -> list[dict]:
+    areas = []
+    for area in AREA_FLAGS:
+        history = load_classifications(area)
+        if not history:
+            continue
+        growth = load_indicator(area, "growth_yoy")
+        inflation = load_indicator(area, "inflation_yoy")
+        unemployment = load_indicator(area, "unemployment_rate")
+        enough = len(growth) > 3 and len(inflation) > 3
+        areas.append({
+            "area": area,
+            "code": AREA_CODES[area],
+            "regime": history[0]["regime"],
+            "phase": history[0]["phase"],
+            "probs": area_probabilities(area, growth, inflation)[0],
+            "pos": direction_position(growth, inflation) if enough else None,
+            "signals": [
+                ("crescita", *signal(growth, True)),
+                ("inflazione", *signal(inflation, False)),
+                ("disoccupazione", *signal(unemployment, False)),
+            ],
+            "history": regime_history(growth, inflation) if enough else None,
+        })
+    return areas
+
+
 def describe_regime(regime: str, phase: str, growth: pd.Series, inflation: pd.Series, unemployment: pd.Series) -> str:
     parts = []
     if not growth.empty:
@@ -337,8 +378,15 @@ else:
 
 st.divider()
 
-tabs = st.tabs([f"{flag} {area}" for area, flag in AREA_FLAGS.items()] + ["📊 Contesto mercato"])
-for tab, area in zip(tabs, AREA_FLAGS):
+tabs = st.tabs(["🌍 Panoramica"] + [f"{flag} {area}" for area, flag in AREA_FLAGS.items()] + ["📊 Contesto mercato"])
+with tabs[0]:
+    overview = overview_areas()
+    if overview:
+        st.html(overview_html(overview))
+    else:
+        st.info("Nessun dato in cache. Esegui `python -m src.scheduler.update_data` per popolare.")
+
+for tab, area in zip(tabs[1:], AREA_FLAGS):
     with tab:
         history = load_classifications(area)
 
@@ -370,14 +418,7 @@ for tab, area in zip(tabs, AREA_FLAGS):
                 c3.caption("Nessun cambio dall'ultimo aggiornamento")
             st.markdown(describe_regime(current["regime"], current["phase"], growth, inflation, unemployment))
 
-            probs = regime_probabilities(growth, inflation) if len(growth) > 3 and len(inflation) > 3 else None
-            gip = None
-            if area == "USA":
-                ip, ff = load_indicator(area, "industrial_production"), load_indicator(area, "fed_funds")
-                if len(ip) > 3 and len(inflation) > 3:
-                    gip = gip_view(ip, inflation, ff)
-                    if probs:  # media dei due modelli: PIL trimestrale + dati mensili
-                        probs = {r: (probs[r] + gip["probabilities"][r]) / 2 for r in probs}
+            probs, gip = area_probabilities(area, growth, inflation)
             if probs:
                 st.markdown("**Probabilita' per regime**" + (" (media modello PIL e modello mensile)" if gip else ""))
                 for col, (regime_name, p) in zip(st.columns(4), sorted(probs.items(), key=lambda x: -x[1])):

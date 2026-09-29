@@ -40,3 +40,13 @@ def test_classify_regime_deadband_suppresses_small_dip():
     growth = _series([1.0, 1.0, 1.0, 5.0, 1.5])
     inflation = _series([1.0, 1.0, 1.0, 1.0, 1.0])
     assert classify_regime(growth, inflation) == "Reflazione"
+
+
+def test_regime_history_matches_classify_on_last_quarter():
+    from src.classify.regime import regime_history
+
+    g = _series([1.0, 1.0, 1.0, 2.0, 2.0, 2.0])
+    i = _series([3.0, 3.0, 3.0, 1.0, 1.0, 1.0])
+    hist = regime_history(g, i)
+    assert hist.iloc[-1] == classify_regime(g, i)
+    assert len(hist) == 3
