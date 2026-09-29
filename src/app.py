@@ -332,6 +332,8 @@ for tab, area in zip(tabs, AREA_FLAGS):
                                     "vertLines": {"color": "rgba(148,163,184,0.1)"},
                                     "horzLines": {"color": "rgba(148,163,184,0.1)"},
                                 },
+                                "rightPriceScale": {"visible": True, "borderColor": "rgba(148,163,184,0.3)"},
+                                "timeScale": {"borderColor": "rgba(148,163,184,0.3)", "rightOffset": 6},
                                 "height": 320,
                             },
                             "series": series_config,
