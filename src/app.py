@@ -48,7 +48,22 @@ INDICATOR_COLORS = {
     "Disoccupazione %": "#60A5FA",
 }
 
-PIE_R = 110
+RISK_PROFILE_LABELS = {"Basso": "Conservativo", "Medio": "Bilanciato", "Alto": "Aggressivo"}
+
+# Nomi accorciati solo per l'etichetta nel grafico a torta (spazio limitato in
+# layout a 3 colonne): la lista completa resta invariata altrove (asset
+# allocation testuale nelle tab).
+ASSET_SHORT_LABELS = {
+    "Obbligazioni indicizzate all'inflazione": "Obbl. indicizzate",
+    "Obbligazioni governative lunga durata": "Obbl. governative",
+    "Obbligazioni lunga durata": "Obbl. lunga durata",
+    "Azionario value/difensivo": "Az. value/difensivo",
+    "Azionario difensivo": "Az. difensivo",
+    "Azionario growth": "Az. growth",
+    "Credito corporate": "Credito corp.",
+}
+
+PIE_R = 72
 
 
 @st.cache_data(ttl=300)
@@ -64,9 +79,17 @@ def load_indicator(area: str, indicator: str) -> pd.Series:
 def pie_html(weights: dict, colors: list[str]) -> str:
     # Torta 2D piatta disegnata in SVG. Ogni spicchio entra volando da fuori
     # schermo nella propria direzione (--dx/--dy) e converge nella torta via
-    # CSS keyframe.
+    # CSS keyframe. Le etichette non stanno sul raggio dello spicchio (si
+    # accavallano quando piu' spicchi sottili sono vicini in angolo): vanno
+    # invece in due colonne fisse (sinistra/destra), impilate verticalmente
+    # con spaziatura minima forzata, collegate allo spicchio da una linea guida.
+    svg_w, svg_h = 420, 300
+    cx, cy = svg_w / 2, svg_h / 2
+    label_col_x = {"left": cx - (PIE_R + 58), "right": cx + (PIE_R + 58)}
+    min_gap = 15
+    top_margin, bottom_margin = 16, svg_h - 16
+
     total = sum(weights.values()) or 1
-    cx, cy = 150, 150
     slices = []
     theta = 0.0
     for i, (label, value) in enumerate(weights.items()):
@@ -75,25 +98,56 @@ def pie_html(weights: dict, colors: list[str]) -> str:
         slices.append({"label": label, "pct": pct, "start": theta, "end": theta + sweep, "color": colors[i % len(colors)]})
         theta += sweep
 
-    def point(angle_deg):
+    def point(angle_deg, r):
         t = math.radians(angle_deg - 90)
-        return cx + PIE_R * math.cos(t), cy + PIE_R * math.sin(t)
+        return cx + r * math.cos(t), cy + r * math.sin(t)
+
+    labels = []
+    for i, s in enumerate(slices):
+        mid = (s["start"] + s["end"]) / 2
+        ex, ey = point(mid, PIE_R)
+        ideal_x, ideal_y = point(mid, PIE_R + 18)
+        side = "right" if ideal_x >= cx else "left"
+        text = f'{ASSET_SHORT_LABELS.get(s["label"], s["label"])} {s["pct"] * 100:.0f}%'
+        labels.append({"i": i, "side": side, "ex": ex, "ey": ey, "y": ideal_y, "text": text, "color": s["color"]})
+
+    for side in ("left", "right"):
+        items = sorted((l for l in labels if l["side"] == side), key=lambda l: l["y"])
+        for k in range(1, len(items)):
+            if items[k]["y"] < items[k - 1]["y"] + min_gap:
+                items[k]["y"] = items[k - 1]["y"] + min_gap
+        if items and items[-1]["y"] > bottom_margin:
+            overflow = items[-1]["y"] - bottom_margin
+            for l in items:
+                l["y"] -= overflow
+        if items and items[0]["y"] < top_margin:
+            shift = top_margin - items[0]["y"]
+            for l in items:
+                l["y"] += shift
 
     groups = []
     for i, s in enumerate(slices):
-        x1, y1 = point(s["start"])
-        x2, y2 = point(s["end"])
+        x1, y1 = point(s["start"], PIE_R)
+        x2, y2 = point(s["end"], PIE_R)
         large_arc = 1 if s["end"] - s["start"] > 180 else 0
         path = f"M{cx},{cy} L{x1:.1f},{y1:.1f} A{PIE_R},{PIE_R} 0 {large_arc} 1 {x2:.1f},{y2:.1f} Z"
 
-        mid = math.radians((s["start"] + s["end"]) / 2 - 90)
-        lx, ly = cx + (PIE_R + 30) * math.cos(mid), cy + (PIE_R + 20) * math.sin(mid)
-        dx, dy = math.cos(mid) * 480, math.sin(mid) * 480
+        li = labels[i]
+        lx = label_col_x[li["side"]]
+        sign = 1 if li["side"] == "right" else -1
+        bend_x = cx + (PIE_R + 14) * sign
+        anchor = "start" if li["side"] == "right" else "end"
+        text_x = lx + 6 * sign
+
+        mid_rad = math.radians((s["start"] + s["end"]) / 2 - 90)
+        dx, dy = math.cos(mid_rad) * 420, math.sin(mid_rad) * 420
 
         groups.append(
             f'<g class="pie-slice" style="--dx:{dx:.0f}px; --dy:{dy:.0f}px; --delay:{i * 90}ms">'
             f'<path d="{path}" fill="{s["color"]}" stroke="#0F172A" stroke-width="1.5" />'
-            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" class="pie-label">{s["label"]} {s["pct"] * 100:.0f}%</text>'
+            f'<polyline points="{li["ex"]:.1f},{li["ey"]:.1f} {bend_x:.1f},{li["y"]:.1f} {lx:.1f},{li["y"]:.1f}" '
+            f'fill="none" stroke="{s["color"]}" stroke-width="1.2" opacity="0.7" />'
+            f'<text x="{text_x:.1f}" y="{li["y"]:.1f}" text-anchor="{anchor}" dominant-baseline="middle" class="pie-label">{li["text"]}</text>'
             f'</g>'
         )
 
@@ -110,13 +164,13 @@ def pie_html(weights: dict, colors: list[str]) -> str:
     @keyframes pie-in {{ to {{ opacity: 1; transform: translate(0, 0); }} }}
     .pie-label {{
         fill: #F1F5F9;
-        font: 700 12px sans-serif;
+        font: 700 10.5px sans-serif;
         paint-order: stroke;
         stroke: #0F172A;
         stroke-width: 3px;
     }}
     </style></head><body>
-    <svg viewBox="0 0 300 300" width="100%" height="320">{''.join(groups)}</svg>
+    <svg viewBox="0 0 {svg_w} {svg_h}" width="100%" height="300" style="overflow: visible;">{''.join(groups)}</svg>
     </body></html>
     """
 
@@ -205,6 +259,16 @@ st.html(
         transform: translateY(-3px);
         box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
     }
+    .portfolio-badge {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 10px;
+        background: #1E293B;
+        color: #F1F5F9;
+        font-weight: 700;
+        font-size: 1rem;
+        margin-bottom: 8px;
+    }
     .regime-badge {
         display: inline-block;
         padding: 4px 14px;
@@ -235,10 +299,6 @@ st.html(
 st.title("Macro cycle tracker", icon=":material/monitoring:")
 st.caption("Regime macro e fase del ciclo economico per USA, Eurozona, Italia, UK, Giappone")
 
-with st.sidebar:
-    st.header("Impostazioni")
-    risk_profile = st.select_slider("Profilo di rischio", options=["Basso", "Medio", "Alto"], value="Medio")
-
 regimes_by_area = {}
 for area in AREA_FLAGS:
     history = load_classifications(area)
@@ -247,13 +307,16 @@ for area in AREA_FLAGS:
 
 st.subheader("Portafoglio diversificato multi-nazione")
 if regimes_by_area:
-    weights = combined_portfolio_weights(regimes_by_area, risk_profile)
-    col_left, col_mid, col_right = st.columns([1, 2, 1])
-    with col_mid, st.container(key="pie-chart"):
-        components.html(
-            pie_html(weights, ["#60A5FA", "#34D399", "#A78BFA", "#F87171", "#FBBF24", "#38BDF8", "#94A3B8"]),
-            height=340,
-        )
+    pie_colors = ["#60A5FA", "#34D399", "#A78BFA", "#F87171", "#FBBF24", "#38BDF8", "#94A3B8"]
+    portfolio_cols = st.columns(3)
+    for col, profile in zip(portfolio_cols, RISK_PROFILE_LABELS):
+        with col, st.container(key=f"pie-chart-{profile}"):
+            st.markdown(
+                f'<div class="portfolio-badge">{RISK_PROFILE_LABELS[profile]}</div>',
+                unsafe_allow_html=True,
+            )
+            weights = combined_portfolio_weights(regimes_by_area, profile)
+            components.html(pie_html(weights, pie_colors), height=300)
 else:
     st.info("Nessun dato in cache per calcolare il portafoglio.")
 
