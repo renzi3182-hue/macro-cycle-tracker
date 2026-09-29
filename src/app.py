@@ -63,7 +63,7 @@ ASSET_SHORT_LABELS = {
     "Credito corporate": "Credito corp.",
 }
 
-PIE_R = 72
+PIE_R = 115
 
 
 @st.cache_data(ttl=300)
@@ -83,7 +83,7 @@ def pie_html(weights: dict, colors: list[str]) -> str:
     # accavallano quando piu' spicchi sottili sono vicini in angolo): vanno
     # invece in due colonne fisse (sinistra/destra), impilate verticalmente
     # con spaziatura minima forzata, collegate allo spicchio da una linea guida.
-    svg_w, svg_h = 420, 300
+    svg_w, svg_h = 540, 340
     cx, cy = svg_w / 2, svg_h / 2
     label_col_x = {"left": cx - (PIE_R + 58), "right": cx + (PIE_R + 58)}
     min_gap = 15
@@ -164,7 +164,7 @@ def pie_html(weights: dict, colors: list[str]) -> str:
     @keyframes pie-in {{ to {{ opacity: 1; transform: translate(0, 0); }} }}
     .pie-label {{
         fill: #F1F5F9;
-        font: 700 10.5px sans-serif;
+        font: 700 12px sans-serif;
         paint-order: stroke;
         stroke: #0F172A;
         stroke-width: 3px;
@@ -299,6 +299,10 @@ st.html(
 st.title("Macro cycle tracker", icon=":material/monitoring:")
 st.caption("Regime macro e fase del ciclo economico per USA, Eurozona, Italia, UK, Giappone")
 
+with st.sidebar:
+    st.header("Impostazioni")
+    risk_profile = st.select_slider("Profilo di rischio", options=["Basso", "Medio", "Alto"], value="Medio")
+
 regimes_by_area = {}
 for area in AREA_FLAGS:
     history = load_classifications(area)
@@ -307,16 +311,17 @@ for area in AREA_FLAGS:
 
 st.subheader("Portafoglio diversificato multi-nazione")
 if regimes_by_area:
-    pie_colors = ["#60A5FA", "#34D399", "#A78BFA", "#F87171", "#FBBF24", "#38BDF8", "#94A3B8"]
-    portfolio_cols = st.columns(3)
-    for col, profile in zip(portfolio_cols, RISK_PROFILE_LABELS):
-        with col, st.container(key=f"pie-chart-{profile}"):
-            st.markdown(
-                f'<div class="portfolio-badge">{RISK_PROFILE_LABELS[profile]}</div>',
-                unsafe_allow_html=True,
-            )
-            weights = combined_portfolio_weights(regimes_by_area, profile)
-            components.html(pie_html(weights, pie_colors), height=300)
+    weights = combined_portfolio_weights(regimes_by_area, risk_profile)
+    col_left, col_mid, col_right = st.columns([1, 2, 1])
+    with col_mid, st.container(key="pie-chart"):
+        st.markdown(
+            f'<div class="portfolio-badge">{RISK_PROFILE_LABELS[risk_profile]}</div>',
+            unsafe_allow_html=True,
+        )
+        components.html(
+            pie_html(weights, ["#60A5FA", "#34D399", "#A78BFA", "#F87171", "#FBBF24", "#38BDF8", "#94A3B8"]),
+            height=340,
+        )
 else:
     st.info("Nessun dato in cache per calcolare il portafoglio.")
 
