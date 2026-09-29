@@ -320,10 +320,23 @@ for tab, area in zip(tabs, AREA_FLAGS):
                                 {"time": idx.strftime("%Y-%m-%d"), "value": round(float(v), 2)}
                                 for idx, v in chart_df[col].dropna().items()
                             ],
-                            "options": {"color": INDICATOR_COLORS.get(col, "#94A3B8"), "lineWidth": 2, "title": col},
+                            "options": {"color": INDICATOR_COLORS.get(col, "#94A3B8"), "lineWidth": 2},
                         }
                         for col in visible
                     ]
+                    # Nome indicatore come legenda statica sopra il grafico, non come
+                    # label nativa lightweight-charts: quella (title + value uniti in
+                    # un'unica pillola ancorata a destra) si allarga verso sinistra
+                    # sopra le linee quando il testo e' lungo, senza modo di
+                    # riordinare value/title o contenerla nel gutter dell'asse.
+                    legend_html = "".join(
+                        f'<span style="display:inline-flex; align-items:center; gap:6px; margin-right:16px;">'
+                        f'<span style="width:10px; height:10px; border-radius:50%; background:{INDICATOR_COLORS.get(col, "#94A3B8")}; display:inline-block;"></span>'
+                        f'<span style="color:#CBD5E1; font-size:0.85rem;">{col}</span>'
+                        f'</span>'
+                        for col in visible
+                    )
+                    st.markdown(f'<div style="margin-bottom:6px;">{legend_html}</div>', unsafe_allow_html=True)
                     renderLightweightCharts(
                         [{
                             "chart": {
