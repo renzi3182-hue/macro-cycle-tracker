@@ -53,3 +53,17 @@ def fetch_inflation_yoy(geo: str) -> pd.Series:
     )
     resp.raise_for_status()
     return _parse_jsonstat(resp.json())
+
+
+def fetch_unemployment_rate(geo: str) -> pd.Series:
+    """geo: 'EA21' per Eurozona, 'IT' per Italia. Verificato con dati reali (29/09/2026)."""
+    resp = requests.get(
+        f"{BASE_URL}/une_rt_m",
+        params={
+            "format": "JSON", "lang": "EN",
+            "s_adj": "SA", "age": "TOTAL", "sex": "T", "unit": "PC_ACT", "geo": geo,
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return _parse_jsonstat(resp.json())

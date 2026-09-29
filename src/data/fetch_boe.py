@@ -10,6 +10,8 @@ import requests
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; macro-cycle-tracker/1.0)"}
 GDP_URL = "https://www.ons.gov.uk/economy/grossdomesticproductgdp/timeseries/ihyr/pn2/data"
 CPI_URL = "https://www.ons.gov.uk/economy/inflationandpriceindices/timeseries/d7g7/mm23/data"
+# Verificato con dati reali (29/09/2026): tasso di disoccupazione UK, 16+, destagionalizzato.
+UNEMPLOYMENT_URL = "https://www.ons.gov.uk/employmentandlabourmarket/peoplenotinwork/unemployment/timeseries/mgsx/lms/data"
 
 
 def _fetch_ons_series(url: str) -> pd.Series:
@@ -35,3 +37,7 @@ def fetch_growth_yoy() -> pd.Series:
 
 def fetch_inflation_yoy() -> pd.Series:
     return _fetch_ons_series(CPI_URL)
+
+
+def fetch_unemployment_rate() -> pd.Series:
+    return _fetch_ons_series(UNEMPLOYMENT_URL)

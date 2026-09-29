@@ -1,11 +1,13 @@
+import math
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
+from streamlit_lightweight_charts import renderLightweightCharts
 
 from src.config.asset_allocation import ASSET_ALLOCATION, combined_portfolio_weights
 from src.data import cache
@@ -19,17 +21,190 @@ AREA_FLAGS = {
 }
 
 REGIME_COLORS = {
-    "Espansione": "#2e7d32",
-    "Reflazione": "#1565c0",
-    "Stagflazione": "#c62828",
-    "Deflazione": "#6a1b9a",
+    "Espansione": "#34D399",
+    "Reflazione": "#60A5FA",
+    "Stagflazione": "#F87171",
+    "Deflazione": "#A78BFA",
 }
 
-st.set_page_config(page_title="Macro Cycle Tracker", page_icon="\U0001F4CA", layout="wide")
+REGIME_MEANING = {
+    "Espansione": "crescita in accelerazione e inflazione in salita",
+    "Reflazione": "crescita in accelerazione e inflazione in calo",
+    "Stagflazione": "crescita in rallentamento e inflazione in salita",
+    "Deflazione": "crescita in rallentamento e inflazione in calo",
+}
 
-st.markdown(
+PHASE_MEANING = {
+    "Espansione": "PIL positivo e in accelerazione",
+    "Rallentamento": "PIL ancora positivo ma in decelerazione",
+    "Recessione": "PIL negativo (o vicino a zero) e in decelerazione",
+    "Ripresa": "PIL in accelerazione dopo un periodo debole",
+}
+
+
+INDICATOR_COLORS = {
+    "Crescita YoY %": "#34D399",
+    "Inflazione YoY %": "#F87171",
+    "Disoccupazione %": "#60A5FA",
+}
+
+PIE_R = 110
+
+
+@st.cache_data(ttl=300)
+def load_classifications(area: str) -> list[dict]:
+    return cache.read_last_two_classifications(area)
+
+
+@st.cache_data(ttl=300)
+def load_indicator(area: str, indicator: str) -> pd.Series:
+    return cache.read_indicator_series(area, indicator)
+
+
+def pie_html(weights: dict, colors: list[str]) -> str:
+    # Torta 2D piatta disegnata in SVG. Ogni spicchio entra volando da fuori
+    # schermo nella propria direzione (--dx/--dy) e converge nella torta via
+    # CSS keyframe.
+    total = sum(weights.values()) or 1
+    cx, cy = 150, 150
+    slices = []
+    theta = 0.0
+    for i, (label, value) in enumerate(weights.items()):
+        pct = value / total
+        sweep = pct * 360
+        slices.append({"label": label, "pct": pct, "start": theta, "end": theta + sweep, "color": colors[i % len(colors)]})
+        theta += sweep
+
+    def point(angle_deg):
+        t = math.radians(angle_deg - 90)
+        return cx + PIE_R * math.cos(t), cy + PIE_R * math.sin(t)
+
+    groups = []
+    for i, s in enumerate(slices):
+        x1, y1 = point(s["start"])
+        x2, y2 = point(s["end"])
+        large_arc = 1 if s["end"] - s["start"] > 180 else 0
+        path = f"M{cx},{cy} L{x1:.1f},{y1:.1f} A{PIE_R},{PIE_R} 0 {large_arc} 1 {x2:.1f},{y2:.1f} Z"
+
+        mid = math.radians((s["start"] + s["end"]) / 2 - 90)
+        lx, ly = cx + (PIE_R + 30) * math.cos(mid), cy + (PIE_R + 20) * math.sin(mid)
+        dx, dy = math.cos(mid) * 480, math.sin(mid) * 480
+
+        groups.append(
+            f'<g class="pie-slice" style="--dx:{dx:.0f}px; --dy:{dy:.0f}px; --delay:{i * 90}ms">'
+            f'<path d="{path}" fill="{s["color"]}" stroke="#0F172A" stroke-width="1.5" />'
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" class="pie-label">{s["label"]} {s["pct"] * 100:.0f}%</text>'
+            f'</g>'
+        )
+
+    return f"""<!DOCTYPE html>
+    <html><head><style>
+    html, body {{ margin: 0; padding: 0; background: transparent; overflow: hidden; }}
+    .pie-slice {{
+        opacity: 0;
+        transform: translate(var(--dx), var(--dy));
+        animation: pie-in 0.9s cubic-bezier(.2,.8,.2,1) var(--delay) forwards;
+        transform-box: fill-box;
+        transform-origin: center;
+    }}
+    @keyframes pie-in {{ to {{ opacity: 1; transform: translate(0, 0); }} }}
+    .pie-label {{
+        fill: #F1F5F9;
+        font: 700 12px sans-serif;
+        paint-order: stroke;
+        stroke: #0F172A;
+        stroke-width: 3px;
+    }}
+    </style></head><body>
+    <svg viewBox="0 0 300 300" width="100%" height="320">{''.join(groups)}</svg>
+    </body></html>
+    """
+
+
+def describe_regime(regime: str, phase: str, growth: pd.Series, inflation: pd.Series, unemployment: pd.Series) -> str:
+    parts = []
+    if not growth.empty:
+        parts.append(f"crescita {growth.iloc[-1]:+.1f}%")
+    if not inflation.empty:
+        parts.append(f"inflazione {inflation.iloc[-1]:+.1f}%")
+    if not unemployment.empty:
+        parts.append(f"disoccupazione {unemployment.iloc[-1]:.1f}%")
+    data_txt = ", ".join(parts)
+
+    regime_txt = REGIME_MEANING.get(regime, regime.lower())
+    phase_txt = PHASE_MEANING.get(phase, phase.lower())
+    return (
+        f"Regime **{regime}** ({regime_txt}); ciclo in **{phase}** ({phase_txt})."
+        + (f" Ultimo dato: {data_txt}." if data_txt else "")
+    )
+
+st.set_page_config(page_title="Macro Cycle Tracker", page_icon=":material/monitoring:", layout="wide")
+
+# Animazioni richieste esplicitamente dall'utente (ispirazione dashboard
+# fintech scure con badge "glow" e card che reagiscono all'hover). Il resto
+# del tema (colori/font) resta in .streamlit/config.toml per convenzione.
+st.html(
     """
     <style>
+    @media (prefers-reduced-motion: no-preference) {
+        .regime-badge {
+            animation: badge-in 0.5s ease-out both, badge-glow 2.8s ease-in-out 0.5s infinite;
+        }
+        [class*="st-key-regime-card-"] {
+            animation: card-in 0.4s ease-out both;
+        }
+        [class*="st-key-indicators-section-"] {
+            animation: card-in 0.5s ease-out 0.1s both;
+        }
+        body::before, body::after {
+            animation-play-state: running;
+        }
+    }
+    /* Sfondo "ambient": due aloni sfumati che derivano lentamente, come su
+       disko.media/butter.video. Statici (nessun animation-play-state=running)
+       se l'utente preferisce meno movimento. */
+    body::before, body::after {
+        content: "";
+        position: fixed;
+        border-radius: 50%;
+        filter: blur(50px);
+        z-index: -1;
+        pointer-events: none;
+        opacity: 0.28;
+        animation-play-state: paused;
+        will-change: transform;
+    }
+    body::before {
+        width: 360px;
+        height: 360px;
+        top: -140px;
+        left: -120px;
+        background: #60A5FA;
+        animation: ambient-drift-1 24s ease-in-out infinite alternate;
+    }
+    body::after {
+        width: 320px;
+        height: 320px;
+        bottom: -140px;
+        right: -100px;
+        background: #A78BFA;
+        animation: ambient-drift-2 28s ease-in-out infinite alternate;
+    }
+    @keyframes ambient-drift-1 {
+        from { transform: translate(0, 0); }
+        to { transform: translate(70px, 50px); }
+    }
+    @keyframes ambient-drift-2 {
+        from { transform: translate(0, 0); }
+        to { transform: translate(-60px, -40px); }
+    }
+    [class*="st-key-regime-card-"] {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    [class*="st-key-regime-card-"]:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
     .regime-badge {
         display: inline-block;
         padding: 4px 14px;
@@ -38,13 +213,26 @@ st.markdown(
         font-weight: 600;
         font-size: 0.95rem;
         margin-top: 4px;
+        --glow: var(--badge-color, #60A5FA);
+        box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    }
+    @keyframes badge-in {
+        from { opacity: 0; transform: translateY(6px) scale(0.96); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes badge-glow {
+        0%, 100% { box-shadow: 0 0 4px 0 var(--glow); }
+        50% { box-shadow: 0 0 16px 2px var(--glow); }
+    }
+    @keyframes card-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
     </style>
-    """,
-    unsafe_allow_html=True,
+    """
 )
 
-st.title("\U0001F4CA Macro Cycle Tracker")
+st.title("Macro cycle tracker", icon=":material/monitoring:")
 st.caption("Regime macro e fase del ciclo economico per USA, Eurozona, Italia, UK, Giappone")
 
 with st.sidebar:
@@ -53,26 +241,19 @@ with st.sidebar:
 
 regimes_by_area = {}
 for area in AREA_FLAGS:
-    history = cache.read_last_two_classifications(area)
+    history = load_classifications(area)
     if history:
         regimes_by_area[area] = history[0]["regime"]
 
 st.subheader("Portafoglio diversificato multi-nazione")
 if regimes_by_area:
     weights = combined_portfolio_weights(regimes_by_area, risk_profile)
-    fig, ax = plt.subplots(figsize=(5, 5), dpi=150)
-    fig.patch.set_alpha(0)
-    ax.pie(
-        weights.values(),
-        labels=weights.keys(),
-        autopct="%1.0f%%",
-        colors=plt.cm.Set2.colors,
-        textprops={"fontsize": 9},
-    )
-    ax.axis("equal")
     col_left, col_mid, col_right = st.columns([1, 2, 1])
-    with col_mid:
-        st.pyplot(fig)
+    with col_mid, st.container(key="pie-chart"):
+        components.html(
+            pie_html(weights, ["#60A5FA", "#34D399", "#A78BFA", "#F87171", "#FBBF24", "#38BDF8", "#94A3B8"]),
+            height=340,
+        )
 else:
     st.info("Nessun dato in cache per calcolare il portafoglio.")
 
@@ -81,7 +262,7 @@ st.divider()
 tabs = st.tabs([f"{flag} {area}" for area, flag in AREA_FLAGS.items()])
 for tab, area in zip(tabs, AREA_FLAGS):
     with tab:
-        history = cache.read_last_two_classifications(area)
+        history = load_classifications(area)
 
         if not history:
             st.info("Nessun dato in cache. Esegui `python -m src.scheduler.update_data` per popolare.")
@@ -93,11 +274,15 @@ for tab, area in zip(tabs, AREA_FLAGS):
         )
         color = REGIME_COLORS.get(current["regime"], "#555555")
 
-        with st.container(border=True):
+        growth = load_indicator(area, "growth_yoy")
+        inflation = load_indicator(area, "inflation_yoy")
+        unemployment = load_indicator(area, "unemployment_rate")
+
+        with st.container(border=True, key=f"regime-card-{area}"):
             c1, c2, c3 = st.columns(3)
             c1.markdown(
                 f"**Regime macro**<br>"
-                f"<span class='regime-badge' style='background:{color}'>{current['regime']}</span>",
+                f"<span class='regime-badge' style='background:{color}; --badge-color:{color}'>{current['regime']}</span>",
                 unsafe_allow_html=True,
             )
             c2.metric("Fase ciclo economico", current["phase"])
@@ -105,12 +290,77 @@ for tab, area in zip(tabs, AREA_FLAGS):
                 c3.warning("Cambiato dall'ultimo aggiornamento")
             else:
                 c3.caption("Nessun cambio dall'ultimo aggiornamento")
+            st.markdown(describe_regime(current["regime"], current["phase"], growth, inflation, unemployment))
 
-        growth = cache.read_indicator_series(area, "growth_yoy")
-        inflation = cache.read_indicator_series(area, "inflation_yoy")
-        if not growth.empty or not inflation.empty:
-            chart_df = pd.DataFrame({"Crescita YoY %": growth, "Inflazione YoY %": inflation})
-            st.line_chart(chart_df)
+        if not growth.empty or not inflation.empty or not unemployment.empty:
+            # Le serie hanno frequenze diverse (crescita/disoccupazione spesso
+            # trimestrali o mensili, inflazione mensile): senza ffill l'unione
+            # degli indici lascia buchi (NaN) tra una rilevazione e l'altra, e
+            # st.line_chart non collega i punti oltre un NaN, quindi le linee
+            # piu' rade spariscono su schermi stretti (mobile).
+            chart_df = pd.DataFrame({
+                "Crescita YoY %": growth,
+                "Inflazione YoY %": inflation,
+                "Disoccupazione %": unemployment,
+            }).sort_index().ffill()
+
+            with st.container(key=f"indicators-section-{area}"):
+                visible = st.pills(
+                    "Indicatori nel grafico",
+                    list(chart_df.columns),
+                    selection_mode="multi",
+                    default=list(chart_df.columns),
+                    key=f"visible_indicators_{area}",
+                )
+                if visible:
+                    series_config = [
+                        {
+                            "type": "Line",
+                            "data": [
+                                {"time": idx.strftime("%Y-%m-%d"), "value": round(float(v), 2)}
+                                for idx, v in chart_df[col].dropna().items()
+                            ],
+                            "options": {"color": INDICATOR_COLORS.get(col, "#94A3B8"), "lineWidth": 2, "title": col},
+                        }
+                        for col in visible
+                    ]
+                    renderLightweightCharts(
+                        [{
+                            "chart": {
+                                "layout": {"background": {"type": "solid", "color": "transparent"}, "textColor": "#CBD5E1"},
+                                "grid": {
+                                    "vertLines": {"color": "rgba(148,163,184,0.1)"},
+                                    "horzLines": {"color": "rgba(148,163,184,0.1)"},
+                                },
+                                "height": 320,
+                            },
+                            "series": series_config,
+                        }],
+                        key=f"lwc_{area}",
+                    )
+                else:
+                    st.info("Seleziona almeno un indicatore per vederlo nel grafico.")
+
+                indicators = [
+                    ("Crescita YoY %", growth),
+                    ("Inflazione YoY %", inflation),
+                    ("Disoccupazione %", unemployment),
+                ]
+                non_empty = [(label, series) for label, series in indicators if not series.empty]
+                if non_empty:
+                    cols = st.columns(len(non_empty))
+                    for col, (label, series) in zip(cols, non_empty):
+                        with col:
+                            st.caption(label)
+                            recent = series.tail(5).sort_index(ascending=False)
+                            st.dataframe(
+                                pd.DataFrame({
+                                    "Data": recent.index.strftime("%d/%m/%Y"),
+                                    "Valore": recent.values.round(1),
+                                }),
+                                hide_index=True,
+                                width="stretch",
+                            )
 
         allocation = ASSET_ALLOCATION.get(current["regime"], [])
         if allocation:
