@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 
 TREND_WINDOW = 3
@@ -9,6 +11,10 @@ TREND_WINDOW = 3
 # restano rilevate correttamente. Vedi wiki/macro-cycle-tracker.md.
 GROWTH_DEADBAND = 2.0
 INFLATION_DEADBAND = 1.4
+# Probabilita' che una direzione sia "up": logistica sulla distanza dalla media
+# precedente, con P = 0.75 quando la distanza uguaglia il deadband. E' una
+# convenzione, non una stima calibrata su frequenze storiche.
+PROB_AT_DEADBAND = 0.75
 
 
 def _direction_series(series: pd.Series, window: int, deadband: float) -> pd.Series:
@@ -38,3 +44,29 @@ def classify_regime(growth: pd.Series, inflation: pd.Series) -> str:
     if growth_dir == "down" and inflation_dir == "up":
         return "Stagflazione"
     return "Deflazione"
+
+
+def _prob_up(series: pd.Series, window: int, deadband: float) -> float:
+    if len(series) < window + 1:
+        raise ValueError(f"need at least {window + 1} data points, got {len(series)}")
+    delta = series.iloc[-1] - series.iloc[-window - 1:-1].mean()
+    k = math.log(PROB_AT_DEADBAND / (1 - PROB_AT_DEADBAND)) / deadband
+    return 1 / (1 + math.exp(-k * delta))
+
+
+def regime_probabilities(
+    growth: pd.Series,
+    inflation: pd.Series,
+    window: int = TREND_WINDOW,
+    growth_deadband: float = GROWTH_DEADBAND,
+    inflation_deadband: float = INFLATION_DEADBAND,
+) -> dict:
+    """Probabilita' dei 4 regimi, assumendo crescita e inflazione indipendenti."""
+    pg = _prob_up(growth, window, growth_deadband)
+    pi = _prob_up(inflation, window, inflation_deadband)
+    return {
+        "Reflazione": pg * (1 - pi),
+        "Espansione": pg * pi,
+        "Stagflazione": (1 - pg) * pi,
+        "Deflazione": (1 - pg) * (1 - pi),
+    }

@@ -4,15 +4,21 @@ import os
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.classify.cycle import classify_cycle
+from src.classify.leading import leading_risk
+from src.classify.recession import recession_confirmed
 from src.classify.regime import classify_regime
-from src.data import cache, fetch_boe, fetch_ecb, fetch_fred, fetch_japan
+from src.data import cache, fetch_boe, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_japan, fetch_market
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+MARKET_AREA = "Mercati"
+CALENDAR_AREA = "Calendario"
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
@@ -33,6 +39,12 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
             "growth_yoy": lambda: fetch_fred.fetch_growth_yoy(fred_key),
             "inflation_yoy": lambda: fetch_fred.fetch_inflation_yoy(fred_key),
             "unemployment_rate": lambda: fetch_fred.fetch_unemployment_rate(fred_key),
+            "industrial_production": lambda: fetch_fred.fetch_industrial_production_yoy(fred_key),
+            "fed_funds": lambda: fetch_fred.fetch_fed_funds(fred_key),
+            "recession_prob": lambda: fetch_fred.fetch_recession_probability(fred_key),
+            "yield_curve": lambda: fetch_fred.fetch_yield_curve(fred_key),
+            "credit_spread": lambda: fetch_fred.fetch_credit_spread(fred_key),
+            "fin_conditions": lambda: fetch_fred.fetch_financial_conditions(fred_key),
         },
         "Eurozona": {
             "growth_yoy": lambda: fetch_ecb.fetch_growth_yoy("EA20"),
@@ -73,10 +85,48 @@ def update_area(area: str, indicator_fetchers: dict) -> None:
 
     growth = series_by_indicator["growth_yoy"]
     regime = classify_regime(growth, series_by_indicator["inflation_yoy"])
-    phase = classify_cycle(growth)
+    empty = pd.Series(dtype=float)
+    risk_level = None
+    if "yield_curve" in indicator_fetchers:  # solo USA ha gli indicatori anticipatori
+        risk_level = leading_risk(
+            series_by_indicator.get("yield_curve", empty),
+            series_by_indicator.get("credit_spread", empty),
+            series_by_indicator.get("fin_conditions", empty),
+        )["level"]
+    confirmed = "recession_prob" in indicator_fetchers and recession_confirmed(
+        series_by_indicator.get("unemployment_rate", empty), series_by_indicator.get("recession_prob", empty)
+    )
+    phase = classify_cycle(growth, risk_level, confirmed)
     computed_at = datetime.datetime.now().isoformat(timespec="seconds")
     cache.write_classification(area, computed_at, regime, phase)
     logger.info("%s: regime=%s phase=%s", area, regime, phase)
+
+
+def update_market_context(fred_key: str) -> None:
+    """COT, VIX e aspettative di mercato (recessione, inflazione attesa): solo informativi, non entrano nella classificazione. Un fallimento non blocca gli altri."""
+    fetchers = {
+        "vix": lambda: fetch_fred.fetch_vix(fred_key),
+        "move": fetch_market.fetch_move,
+        "breakeven_5y": lambda: fetch_fred.fetch_breakeven_5y(fred_key),
+        "breakeven_5y5y": lambda: fetch_fred.fetch_breakeven_5y5y(fred_key),
+    }
+    for name, code in fetch_cot.CONTRACTS.items():
+        fetchers[f"cot_{name}"] = lambda code=code: fetch_cot.fetch_net_speculative(code)
+    for indicator, fetch_fn in fetchers.items():
+        try:
+            cache.write_indicator_series(MARKET_AREA, indicator, fetch_fn())
+        except Exception:
+            logger.exception("%s: fetch fallito, salto e continuo", indicator)
+
+    # Calendario eventi: le date future stanno come indicatori (valore 1.0) sotto CALENDAR_AREA.
+    events = {"FOMC": fetch_calendar.fetch_fomc_dates}
+    for name, release_id in fetch_calendar.FRED_RELEASES.items():
+        events[name] = lambda release_id=release_id: fetch_calendar.fetch_release_dates(release_id, fred_key)
+    for name, fetch_fn in events.items():
+        try:
+            cache.write_indicator_series(CALENDAR_AREA, name, fetch_fn())
+        except Exception:
+            logger.exception("calendario %s: fetch fallito, salto e continuo", name)
 
 
 def main() -> None:
@@ -88,6 +138,7 @@ def main() -> None:
             update_area(area, indicator_fetchers)
         except Exception:
             logger.exception("update fallito per area %s, salto e continuo", area)
+    update_market_context(fred_key)
 
 
 if __name__ == "__main__":

@@ -56,3 +56,15 @@ def combined_portfolio_weights(regimes_by_area: dict, risk_profile: str) -> dict
         for asset, weight in portfolio_weights(regime, risk_profile).items():
             combined[asset] = combined.get(asset, 0.0) + weight / n
     return combined
+
+
+# All Weather (Dalio, versione divulgata in "Money: Master the Game", Robbins 2014):
+# pesi statici, NON dipendono dal regime ne' dal profilo di rischio. Approssimazione
+# pubblica, non il portafoglio effettivo di Bridgewater (che usa leva e risk parity).
+ALL_WEATHER_WEIGHTS = {
+    "Azionario": 30.0,
+    "Obbligazioni governative lunga durata": 40.0,
+    "Obbligazioni medio termine": 15.0,
+    "Oro": 7.5,
+    "Materie prime": 7.5,
+}

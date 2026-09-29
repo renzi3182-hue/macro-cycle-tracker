@@ -9,7 +9,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_lightweight_charts import renderLightweightCharts
 
-from src.config.asset_allocation import ASSET_ALLOCATION, combined_portfolio_weights
+from src.classify.gip import gip_view
+from src.classify.leading import leading_risk
+from src.classify.regime import regime_probabilities
+from src.classify.recession import recession_confirmed, sahm_gap
+from src.classify.positioning import percentile_rank, positioning_label
+from src.data.fetch_cot import CONTRACTS
+from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, ASSET_ALLOCATION, combined_portfolio_weights
 from src.data import cache
 
 AREA_FLAGS = {
@@ -49,6 +55,7 @@ INDICATOR_COLORS = {
 }
 
 RISK_PROFILE_LABELS = {"Basso": "Conservativo", "Medio": "Bilanciato", "Alto": "Aggressivo"}
+ALL_WEATHER = "All Weather"
 
 # Nomi accorciati solo per l'etichetta nel grafico a torta (spazio limitato in
 # layout a 3 colonne): la lista completa resta invariata altrove (asset
@@ -61,6 +68,7 @@ ASSET_SHORT_LABELS = {
     "Azionario difensivo": "Az. difensivo",
     "Azionario growth": "Az. growth",
     "Credito corporate": "Credito corp.",
+    "Obbligazioni medio termine": "Obbl. medio term.",
 }
 
 PIE_R = 150
@@ -302,7 +310,8 @@ st.caption("Regime macro e fase del ciclo economico per USA, Eurozona, Italia, U
 
 with st.sidebar:
     st.header("Impostazioni")
-    risk_profile = st.select_slider("Profilo di rischio", options=["Basso", "Medio", "Alto"], value="Medio")
+    # All Weather non e' un profilo di rischio: pesi statici, indipendenti da regime e profilo.
+    risk_profile = st.select_slider("Profilo di rischio", options=["Basso", "Medio", "Alto", ALL_WEATHER], value="Medio")
 
 regimes_by_area = {}
 for area in AREA_FLAGS:
@@ -312,11 +321,11 @@ for area in AREA_FLAGS:
 
 st.subheader("Portafoglio diversificato multi-nazione")
 if regimes_by_area:
-    weights = combined_portfolio_weights(regimes_by_area, risk_profile)
+    weights = ALL_WEATHER_WEIGHTS if risk_profile == ALL_WEATHER else combined_portfolio_weights(regimes_by_area, risk_profile)
     col_left, col_mid, col_right = st.columns([1, 2, 1])
     with col_mid, st.container(key="pie-chart"):
         st.markdown(
-            f'<div class="portfolio-badge">{RISK_PROFILE_LABELS[risk_profile]}</div>',
+            f'<div class="portfolio-badge">{RISK_PROFILE_LABELS.get(risk_profile, ALL_WEATHER)}</div>',
             unsafe_allow_html=True,
         )
         components.html(
@@ -328,7 +337,7 @@ else:
 
 st.divider()
 
-tabs = st.tabs([f"{flag} {area}" for area, flag in AREA_FLAGS.items()])
+tabs = st.tabs([f"{flag} {area}" for area, flag in AREA_FLAGS.items()] + ["📊 Contesto mercato"])
 for tab, area in zip(tabs, AREA_FLAGS):
     with tab:
         history = load_classifications(area)
@@ -360,6 +369,53 @@ for tab, area in zip(tabs, AREA_FLAGS):
             else:
                 c3.caption("Nessun cambio dall'ultimo aggiornamento")
             st.markdown(describe_regime(current["regime"], current["phase"], growth, inflation, unemployment))
+
+            probs = regime_probabilities(growth, inflation) if len(growth) > 3 and len(inflation) > 3 else None
+            gip = None
+            if area == "USA":
+                ip, ff = load_indicator(area, "industrial_production"), load_indicator(area, "fed_funds")
+                if len(ip) > 3 and len(inflation) > 3:
+                    gip = gip_view(ip, inflation, ff)
+                    if probs:  # media dei due modelli: PIL trimestrale + dati mensili
+                        probs = {r: (probs[r] + gip["probabilities"][r]) / 2 for r in probs}
+            if probs:
+                st.markdown("**Probabilita' per regime**" + (" (media modello PIL e modello mensile)" if gip else ""))
+                for col, (regime_name, p) in zip(st.columns(4), sorted(probs.items(), key=lambda x: -x[1])):
+                    col.metric(regime_name, f"{p * 100:.0f}%")
+                st.caption(
+                    "Stima non calibrata su frequenze storiche. L'etichetta del regime ha memoria (deadband): "
+                    "puo' non coincidere con la probabilita' piu' alta."
+                )
+            if gip:
+                agree = "concorda con il" if gip["regime"] == current["regime"] else "diverge dal"
+                st.caption(
+                    f"Regime mensile alternativo (stile Hedgeye GIP, produzione industriale + CPI): "
+                    f"**{gip['regime']}**, {agree} regime principale. Politica Fed: {gip['policy']}."
+                )
+
+        if area == "USA":
+            curve = load_indicator(area, "yield_curve")
+            spread = load_indicator(area, "credit_spread")
+            fin = load_indicator(area, "fin_conditions")
+            if not (curve.empty and spread.empty and fin.empty):
+                risk = leading_risk(curve, spread, fin)
+                with st.container(border=True, key="leading-card"):
+                    st.markdown(f"**Indicatori anticipatori**: rischio {risk['level']} ({risk['score']}/3 segnali)")
+                    for col, (label, ser, unit) in zip(
+                        st.columns(3),
+                        [("Curva 10Y-3M", curve, " pp"), ("Spread Baa-10Y", spread, " pp"), ("NFCI", fin, "")],
+                    ):
+                        col.metric(label, f"{ser.iloc[-1]:.2f}{unit}" if not ser.empty else "n/d")
+                    active = [k for k, on in risk["signals"].items() if on]
+                    st.caption("Segnali attivi: " + (", ".join(active) if active else "nessuno"))
+                    gap = sahm_gap(unemployment).dropna()
+                    prob = load_indicator(area, "recession_prob")
+                    if not gap.empty and not prob.empty:
+                        st.caption(
+                            f"Recessione in corso: Regola di Sahm {gap.iloc[-1]:+.2f} pp (soglia 0.5), "
+                            f"Chauvet-Piger {prob.iloc[-1]:.1f}%. "
+                            + ("CONFERMATA" if recession_confirmed(unemployment, prob) else "Non confermata")
+                        )
 
         if not growth.empty or not inflation.empty or not unemployment.empty:
             # Le serie hanno frequenze diverse (crescita/disoccupazione spesso
@@ -450,3 +506,61 @@ for tab, area in zip(tabs, AREA_FLAGS):
         if allocation:
             st.caption("Asset allocation storicamente favorita per questo regime:")
             st.write(" · ".join(allocation))
+
+
+with tabs[-1]:
+    st.caption(
+        "Solo informativo: non entra nella classificazione di regime e ciclo. "
+        "COT = posizione netta degli speculatori (CFTC, aggiornata il venerdi', dato del martedi'), "
+        "percentile sugli ultimi 5 anni."
+    )
+    st.markdown("**Aspettative del mercato (USA)**")
+    for col, (label, key, unit) in zip(
+        st.columns(5),
+        [
+            ("VIX", "vix", ""),
+            ("MOVE (vol. Treasury)", "move", ""),
+            ("Prob. recessione in corso", "USA:recession_prob", "%"),
+            ("Inflazione attesa 5Y", "breakeven_5y", "%"),
+            ("Inflazione attesa 5Y5Y", "breakeven_5y5y", "%"),
+        ],
+    ):
+        ser_area, _, ser_key = key.rpartition(":")
+        ser = load_indicator(ser_area or "Mercati", ser_key)
+        if ser.empty:
+            col.metric(label, "n/d")
+        else:
+            delta = f"{ser.iloc[-1] - ser.iloc[-2]:+.2f} vs rilev. prec." if len(ser) > 1 else None
+            col.metric(label, f"{ser.iloc[-1]:.1f}{unit}" if key in ("vix", "move") else f"{ser.iloc[-1]:.2f}{unit}", delta)
+    st.markdown("**Prossimi eventi macro**")
+    today = pd.Timestamp.today().normalize()
+    upcoming = []
+    for name in ["FOMC", "CPI", "Occupazione (NFP)", "PIL"]:
+        future = load_indicator("Calendario", name)
+        future = future[future.index >= today]
+        if not future.empty:
+            upcoming.append({"Evento": name, "Data": future.index[0], "Fra (giorni)": (future.index[0] - today).days})
+    if upcoming:
+        df = pd.DataFrame(upcoming).sort_values("Data")
+        df["Data"] = df["Data"].dt.strftime("%d/%m/%Y")
+        st.dataframe(df, hide_index=True, width="stretch")
+    else:
+        st.caption("Nessuna data in cache: esegui l'aggiornamento dati.")
+    st.markdown("**Posizionamento speculatori (COT)**")
+    rows = []
+    for name in CONTRACTS:
+        cot = load_indicator("Mercati", f"cot_{name}")
+        if cot.empty:
+            continue
+        pct = percentile_rank(cot)
+        rows.append({
+            "Mercato": name,
+            "Netto speculatori (% OI)": round(float(cot.iloc[-1]), 1),
+            "Percentile 5 anni": round(pct),
+            "Posizionamento": positioning_label(pct),
+            "Data": cot.index[-1].strftime("%d/%m/%Y"),
+        })
+    if rows:
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    else:
+        st.info("Nessun dato COT in cache. Esegui `python -m src.scheduler.update_data`.")
