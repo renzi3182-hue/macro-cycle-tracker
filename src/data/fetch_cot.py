@@ -4,7 +4,8 @@ import requests
 # CFTC Legacy Futures Only (Socrata, pubblico, senza chiave). Dato riferito al
 # martedi', pubblicato il venerdi'.
 URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.json"
-WEEKS = 260  # ~5 anni per il percentile
+WEEKS = 260  # ~5 anni: finestra del percentile (app e backtest)
+HISTORY_LIMIT = 5000  # tutto lo storico disponibile (dal 1986 circa), serve al backtest valute
 
 CONTRACTS = {  # nome -> cftc_contract_market_code
     "S&P 500": "13874A",
@@ -26,7 +27,7 @@ def fetch_net_speculative(code: str) -> pd.Series:
         params={
             "cftc_contract_market_code": code,
             "$order": "report_date_as_yyyy_mm_dd desc",
-            "$limit": WEEKS,
+            "$limit": HISTORY_LIMIT,
         },
         timeout=30,
     )

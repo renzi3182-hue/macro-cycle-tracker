@@ -29,15 +29,15 @@ def test_fetch_growth_yoy(requests_mock):
 
 
 def test_fetch_inflation_yoy(requests_mock):
-    requests_mock.get(f"{fetch_ecb.BASE_URL}/prc_hicp_manr", json=JSONSTAT_MONTHLY_PAYLOAD)
+    requests_mock.get(f"{fetch_ecb.BASE_URL}/prc_hicp_minr", json=JSONSTAT_MONTHLY_PAYLOAD)
     result = fetch_ecb.fetch_inflation_yoy("IT")
     assert len(result) == 2
     assert list(result.values) == [2.4, 2.6]
 
 
 def test_fetch_inflation_yoy_hyphenated_month(requests_mock):
-    # formato reale osservato da Eurostat per prc_hicp_manr: "2023-01", non "2023M01"
-    requests_mock.get(f"{fetch_ecb.BASE_URL}/prc_hicp_manr", json=JSONSTAT_MONTHLY_HYPHEN_PAYLOAD)
+    # formato reale osservato da Eurostat per prc_hicp_minr: "2023-01", non "2023M01"
+    requests_mock.get(f"{fetch_ecb.BASE_URL}/prc_hicp_minr", json=JSONSTAT_MONTHLY_HYPHEN_PAYLOAD)
     result = fetch_ecb.fetch_inflation_yoy("IT")
     assert len(result) == 2
     assert list(result.values) == [3.1, 3.3]

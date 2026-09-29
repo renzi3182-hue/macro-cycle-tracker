@@ -18,7 +18,8 @@ def _fetch_ons_series(url: str) -> pd.Series:
     resp = requests.get(url, headers=HEADERS, timeout=30)
     resp.raise_for_status()
     payload = resp.json()
-    entries = payload.get("quarters") or payload.get("months") or []
+    # Mensile prima: CPI e disoccupazione hanno sia "months" sia "quarters" (medie), il PIL solo "quarters".
+    entries = payload.get("months") or payload.get("quarters") or []
     dates, values = [], []
     for entry in entries:
         year = int(entry["year"])

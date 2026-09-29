@@ -9,7 +9,7 @@ from src.data import fetch_calendar, fetch_market
 
 def test_fetch_move_skips_null_closes(requests_mock):
     requests_mock.get(
-        fetch_market.YAHOO_URL,
+        fetch_market.YAHOO_URL.format(symbol="%5EMOVE"),
         json={"chart": {"result": [{"timestamp": [1700000000, 1700086400],
                                     "indicators": {"quote": [{"close": [100.5, None]}]}}]}},
     )

@@ -12,7 +12,7 @@ from src.classify.cycle import classify_cycle
 from src.classify.leading import leading_risk
 from src.classify.recession import recession_confirmed
 from src.classify.regime import classify_regime
-from src.data import cache, fetch_boe, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market
+from src.data import cache, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,7 +35,10 @@ def _load_dotenv(path: Path = ENV_PATH) -> None:
 
 
 def _areas(fred_key: str, estat_app_id: str) -> dict:
-    return {
+    def curve(area):
+        return lambda: fetch_fred.fetch_spread(*fetch_fred.CURVES[area], fred_key)
+
+    areas = {
         "USA": {
             "growth_yoy": lambda: fetch_fred.fetch_growth_yoy(fred_key),
             "inflation_yoy": lambda: fetch_fred.fetch_inflation_yoy(fred_key),
@@ -46,28 +49,43 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
             "yield_curve": lambda: fetch_fred.fetch_yield_curve(fred_key),
             "credit_spread": lambda: fetch_fred.fetch_credit_spread(fred_key),
             "fin_conditions": lambda: fetch_fred.fetch_financial_conditions(fred_key),
+            # solo informativi (non nel punteggio di rischio, tarato su NBER con i 3 segnali sopra)
+            "claims": lambda: fetch_fred.fetch_claims(fred_key),
+            "permits": lambda: fetch_fred.fetch_permits(fred_key),
+            "philly_fed": lambda: fetch_fred.fetch_philly_fed(fred_key),
+            "gdpnow": lambda: fetch_fred.fetch_gdpnow(fred_key),
         },
         "Eurozona": {
-            "growth_yoy": lambda: fetch_ecb.fetch_growth_yoy("EA20"),
+            "growth_yoy": lambda: fetch_ecb.fetch_growth_yoy("EA21"),
             "inflation_yoy": lambda: fetch_ecb.fetch_inflation_yoy("EA"),
             "unemployment_rate": lambda: fetch_ecb.fetch_unemployment_rate("EA21"),
+            "esi": lambda: fetch_ecb.fetch_sentiment("EA21"),
+            "yield_curve": curve("Eurozona"),
         },
         "Italia": {
             "growth_yoy": lambda: fetch_ecb.fetch_growth_yoy("IT"),
             "inflation_yoy": lambda: fetch_ecb.fetch_inflation_yoy("IT"),
             "unemployment_rate": lambda: fetch_ecb.fetch_unemployment_rate("IT"),
+            "esi": lambda: fetch_ecb.fetch_sentiment("IT"),
+            "btp_bund": lambda: fetch_fred.fetch_spread(*fetch_fred.BTP_BUND, fred_key),
         },
         "UK": {
             "growth_yoy": fetch_boe.fetch_growth_yoy,
             "inflation_yoy": fetch_boe.fetch_inflation_yoy,
             "unemployment_rate": fetch_boe.fetch_unemployment_rate,
+            "yield_curve": curve("UK"),
         },
         "Giappone": {
             "growth_yoy": lambda: fetch_japan.fetch_growth_yoy(estat_app_id),
             "inflation_yoy": lambda: fetch_japan.fetch_inflation_yoy(estat_app_id),
             "unemployment_rate": lambda: fetch_japan.fetch_unemployment_rate(estat_app_id),
+            "tankan": fetch_boj.fetch_tankan,
+            "yield_curve": curve("Giappone"),
         },
     }
+    for area, fetchers in areas.items():
+        fetchers["cli"] = lambda area=area: fetch_oecd.fetch_cli(area)
+    return areas
 
 
 def update_area(area: str, indicator_fetchers: dict) -> None:
@@ -87,13 +105,8 @@ def update_area(area: str, indicator_fetchers: dict) -> None:
     growth = series_by_indicator["growth_yoy"]
     regime = classify_regime(growth, series_by_indicator["inflation_yoy"])
     empty = pd.Series(dtype=float)
-    risk_level = None
-    if "yield_curve" in indicator_fetchers:  # solo USA ha gli indicatori anticipatori
-        risk_level = leading_risk(
-            series_by_indicator.get("yield_curve", empty),
-            series_by_indicator.get("credit_spread", empty),
-            series_by_indicator.get("fin_conditions", empty),
-        )["level"]
+    risk = leading_risk(area, series_by_indicator)
+    risk_level = risk["level"] if risk else None
     confirmed = "recession_prob" in indicator_fetchers and recession_confirmed(
         series_by_indicator.get("unemployment_rate", empty), series_by_indicator.get("recession_prob", empty)
     )

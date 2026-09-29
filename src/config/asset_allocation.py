@@ -1,5 +1,13 @@
 # Mapping statico regime -> classi di asset storicamente favorite (stile All Weather).
-# Non e' un consiglio di investimento personalizzato, non e' backtestato.
+# Non e' un consiglio di investimento personalizzato.
+#
+# Backtest USA (scripts/backtest_assets.py, 29/09/2026, regime point-in-time, mese successivo):
+# nessuna differenza di rendimento fra regimi e' statisticamente significativa per azioni, Treasury
+# e oro (|t| < 2); solo il cash (livello dei tassi) e, al limite, le materie prime (meglio in
+# Deflazione, t = 2.0, contrario alla tabella). Portafoglio per regime 2000-2026 (profilo Medio):
+# 5.2%/anno, vol 9.9%, drawdown -26% con PIL rivisto; 6.0%, 9.3%, -19% con PIL real-time ALFRED.
+# All Weather statico: 4.9%, 6.4%, -14%; pesi uguali: 5.5%, 7.7%, -19%. Rischio/rendimento simile
+# o peggiore dei portafogli statici: la tabella e' un'opinione ragionata, non un vantaggio dimostrato.
 #
 # Fonti (ricerca 28/09/2026): Bridgewater All Weather, Merrill Lynch Investment
 # Clock (Greetham, 2004), letteratura su correlazione azioni-obbligazioni.

@@ -40,6 +40,10 @@ Automatico, schedulato una volta al giorno (i dati macro escono comunque mensile
 | Eurozona / Italia | ECB Statistical Data Warehouse + Eurostat | PIL reale YoY, HICP YoY |
 | UK | Bank of England API | PIL reale YoY, CPI YoY |
 | Giappone | e-Stat API (serve application ID gratuito) | PIL reale YoY, CPI YoY |
+| Tutte | OCSE SDMX (senza chiave) | Composite Leading Indicator (Eurozona = G4E) |
+| Anticipatori | Eurostat, FRED/OCSE, Bank of Japan | ESI, curve 10Y-breve, spread BTP-Bund, Tankan |
+
+Aggiornamento 29/09/2026: soglie degli anticipatori fuori USA verificate con `scripts/backtest_leading_intl.py`; con rischio "Alto" un'Espansione diventa Rallentamento in ogni area (prima solo USA). Backtest regime -> rendimenti (`scripts/backtest_assets.py`) e con dati real-time ALFRED (`scripts/backtest_alfred.py`): vedi i commenti in `src/config/asset_allocation.py` e sotto "Areas of concern".
 
 ### Logica di classificazione (trasparente, regolabile — no black box)
 
@@ -86,4 +90,6 @@ macro-cycle-tracker/
 ## Areas of concern
 - **Giappone**: e-Stat richiede registrazione per application ID; dati meno standardizzati di FRED/ECB. Se il setup si rivela troppo fragile durante il build, va segnalato e si può derubricare il Giappone a v2 invece di bloccare tutto il resto.
 - **Soglie di classificazione**: calibrate su backtest storico reale USA (vedi sopra). Non ancora ricalibrate separatamente per Eurozona/UK/Giappone (usano le stesse soglie USA per ora — verificare se serve differenziare quando ci sono più anni di dati cache accumulati).
+- **Dati real-time (ALFRED, 1992-2026)**: con il PIL della prima pubblicazione il regime coincide con quello su dati rivisti solo nel 70% dei trimestri (il deadband con memoria amplifica revisioni piccole). La fase "Recessione" da PIL rileva solo il 2008, con 15 mesi di ritardo. Sahm real-time: ritardo 3-4 mesi, perde il 2020 (troppo breve).
+- **Regime -> rendimenti (USA)**: nessuna differenza significativa per azioni, Treasury, oro; il portafoglio per regime non batte All Weather o pesi uguali in rischio/rendimento.
 - **Asset allocation storica**: è un mapping statico dichiarato come tale nella UI (non un consiglio di investimento personalizzato/dinamico), per restare nei limiti di "solo dati macro" richiesti dall'intent.

@@ -1,22 +1,22 @@
-# Tema scuro ispirato a dashboard fintech/crypto (slate profondo + accenti neon)
+# Tema scuro "quiet terminal": fondo blu-nero, card #111827, numeri in monospace (redesign 2026-09)
 [theme]
 base = "dark"
 primaryColor = "#60A5FA"
-backgroundColor = "#0F172A"
-secondaryBackgroundColor = "#1E293B"
-codeBackgroundColor = "#1E293B"
-textColor = "#F1F5F9"
+backgroundColor = "#0B0F17"
+secondaryBackgroundColor = "#111827"
+codeBackgroundColor = "#111827"
+textColor = "#E6EAF2"
 linkColor = "#60A5FA"
-borderColor = "#334155"
+borderColor = "#1E2738"
 codeTextColor = "#CBD5E1"
 showWidgetBorder = true
 showSidebarBorder = true
 baseRadius = "12px"
 buttonRadius = "8px"
 
-font = "'Nunito':https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap"
-headingFont = "'Nunito':https://fonts.googleapis.com/css2?family=Nunito:wght@600;700&display=swap"
-codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+font = "'IBM Plex Sans':https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+headingFont = "'Space Grotesk':https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
 baseFontSize = 14
 baseFontWeight = 400
 codeFontSize = "13px"
@@ -30,17 +30,17 @@ yellowColor = "#FBBF24"
 orangeColor = "#FB923C"
 blueColor = "#60A5FA"
 violetColor = "#A78BFA"
-grayColor = "#94A3B8"
+grayColor = "#9AA6B8"
 
 chartCategoricalColors = ["#60A5FA", "#34D399", "#A78BFA", "#F87171", "#FBBF24", "#38BDF8", "#94A3B8"]
 
-dataframeBorderColor = "#334155"
-dataframeHeaderBackgroundColor = "#1E293B"
+dataframeBorderColor = "#1E2738"
+dataframeHeaderBackgroundColor = "#111827"
 
 [theme.sidebar]
 backgroundColor = "#0B1220"
-secondaryBackgroundColor = "#1E293B"
-codeBackgroundColor = "#1E293B"
-textColor = "#F1F5F9"
-borderColor = "#334155"
+secondaryBackgroundColor = "#111827"
+codeBackgroundColor = "#111827"
+textColor = "#E6EAF2"
+borderColor = "#1E2738"
 primaryColor = "#60A5FA"

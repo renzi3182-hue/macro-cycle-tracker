@@ -50,3 +50,11 @@ def test_classifications_roundtrip(tmp_path):
 def test_classifications_empty(tmp_path):
     db_path = tmp_path / "test.db"
     assert cache.read_last_two_classifications("USA", db_path=db_path) == []
+
+
+def test_write_indicator_series_drops_stale_dates(tmp_path):
+    # fonte passata da trimestrale a mensile: le date vecchie non devono restare mescolate
+    db_path = tmp_path / "test.db"
+    cache.write_indicator_series("UK", "cpi", pd.Series([1.0], index=pd.to_datetime(["2020-02-15"])), db_path=db_path)
+    cache.write_indicator_series("UK", "cpi", pd.Series([2.0], index=pd.to_datetime(["2020-03-01"])), db_path=db_path)
+    assert list(cache.read_indicator_series("UK", "cpi", db_path=db_path).values) == [2.0]

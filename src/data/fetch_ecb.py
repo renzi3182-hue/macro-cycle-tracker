@@ -34,7 +34,7 @@ def _parse_jsonstat(payload: dict) -> pd.Series:
 
 
 def fetch_growth_yoy(geo: str) -> pd.Series:
-    """geo: 'EA20' per Eurozona, 'IT' per Italia."""
+    """geo: 'EA21' per Eurozona (con la Bulgaria dal 2026; EA20 non e' piu' aggiornato per l'ESI), 'IT' per Italia."""
     resp = requests.get(
         f"{BASE_URL}/namq_10_gdp",
         params={"format": "JSON", "lang": "EN", "unit": "CLV_PCH_SM", "na_item": "B1GQ", "s_adj": "SCA", "geo": geo},
@@ -45,10 +45,24 @@ def fetch_growth_yoy(geo: str) -> pd.Series:
 
 
 def fetch_inflation_yoy(geo: str) -> pd.Series:
-    """geo: 'EA' per Eurozona, 'IT' per Italia."""
+    """geo: 'EA' per Eurozona, 'IT' per Italia.
+
+    prc_hicp_manr e' congelato a dic 2025 (ultimo update feb 2026): Eurostat e' passata
+    a ECOICOP v2 (prc_hicp_minr). Verificato con dati reali (29/09/2026)."""
     resp = requests.get(
-        f"{BASE_URL}/prc_hicp_manr",
-        params={"format": "JSON", "lang": "EN", "coicop": "CP00", "geo": geo},
+        f"{BASE_URL}/prc_hicp_minr",
+        params={"format": "JSON", "lang": "EN", "coicop18": "TOTAL", "unit": "RCH_A", "geo": geo},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return _parse_jsonstat(resp.json())
+
+
+def fetch_sentiment(geo: str) -> pd.Series:
+    """Economic Sentiment Indicator (Commissione UE), media di lungo periodo = 100. geo: 'EA21', 'IT' (EA20 fermo a dic 2025)."""
+    resp = requests.get(
+        f"{BASE_URL}/ei_bssi_m_r2",
+        params={"format": "JSON", "lang": "EN", "indic": "BS-ESI-I", "s_adj": "SA", "geo": geo},
         timeout=30,
     )
     resp.raise_for_status()

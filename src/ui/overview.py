@@ -11,35 +11,35 @@ SIGNAL_EPS = 0.1  # variazione minima (punti %) sotto cui l'indicatore e' "neutr
 
 CSS = """
 <style>
-.ov { display: flex; flex-direction: column; gap: 16px; font-family: 'Nunito', sans-serif; color: #F1F5F9; }
+.ov { display: flex; flex-direction: column; gap: 16px; font-family: 'IBM Plex Sans', sans-serif; color: #E6EAF2; }
 .ov * { box-sizing: border-box; }
 .ov-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-.ov-card { background: #1E293B; border: 1px solid #334155; border-radius: 12px; padding: 16px; min-width: 0; }
-.ov-card h4 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #94A3B8; }
+.ov-card { background: #111827; border: 1px solid #1E2738; border-radius: 16px; padding: 18px; min-width: 0; }
+.ov-card h4 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #9AA6B8; }
 .ov-rg { font-size: 18px; flex-wrap: wrap; font-weight: 800; margin: 8px 0 2px; display: flex; align-items: center; gap: 8px; }
-.ov-ph { color: #94A3B8; font-size: 13px; margin-bottom: 12px; }
+.ov-ph { color: #9AA6B8; font-size: 13px; margin-bottom: 12px; }
 .ov-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .ov-sb { display: flex; gap: 2px; height: 10px; }
 .ov-sb i { display: block; height: 100%; border-radius: 2px; min-width: 2px; }
 .ov-two { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; }
-.ov h3 { margin: 0 0 12px; font-size: 14px; font-weight: 700; }
+.ov h3 { margin: 0 0 12px; font: 600 18px 'Space Grotesk', sans-serif; }
 .ov-heat { display: grid; grid-template-columns: 84px repeat(3, minmax(0, 1fr)); gap: 4px; font-size: 13px; }
-.ov-heat .h { color: #94A3B8; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; align-self: end; padding: 0 2px 2px; }
+.ov-heat .h { color: #9AA6B8; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; align-self: end; padding: 0 2px 2px; }
 .ov-heat .c { border-radius: 6px; padding: 9px 6px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ov-heat .n { align-self: center; font-weight: 700; }
-.ov-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: #94A3B8; margin-top: 10px; }
+.ov-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: #9AA6B8; margin-top: 10px; }
 .ov-legend span { display: inline-flex; gap: 6px; align-items: center; }
 .ov-tl { display: grid; grid-template-columns: 52px 1fr; gap: 6px 10px; align-items: center; font-size: 12px; font-weight: 700; }
 .ov-tl .bars { display: flex; height: 22px; gap: 2px; }
 .ov-tl .bars i { display: block; height: 100%; flex: 1; border-radius: 3px; }
-.ov-tl .axis { grid-column: 2; display: flex; justify-content: space-between; color: #94A3B8; font-weight: 500; font-size: 11px; }
+.ov-tl .axis { grid-column: 2; display: flex; justify-content: space-between; color: #9AA6B8; font-weight: 500; font-size: 11px; }
 .ov-quad { position: relative; width: 100%; aspect-ratio: 1; max-width: 420px; margin: 0 auto; border-radius: 8px; overflow: hidden; }
 .ov-quad .q { position: absolute; width: 50%; height: 50%; }
-.ov-quad .ax-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 1.5px; background: #334155; }
-.ov-quad .ax-h { position: absolute; top: 50%; left: 0; right: 0; height: 1.5px; background: #334155; }
-.ov-quad .ql { position: absolute; font-size: 11px; font-weight: 700; color: #94A3B8; }
-.ov-quad .pt { position: absolute; width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid #1E293B; transform: translate(-50%, -50%); }
-.ov-quad .pt b { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 800; color: #F1F5F9; }
+.ov-quad .ax-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 1.5px; background: #1E2738; }
+.ov-quad .ax-h { position: absolute; top: 50%; left: 0; right: 0; height: 1.5px; background: #1E2738; }
+.ov-quad .ql { position: absolute; font-size: 11px; font-weight: 700; color: #9AA6B8; }
+.ov-quad .pt { position: absolute; width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid #111827; transform: translate(-50%, -50%); }
+.ov-quad .pt b { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 800; color: #E6EAF2; }
 .ov-quad .pt b.l { left: auto; right: 20px; }
 .ov-quad .pt b.u { left: 50%; top: -10px; transform: translateX(-50%); }
 .ov-quad .pt b.d { left: 50%; top: 24px; transform: translateX(-50%); }
@@ -95,7 +95,7 @@ def _quadrant(areas: list[dict]) -> str:
         a = p["a"]
         tip = escape(f'{a["area"]}: {a["regime"]}, crescita {a["pos"][1]:+.1f}, inflazione {a["pos"][0]:+.1f} (in soglie di deadband)')
         out.append(
-            f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:{REGIME_COLORS.get(a["regime"], "#94A3B8")}">'
+            f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:{REGIME_COLORS.get(a["regime"], "#9AA6B8")}">'
             f'<b class="{p["cls"]}">{escape(a["code"])}</b></div>'
         )
     out.append("</div>")
@@ -108,12 +108,12 @@ def _heatmap(areas: list[dict]) -> str:
         cells.append(f'<div class="n">{escape(a["code"])}</div>')
         for label, value, sig in a["signals"]:
             if value is None:
-                cells.append('<div class="c" style="background:#0F172A;color:#94A3B8">n/d</div>')
+                cells.append('<div class="c" style="background:#0B0F17;color:#9AA6B8">n/d</div>')
             else:
                 color = SIGNAL_COLORS[sig]
                 cells.append(
                     f'<div class="c" title="{escape(a["area"])} {label}" '
-                    f'style="background:color-mix(in srgb,{color} 24%,#1E293B)">{value:.1f}%</div>'
+                    f'style="background:color-mix(in srgb,{color} 24%,#111827)">{value:.1f}%</div>'
                 )
     legend = (
         '<div class="ov-legend">'
@@ -132,7 +132,7 @@ def _timeline(areas: list[dict]) -> str:
         if hist is None or hist.empty:
             continue
         bars = "".join(
-            f'<i style="background:{REGIME_COLORS.get(r, "#94A3B8")}" title="{d.strftime("%Y")} T{d.quarter}: {r}"></i>'
+            f'<i style="background:{REGIME_COLORS.get(r, "#9AA6B8")}" title="{d.strftime("%Y")} T{d.quarter}: {r}"></i>'
             for d, r in hist.items()
         )
         rows.append(f'<div>{escape(a["code"])}</div><div class="bars">{bars}</div>')
@@ -155,10 +155,15 @@ def signal(series: pd.Series, higher_is_good: bool) -> tuple[float | None, int]:
 
 def overview_html(areas: list[dict]) -> str:
     """areas: dict con area, code, regime, phase, probs|None, pos|None, signals [(label, value|None, sig)]*3, history|None."""
+    def streak(a):
+        n = a.get("streak") or 0
+        return f' · da {n} trim.' if n else ""
+
     cards = "".join(
-        f'<div class="ov-card"><h4>{escape(a["area"])}</h4>'
-        f'<div class="ov-rg"><i class="ov-dot" style="background:{REGIME_COLORS.get(a["regime"], "#94A3B8")}"></i>{escape(a["regime"])}</div>'
-        f'<div class="ov-ph">Fase: {escape(a["phase"])}</div>{_prob_bar(a.get("probs"))}</div>'
+        f'<div class="ov-card"{" style=\"border-color:" + REGIME_COLORS.get(a["regime"], "#9AA6B8") + "\"" if a.get("changed") else ""}>'
+        f'<h4>{escape(a["area"])}{" · cambiato" if a.get("changed") else ""}</h4>'
+        f'<div class="ov-rg"><i class="ov-dot" style="background:{REGIME_COLORS.get(a["regime"], "#9AA6B8")}"></i>{escape(a["regime"])}</div>'
+        f'<div class="ov-ph">Fase: {escape(a["phase"])}{streak(a)}</div>{_prob_bar(a.get("probs"))}</div>'
         for a in areas
     )
     return (

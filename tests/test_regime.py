@@ -50,3 +50,15 @@ def test_regime_history_matches_classify_on_last_quarter():
     hist = regime_history(g, i)
     assert hist.iloc[-1] == classify_regime(g, i)
     assert len(hist) == 3
+
+
+def test_monthly_inflation_uses_quarterly_window():
+    # CPI mensile: l'ultimo mese sale di 1.5pp sopra la media dei 3 mesi prima (sopra deadband 1.4),
+    # ma rispetto alla media dei 3 trimestri prima la salita e' solo 1.17 (sotto deadband).
+    # Deadband tarato su trimestri: l'inflazione resta "down", regime = Reflazione (non Espansione).
+    from src.classify.regime import regime_history
+
+    months = pd.date_range("2023-01-31", periods=24, freq="ME")
+    inflation = pd.Series([2.0] * 15 + [1.0] * 8 + [2.5], index=months)
+    growth = pd.Series([1.0, 1.0, 1.0] + [3.5] * 5, index=pd.date_range("2023-03-31", periods=8, freq="QE"))
+    assert classify_regime(growth, inflation) == regime_history(growth, inflation).iloc[-1] == "Reflazione"

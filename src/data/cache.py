@@ -33,6 +33,8 @@ def write_indicator_series(area: str, indicator: str, series: pd.Series, db_path
     rows = [(area, indicator, str(date.date() if hasattr(date, "date") else date), float(value))
             for date, value in series.items()]
     with get_connection(db_path) as conn:
+        # Sostituisce la serie intera: se la fonte cambia (dataset o frequenza) non restano righe vecchie mescolate.
+        conn.execute("DELETE FROM indicators WHERE area = ? AND indicator = ?", (area, indicator))
         conn.executemany(
             "INSERT OR REPLACE INTO indicators (area, indicator, date, value) VALUES (?, ?, ?, ?)",
             rows,
