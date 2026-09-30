@@ -16,8 +16,9 @@ from src.classify.positioning import percentile_rank
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, ASSET_ALLOCATION, combined_portfolio_weights
 from src.data import cache
+from src.data.sync import sync_cache
 from src.ui.cards import (
-    CSS, area_hero_html, changes_strip, chips_html, cot_groups_html, events_html, hero_html, pairs_html,
+    CSS, area_hero_html, calendar_html, changes_strip, chips_html, cot_groups_html, events_html, hero_html, pairs_html,
     portfolio_html, prob_html, regime_streak, risk_meter_html, strength_html, weight_deltas,
 )
 from src.ui.overview import overview_html, signal
@@ -73,13 +74,36 @@ LEADING_LABELS = {
 # Oltre questa eta' un dato e' in ritardo anomalo (il PIL trimestrale normale arriva a ~230 giorni
 # dall'inizio del trimestre prima del dato nuovo): di solito la fonte ha cambiato dataset.
 STALE_DAYS = 250
+IMPACT_LABELS_IT = {"Alto": "High", "Medio": "Medium", "Basso": "Low", "Festivo": "Holiday"}
 
 RISK_PROFILE_LABELS ={"Basso": "Conservativo", "Medio": "Bilanciato", "Alto": "Aggressivo"}
 ALL_WEATHER = "All Weather"
 
+@st.cache_resource(ttl=600)
+def _sync_cache() -> bool:
+    return sync_cache()
+
+
+RECENT_CHANGE_DAYS = 7
+
+
+def recently_changed(history: list[dict]) -> bool:
+    """Regime o fase diversi dalla riga precedente, e cambio avvenuto negli ultimi giorni."""
+    return (
+        len(history) > 1
+        and (history[0]["regime"], history[0]["phase"]) != (history[1]["regime"], history[1]["phase"])
+        and (pd.Timestamp.now() - pd.Timestamp(history[0]["computed_at"])).days < RECENT_CHANGE_DAYS
+    )
+
+
 @st.cache_data(ttl=300)
 def load_classifications(area: str) -> list[dict]:
     return cache.read_last_two_classifications(area)
+
+
+@st.cache_data(ttl=300)
+def load_events() -> list[dict]:
+    return cache.read_events()
 
 
 @st.cache_data(ttl=300)
@@ -141,7 +165,7 @@ def overview_areas() -> list[dict]:
                 ("disoccupazione", *signal(unemployment, False)),
             ],
             "history": regime_history(*axis_inputs(area)) if enough else None,
-            "changed": len(history) > 1 and history[0]["regime"] != history[1]["regime"],
+            "changed": recently_changed(history),
         })
         areas[-1]["streak"] = regime_streak(areas[-1]["history"])
     return areas
@@ -233,8 +257,9 @@ st.html(
 )
 
 # Etichette semplici: con bind="query-params" diventano l'URL (?view=Aree), niente icone nel valore.
-VIEWS = ["Portafoglio", "Panoramica", "Aree", "Mercato", "Valute"]
+VIEWS = ["Portafoglio", "Panoramica", "Aree", "Mercato", "Calendario", "Valute"]
 
+_sync_cache()
 histories = {area: h for area in AREA_FLAGS if (h := load_classifications(area))}
 
 with st.container(horizontal=True, vertical_alignment="center", gap="medium"):
@@ -244,8 +269,14 @@ with st.container(horizontal=True, vertical_alignment="center", gap="medium"):
         label_visibility="collapsed",
     )
     if histories:
-        updated = pd.Timestamp(max(h[0]["computed_at"] for h in histories.values()))
-        fresh = (pd.Timestamp.now() - updated).days < 2
+        meta = cache.read_meta("updated_at")
+        if meta:
+            utc = pd.Timestamp(meta)
+            updated, age = utc.tz_convert("Europe/Rome"), pd.Timestamp.now(tz="UTC") - utc
+        else:  # cache senza meta (vecchia): ultima riga di classificazione, ora locale
+            updated = pd.Timestamp(max(h[0]["computed_at"] for h in histories.values()))
+            age = pd.Timestamp.now() - updated
+        fresh = age < pd.Timedelta(hours=6)
         st.caption(f"{':green' if fresh else ':orange'}[●] Dati aggiornati {updated:%d/%m %H:%M}", width="content")
 
 if not histories:
@@ -255,9 +286,9 @@ if not histories:
 if view == "Portafoglio":
     changes = []
     for area, h in histories.items():
-        if len(h) > 1 and h[0]["regime"] != h[1]["regime"]:
+        if recently_changed(h) and h[0]["regime"] != h[1]["regime"]:
             changes.append((REGIME_COLORS.get(h[0]["regime"], "#8FA6B2"), f"{area} passa a <b>{h[0]['regime']}</b>"))
-        elif len(h) > 1 and h[0]["phase"] != h[1]["phase"]:
+        elif recently_changed(h):
             changes.append(("#FFC878", f"{area}: fase <b>{h[0]['phase']}</b>"))
     if not changes:
         changes.append(("#8FA6B2", "Nessun cambio di regime o fase"))
@@ -308,14 +339,14 @@ elif view == "Aree":
         st.stop()
 
     current = history[0]
-    changed = len(history) > 1 and (current["regime"] != history[1]["regime"] or current["phase"] != history[1]["phase"])
+    changed = recently_changed(history)
     growth = load_indicator(area, "growth_yoy")
     inflation = load_indicator(area, "inflation_yoy")
     unemployment = load_indicator(area, "unemployment_rate")
     enough = len(growth) > 3 and len(inflation) > 3
 
     if changed:
-        st.warning("Regime o fase cambiati dall'ultimo aggiornamento.", icon=":material/change_circle:")
+        st.warning(f"Regime o fase cambiati il {pd.Timestamp(history[0]['computed_at']):%d/%m}.", icon=":material/change_circle:")
     stale = [
         f"{label} (ultimo {s.index[-1]:%m/%Y})"
         for label, s in (("crescita", growth), ("inflazione", inflation), ("disoccupazione", unemployment))
@@ -526,6 +557,26 @@ elif view == "Mercato":
             st.html(cot_groups_html(market, rows, f"{last_date:%d/%m}"))
         else:
             st.info("Nessun dato COT in cache. Esegui `python -m src.scheduler.update_data`.")
+
+elif view == "Calendario":
+    events = load_events()
+    if not events:
+        st.info("Nessun evento in cache. Esegui `python -m src.scheduler.update_data`.")
+        st.stop()
+    st.caption(
+        "Solo informativo: non entra nella classificazione. Fonte: feed pubblico non ufficiale del calendario Forex Factory, "
+        "solo settimana in corso (e successiva quando pubblicata), senza il dato pubblicato. Orari in fuso di Roma. "
+        "atteso = previsione di consenso, prec. = dato precedente."
+    )
+    with st.container(horizontal=True, vertical_alignment="center"):
+        currencies = sorted({e["country"] for e in events})
+        picked_ccy = st.pills("Valuta", currencies, selection_mode="multi", default=[c for c in ("USD", "EUR", "GBP", "JPY") if c in currencies],
+                              key="cal_ccy", label_visibility="collapsed")
+        picked_impact = st.pills("Impatto", list(IMPACT_LABELS_IT), selection_mode="multi", default=["Alto", "Medio"],
+                                 key="cal_impact", label_visibility="collapsed")
+    wanted = {IMPACT_LABELS_IT[i] for i in picked_impact}
+    shown = [e for e in events if e["country"] in (picked_ccy or []) and e["impact"] in wanted]
+    st.html(calendar_html(shown))
 
 elif view == "Valute":
     st.caption(

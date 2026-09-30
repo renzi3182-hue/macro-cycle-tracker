@@ -35,6 +35,6 @@ def test_confirmation_rules():
 
 
 def test_confirmed_recession_overrides_gdp_phase():
-    up = pd.Series([1.0, 2.0], index=pd.date_range("2024-01-01", periods=2, freq="QE"))
+    up = pd.Series([2.0, 2.2, 1.8, 2.0] * 10 + [2.6, 3.4], index=pd.date_range("2010-03-31", periods=42, freq="QE"))
     assert classify_cycle(up, None, True) == "Recessione"
     assert classify_cycle(up, None, False) == "Espansione"

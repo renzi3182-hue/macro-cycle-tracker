@@ -58,3 +58,11 @@ def test_write_indicator_series_drops_stale_dates(tmp_path):
     cache.write_indicator_series("UK", "cpi", pd.Series([1.0], index=pd.to_datetime(["2020-02-15"])), db_path=db_path)
     cache.write_indicator_series("UK", "cpi", pd.Series([2.0], index=pd.to_datetime(["2020-03-01"])), db_path=db_path)
     assert list(cache.read_indicator_series("UK", "cpi", db_path=db_path).values) == [2.0]
+
+
+def test_meta_roundtrip(tmp_path):
+    db = tmp_path / "t.db"
+    assert cache.read_meta("updated_at", db_path=db) is None
+    cache.write_meta("updated_at", "2026-09-30T10:00:00+00:00", db_path=db)
+    cache.write_meta("updated_at", "2026-09-30T11:00:00+00:00", db_path=db)
+    assert cache.read_meta("updated_at", db_path=db) == "2026-09-30T11:00:00+00:00"

@@ -7,6 +7,9 @@ import requests
 FRED_RELEASE_DATES_URL = "https://api.stlouisfed.org/fred/release/dates"
 FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
 FRED_RELEASES = {"CPI": 10, "Occupazione (NFP)": 50, "PIL": 53}  # nome -> release_id FRED
+# Feed pubblico del calendario Forex Factory (nessuna chiave). Non ufficiale: solo settimana in corso,
+# senza dato pubblicato ("actual"); "nextweek" compare solo a fine settimana (404 prima).
+FF_URLS = ["https://nfs.faireconomy.media/ff_calendar_thisweek.json", "https://nfs.faireconomy.media/ff_calendar_nextweek.json"]
 MONTHS = ["January", "February", "March", "April", "May", "June", "July",
           "August", "September", "October", "November", "December"]
 
@@ -50,3 +53,22 @@ def fetch_fomc_dates(years: tuple[int, ...] | None = None) -> pd.Series:
         for month, last in re.findall(rf"({'|'.join(MONTHS)}) \d{{1,2}}-(\d{{1,2}})", section):
             found.append(pd.Timestamp(year=year, month=MONTHS.index(month) + 1, day=int(last)))
     return pd.Series(1.0, index=sorted(found))
+
+
+def fetch_economic_events() -> list[dict]:
+    """Eventi del calendario economico: date in UTC ISO, valuta, titolo, impatto, previsto, precedente."""
+    events = []
+    for i, url in enumerate(FF_URLS):
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+        if resp.status_code == 404 and i > 0:  # la settimana dopo non e' ancora pubblicata
+            continue
+        resp.raise_for_status()
+        events += [
+            {
+                "date": pd.Timestamp(e["date"]).tz_convert("UTC").isoformat(),
+                "country": e["country"], "title": e["title"], "impact": e["impact"],
+                "forecast": e.get("forecast", ""), "previous": e.get("previous", ""),
+            }
+            for e in resp.json()
+        ]
+    return events

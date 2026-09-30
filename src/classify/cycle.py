@@ -1,39 +1,36 @@
 import pandas as pd
 
-# Tarato su backtest storico reale FRED USA (312 trimestri): senza deadband la
-# fase cambiava nel 47.6% dei trimestri. Con questa soglia (75° percentile del
-# momentum trimestrale osservato) scende al 13.7%, crisi vere restano rilevate.
-# Vedi wiki/macro-cycle-tracker.md.
-MOMENTUM_DEADBAND = 1.4
+from src.classify.regime import axis_states, axis_z, to_quarterly
+
+# Fase del ciclo = livello della crescita (PIL annuo) rispetto al TREND dell'area + momentum.
+# Il momentum e' lo stesso asse crescita del regime (PIL + CLI OCSE, stati su/laterale/giu' con banda
+# adattiva): niente piu' soglia fissa tarata sugli USA, che teneva l'Eurozona in "decelerazione" dal 2021.
+# Il livello si misura contro la media degli ultimi 10 anni della stessa area, non contro zero.
+LEVEL_TREND_QUARTERS = 40
+RECESSION_LEVEL = 0.0  # PIL annuo <= 0 con momentum in calo = Recessione anche senza conferma esterna
 
 
-def _momentum_direction_series(growth: pd.Series, deadband: float) -> pd.Series:
-    directions = []
-    prev = None
-    for i in range(1, len(growth)):
-        raw_momentum = growth.iloc[i] - growth.iloc[i - 1]
-        if prev is not None and abs(raw_momentum) < deadband:
-            direction = prev
-        else:
-            direction = "accel" if raw_momentum > 0 else "decel"
-        directions.append(direction)
-        prev = direction
-    return pd.Series(directions, index=growth.index[1:])
-
-
-def classify_cycle(growth: pd.Series, leading_risk_level: str | None = None, recession_confirmed: bool = False) -> str:
-    if len(growth) < 2:
-        raise ValueError(f"need at least 2 data points, got {len(growth)}")
+def classify_cycle(
+    growth: pd.Series,
+    leading_risk_level: str | None = None,
+    recession_confirmed: bool = False,
+    momentum_inputs: list | None = None,
+) -> str:
+    """growth: PIL annuo. momentum_inputs: serie dell'asse crescita (default: solo growth)."""
     if recession_confirmed:  # Sahm + Chauvet-Piger (recession.py) battono il PIL, che rileva in ritardo
         return "Recessione"
-    level = growth.iloc[-1]
-    momentum_dir = _momentum_direction_series(growth, MOMENTUM_DEADBAND).iloc[-1]
-    if level > 0 and momentum_dir == "accel":
-        # Il PIL e' in ritardo: se curva/credito/condizioni finanziarie sono gia'
-        # in stress (vedi leading.py) l'espansione viene declassata a rallentamento.
-        return "Rallentamento" if leading_risk_level == "Alto" else "Espansione"
-    if level > 0 and momentum_dir == "decel":
-        return "Rallentamento"
-    if level <= 0 and momentum_dir == "decel":
-        return "Recessione"
-    return "Ripresa"
+    quarterly = to_quarterly(growth)
+    level = quarterly.iloc[-1]
+    above_trend = level >= quarterly.tail(LEVEL_TREND_QUARTERS).mean()
+    momentum = axis_states(axis_z(momentum_inputs or [growth])).iloc[-1]
+
+    if momentum == "down":
+        return "Recessione" if level <= RECESSION_LEVEL else "Rallentamento"
+    if momentum == "up" and not above_trend:
+        return "Ripresa"
+    if momentum == "flat" and not above_trend:
+        return "Recessione" if level <= RECESSION_LEVEL else "Rallentamento"  # sotto trend e fermo
+    # Il PIL e' in ritardo: se curva/credito/condizioni finanziarie sono gia' in stress
+    # (vedi leading.py) l'espansione viene declassata a rallentamento.
+    return "Rallentamento" if leading_risk_level == "Alto" else "Espansione"
+

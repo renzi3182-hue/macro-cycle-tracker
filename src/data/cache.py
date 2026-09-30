@@ -13,6 +13,16 @@ CREATE TABLE IF NOT EXISTS indicators (
     value REAL NOT NULL,
     PRIMARY KEY (area, indicator, date)
 );
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS events (
+    date TEXT NOT NULL,  -- UTC ISO 8601
+    country TEXT NOT NULL,  -- valuta: USD, EUR, ...
+    title TEXT NOT NULL,
+    impact TEXT NOT NULL,  -- Low / Medium / High / Holiday
+    forecast TEXT NOT NULL,
+    previous TEXT NOT NULL,
+    PRIMARY KEY (date, country, title)
+);
 CREATE TABLE IF NOT EXISTS classifications (
     area TEXT NOT NULL,
     computed_at TEXT NOT NULL,
@@ -70,3 +80,32 @@ def read_last_two_classifications(area: str, db_path: Path = DB_PATH) -> list[di
         )
         rows = cur.fetchall()
     return [{"computed_at": r[0], "regime": r[1], "phase": r[2]} for r in rows]
+
+
+EVENTS_KEEP_DAYS = 14
+
+
+def write_events(events: list[dict], now: pd.Timestamp | None = None, db_path: Path = DB_PATH) -> None:
+    """Upsert degli eventi del calendario; tiene gli ultimi EVENTS_KEEP_DAYS giorni (il feed copre solo la settimana in corso)."""
+    cutoff = ((now or pd.Timestamp.now(tz="UTC")) - pd.Timedelta(days=EVENTS_KEEP_DAYS)).isoformat()
+    rows = [(e["date"], e["country"], e["title"], e["impact"], e["forecast"], e["previous"]) for e in events]
+    with get_connection(db_path) as conn:
+        conn.executemany("INSERT OR REPLACE INTO events VALUES (?, ?, ?, ?, ?, ?)", rows)
+        conn.execute("DELETE FROM events WHERE date < ?", (cutoff,))
+
+
+def read_events(db_path: Path = DB_PATH) -> list[dict]:
+    with get_connection(db_path) as conn:
+        cur = conn.execute("SELECT date, country, title, impact, forecast, previous FROM events ORDER BY date, country, title")
+        return [dict(zip(("date", "country", "title", "impact", "forecast", "previous"), r)) for r in cur.fetchall()]
+
+
+def write_meta(key: str, value: str, db_path: Path = DB_PATH) -> None:
+    with get_connection(db_path) as conn:
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
+
+
+def read_meta(key: str, db_path: Path = DB_PATH) -> str | None:
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else None

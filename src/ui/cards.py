@@ -84,6 +84,14 @@ CSS = """
   .mc-cot { grid-template-columns: minmax(70px, 1fr) minmax(60px, 2fr) 32px; }
   .mc-cot .lbl { display: none; }
 }
+.mc-cal h4 { margin: 14px 0 4px; padding: 0; font: 600 13px 'Plus Jakarta Sans', sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #8FA6B2; }
+.mc-cal h4:first-child { margin-top: 0; }
+.mc-cal h4 b { color: #5EEAD4; margin-left: 8px; }
+.mc-cal .r { display: grid; grid-template-columns: 48px 44px 10px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 4px; border-bottom: 1px solid #25384A; font-size: 14px; }
+.mc-cal .r:last-child { border-bottom: 0; }
+.mc-cal .r.holiday { opacity: .55; }
+.mc-cal .v { font: 400 13px 'DM Mono', monospace; color: #8FA6B2; text-align: right; }
+.mc-cal .v b { color: #EAF2F5; font-weight: 500; }
 </style>
 """
 
@@ -269,3 +277,35 @@ def pairs_html(rows: list[dict]) -> str:
 def chips_html(items: list[str]) -> str:
     return '<div class="mc-row">' + "".join(f'<span class="mc-chip">{escape(i)}</span>' for i in items) + "</div>"
 
+
+
+IMPACT_COLORS = {"High": "#FF9DA7", "Medium": "#FFC878", "Low": "#8FA6B2", "Holiday": "#25384A"}
+IMPACT_LABELS = {"High": "Alto", "Medium": "Medio", "Low": "Basso", "Holiday": "Festivo"}
+WEEKDAYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
+
+
+def calendar_html(events: list[dict], tz: str = "Europe/Rome", today: pd.Timestamp | None = None) -> str:
+    """events: dict date (UTC ISO), country, title, impact, forecast, previous. Raggruppa per giorno nel fuso `tz`."""
+    today = (today or pd.Timestamp.now(tz)).date()
+    days: dict = {}
+    for e in sorted(events, key=lambda e: e["date"]):
+        local = pd.Timestamp(e["date"]).tz_convert(tz)
+        days.setdefault(local.date(), []).append((local, e))
+    if not days:
+        return '<div class="mc-card mc-cal"><span class="mc-muted">Nessun evento con questi filtri.</span></div>'
+    out = []
+    for day, rows in days.items():
+        mark = "<b>oggi</b>" if day == today else ""
+        out.append(f"<h4>{WEEKDAYS[day.weekday()]} {day:%d/%m}{mark}</h4>")
+        for local, e in rows:
+            color = IMPACT_COLORS.get(e["impact"], MUTED)
+            values = " · ".join(
+                f"{label} <b>{escape(v)}</b>" for label, v in (("atteso", e["forecast"]), ("prec.", e["previous"])) if v
+            )
+            out.append(
+                f'<div class="r{" holiday" if e["impact"] == "Holiday" else ""}"><span class="mc-mono">{local:%H:%M}</span>'
+                f'<span class="mc-chip o" style="padding:2px 8px;font-size:12px">{escape(e["country"])}</span>'
+                f'<i class="mc-dot" style="background:{color}" title="Impatto {IMPACT_LABELS.get(e["impact"], e["impact"])}"></i>'
+                f'<span>{escape(e["title"])}</span><span class="v">{values}</span></div>'
+            )
+    return f'<div class="mc-card mc-cal">{"".join(out)}</div>'

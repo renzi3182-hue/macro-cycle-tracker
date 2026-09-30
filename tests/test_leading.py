@@ -39,8 +39,9 @@ def test_non_usa_signals():
 
 
 def test_high_risk_downgrades_expansion_only():
-    up = pd.Series([1.0, 2.0], index=pd.date_range("2024-01-01", periods=2, freq="QE"))
+    idx = pd.date_range("2010-03-31", periods=42, freq="QE")
+    up = pd.Series([2.0, 2.2, 1.8, 2.0] * 10 + [2.6, 3.4], index=idx)
     assert classify_cycle(up, "Alto") == "Rallentamento"
     assert classify_cycle(up, "Medio") == "Espansione"
-    down = pd.Series([-1.0, -2.0], index=up.index)
+    down = pd.Series([2.0, 2.2, 1.8, 2.0] * 10 + [-1.0, -2.0], index=idx)
     assert classify_cycle(down, "Alto") == "Recessione"

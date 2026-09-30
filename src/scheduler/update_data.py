@@ -114,9 +114,12 @@ def update_area(area: str, indicator_fetchers: dict) -> None:
     confirmed = "recession_prob" in indicator_fetchers and recession_confirmed(
         series_by_indicator.get("unemployment_rate", empty), series_by_indicator.get("recession_prob", empty)
     )
-    phase = classify_cycle(growth, risk_level, confirmed)
+    phase = classify_cycle(growth, risk_level, confirmed, pick_inputs(series_by_indicator, GROWTH_INPUTS))
     computed_at = datetime.datetime.now().isoformat(timespec="seconds")
-    cache.write_classification(area, computed_at, regime, phase)
+    last = cache.read_last_two_classifications(area)
+    # Una riga solo quando regime o fase cambiano: con aggiornamenti ogni 30 minuti "cambiato dall'ultima volta" sparirebbe subito.
+    if not last or (last[0]["regime"], last[0]["phase"]) != (regime, phase):
+        cache.write_classification(area, computed_at, regime, phase)
     logger.info("%s: regime=%s phase=%s", area, regime, phase)
 
 
@@ -153,6 +156,10 @@ def update_market_context(fred_key: str) -> None:
 
     # Calendario eventi: le date future stanno come indicatori (valore 1.0) sotto CALENDAR_AREA.
     events = {"FOMC": fetch_calendar.fetch_fomc_dates}
+    try:
+        cache.write_events(fetch_calendar.fetch_economic_events())
+    except Exception:
+        logger.exception("calendario economico: fetch fallito, salto e continuo")
     for name, release_id in fetch_calendar.FRED_RELEASES.items():
         events[name] = lambda release_id=release_id: fetch_calendar.fetch_release_dates(release_id, fred_key)
     for name, fetch_fn in events.items():
@@ -172,6 +179,7 @@ def main() -> None:
         except Exception:
             logger.exception("update fallito per area %s, salto e continuo", area)
     update_market_context(fred_key)
+    cache.write_meta("updated_at", datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"))
 
 
 if __name__ == "__main__":
