@@ -1,46 +1,46 @@
-# Tema scuro "quiet terminal": fondo blu-nero, card #111827, numeri in monospace (redesign 2026-09)
+# Tema Soft Investing (design system "Soft Glass", artifact NFSg6TDRqqdXEJp3C7hGTx): ardesia scura, accento menta
 [theme]
 base = "dark"
-primaryColor = "#60A5FA"
-backgroundColor = "#0B0F17"
-secondaryBackgroundColor = "#111827"
-codeBackgroundColor = "#111827"
-textColor = "#E6EAF2"
-linkColor = "#60A5FA"
-borderColor = "#1E2738"
-codeTextColor = "#CBD5E1"
+primaryColor = "#5EEAD4"
+backgroundColor = "#0F1720"
+secondaryBackgroundColor = "#172330"
+codeBackgroundColor = "#172330"
+textColor = "#EAF2F5"
+linkColor = "#5EEAD4"
+borderColor = "#25384A"
+codeTextColor = "#EAF2F5"
 showWidgetBorder = true
 showSidebarBorder = true
-baseRadius = "12px"
-buttonRadius = "8px"
+baseRadius = "18px"
+buttonRadius = "12px"
 
-font = "'IBM Plex Sans':https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
-headingFont = "'Space Grotesk':https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"
-codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+font = "'Plus Jakarta Sans':https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;800&display=swap"
+headingFont = "'Plus Jakarta Sans':https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;800&display=swap"
+codeFont = "'DM Mono':https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap"
 baseFontSize = 14
 baseFontWeight = 400
 codeFontSize = "13px"
 headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
-headingFontWeights = [700, 600, 600, 600, 500, 500]
+headingFontWeights = [800, 800, 600, 600, 600, 600]
 linkUnderline = false
 
-greenColor = "#34D399"
-redColor = "#F87171"
-yellowColor = "#FBBF24"
-orangeColor = "#FB923C"
-blueColor = "#60A5FA"
-violetColor = "#A78BFA"
-grayColor = "#9AA6B8"
+greenColor = "#7BE0A4"
+redColor = "#FF9DA7"
+yellowColor = "#FFC878"
+orangeColor = "#FFA86B"
+blueColor = "#8AB4FF"
+violetColor = "#C4A8FF"
+grayColor = "#8FA6B2"
 
-chartCategoricalColors = ["#60A5FA", "#34D399", "#A78BFA", "#F87171", "#FBBF24", "#38BDF8", "#94A3B8"]
+chartCategoricalColors = ["#5EEAD4", "#8AB4FF", "#FFC878", "#FF9DA7", "#7BE0A4", "#C4A8FF", "#8FA6B2"]
 
-dataframeBorderColor = "#1E2738"
-dataframeHeaderBackgroundColor = "#111827"
+dataframeBorderColor = "#25384A"
+dataframeHeaderBackgroundColor = "#172330"
 
 [theme.sidebar]
-backgroundColor = "#0B1220"
-secondaryBackgroundColor = "#111827"
-codeBackgroundColor = "#111827"
-textColor = "#E6EAF2"
-borderColor = "#1E2738"
-primaryColor = "#60A5FA"
+backgroundColor = "#0F1720"
+secondaryBackgroundColor = "#172330"
+codeBackgroundColor = "#172330"
+textColor = "#EAF2F5"
+borderColor = "#25384A"
+primaryColor = "#5EEAD4"

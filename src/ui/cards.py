@@ -1,65 +1,83 @@
 """Blocchi HTML del redesign (st.html). Niente <svg>: st.html li rimuove, quindi grafici solo con div/CSS."""
 from collections import Counter
 from html import escape
+from math import cos, pi, sin
 
 import pandas as pd
 
 from src.ui.overview import REGIME_COLORS, REGIMES
 
 PHASES = ["Ripresa", "Espansione", "Rallentamento", "Recessione"]
-WEIGHT_COLORS = ["#60A5FA", "#34D399", "#A78BFA", "#38BDF8", "#FBBF24", "#FB923C", "#F472B6", "#94A3B8", "#2DD4BF", "#E8B04B"]
-MUTED = "#9AA6B8"
-UP, DOWN = "#34D399", "#F87171"
+WEIGHT_COLORS = ["#5EEAD4", "#7BE0A4", "#8AB4FF", "#FFC878", "#FF9DA7", "#B8C4FF", "#FFA86B", "#8FA6B2", "#2DD4BF", "#C4A8FF"]
+MUTED = "#8FA6B2"
+UP, DOWN = "#7BE0A4", "#FF9DA7"
 
 CSS = """
 <style>
-[data-testid="stMetricValue"], .mc-mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
-.mc-disp { font-family: 'Space Grotesk', sans-serif; }
-.mc-muted { color: #9AA6B8; }
-.mc-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 14px; border-radius: 12px; background: #111827; border: 1px solid #1E2738; }
-.mc-strip .t { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #9AA6B8; margin-right: 6px; }
-.mc-chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; background: #1A2233; font-size: 13px; color: #E6EAF2; }
-.mc-chip.o { background: transparent; border: 1px solid #243044; }
+[data-testid="stMetricValue"], .mc-mono { font-family: 'DM Mono', monospace; font-variant-numeric: tabular-nums; }
+.mc-disp { font-family: 'Plus Jakarta Sans', sans-serif; }
+.mc-muted { color: #8FA6B2; }
+.mc-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 14px; border-radius: 12px; background: #172330; border: 1px solid #25384A; }
+.mc-strip .t { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #8FA6B2; margin-right: 6px; }
+.mc-chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; background: #1E2D3D; font-size: 13px; color: #EAF2F5; }
+.mc-chip.o { background: transparent; border: 1px solid #25384A; }
 .mc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .mc-hero { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 4px; }
-.mc-hero h1 { margin: 0; padding: 0; font: 600 clamp(34px, 5vw, 56px)/1.04 'Space Grotesk', sans-serif; letter-spacing: -0.03em; color: #E6EAF2; }
+.mc-hero h1 { margin: 0; padding: 0; font: 800 clamp(34px, 5vw, 56px)/1.04 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.03em; color: #EAF2F5; }
 .mc-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.mc-card { padding: 22px; border-radius: 16px; background: #111827; border: 1px solid #1E2738; display: flex; flex-direction: column; gap: 12px; color: #E6EAF2; }
-.mc-card h3 { margin: 0; padding: 0; font: 600 18px 'Space Grotesk', sans-serif; }
+.mc-card { padding: 22px; border-radius: 18px; background: #172330; border: 1px solid #25384A; display: flex; flex-direction: column; gap: 12px; color: #EAF2F5; }
+.mc-card h3 { margin: 0; padding: 0; font: 600 18px 'Plus Jakarta Sans', sans-serif; }
 .mc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.mc-head span { font-size: 12px; color: #9AA6B8; }
+.mc-head span { font-size: 12px; color: #8FA6B2; }
 .mc-donut { position: relative; width: 240px; aspect-ratio: 1; margin: 6px auto; border-radius: 50%; }
-.mc-donut::after { content: ""; position: absolute; inset: 30px; border-radius: 50%; background: #111827; }
-.mc-donut .c { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.mc-donut .c b { font: 500 38px 'IBM Plex Mono', monospace; }
+.mc-donut .c { position: absolute; inset: 0; z-index: 2; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.mc-donut .c b { font: 500 38px 'DM Mono', monospace; }
+.mc-donut .s { position: absolute; inset: 0; border-radius: 50%; transition: transform .15s; }
+.mc-donut .s:hover { transform: scale(1.04); }
+.mc-donut .hole { position: absolute; inset: 30px; border-radius: 50%; background: #172330; z-index: 1; }
+.mc-donut .c.tip { display: none; padding: 0 48px; text-align: center; line-height: 1.25; }
+.mc-donut:has(.s:hover) .c.def { display: none; }
+.mc-donut:has(.s0:hover) .c.t0 { display: flex; }
+.mc-donut:has(.s1:hover) .c.t1 { display: flex; }
+.mc-donut:has(.s2:hover) .c.t2 { display: flex; }
+.mc-donut:has(.s3:hover) .c.t3 { display: flex; }
+.mc-donut:has(.s4:hover) .c.t4 { display: flex; }
+.mc-donut:has(.s5:hover) .c.t5 { display: flex; }
+.mc-donut:has(.s6:hover) .c.t6 { display: flex; }
+.mc-donut:has(.s7:hover) .c.t7 { display: flex; }
+.mc-donut:has(.s8:hover) .c.t8 { display: flex; }
+.mc-donut:has(.s9:hover) .c.t9 { display: flex; }
+.mc-donut:has(.s10:hover) .c.t10 { display: flex; }
+.mc-donut:has(.s11:hover) .c.t11 { display: flex; }
 .mc-wrow { display: grid; grid-template-columns: 12px minmax(0, 1.4fr) minmax(40px, 1fr) 44px 36px; align-items: center; gap: 12px; min-height: 34px; font-size: 14px; }
 .mc-sw { width: 10px; height: 10px; border-radius: 3px; }
-.mc-track { height: 8px; border-radius: 4px; background: #1A2233; overflow: hidden; }
+.mc-track { height: 8px; border-radius: 4px; background: #1E2D3D; overflow: hidden; }
 .mc-track i { display: block; height: 100%; border-radius: 4px; }
 .mc-r { text-align: right; }
-.mc-regime { margin: 0; padding: 0; font: 600 clamp(38px, 5vw, 52px)/1 'Space Grotesk', sans-serif; letter-spacing: -0.03em; }
+.mc-regime { margin: 0; padding: 0; font: 800 clamp(38px, 5vw, 52px)/1 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.03em; }
 .mc-steps { display: flex; flex-wrap: wrap; gap: 4px; }
-.mc-steps span { padding: 4px 10px; border-radius: 6px; background: #1A2233; color: #9AA6B8; font-size: 13px; }
-.mc-steps span.on { background: #FBBF24; color: #0B0F17; font-weight: 600; }
+.mc-steps span { padding: 4px 10px; border-radius: 6px; background: #1E2D3D; color: #8FA6B2; font-size: 13px; }
+.mc-steps span.on { background: #FFC878; color: #0F1720; font-weight: 600; }
 .mc-prow { display: grid; grid-template-columns: 104px minmax(0, 1fr) 44px; gap: 12px; align-items: center; font-size: 14px; }
 .mc-meter { display: inline-flex; gap: 4px; vertical-align: middle; }
-.mc-meter i { width: 26px; height: 10px; border-radius: 3px; background: #243044; }
-.mc-ev { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-bottom: 1px solid #1E2738; font-size: 15px; }
+.mc-meter i { width: 26px; height: 10px; border-radius: 3px; background: #25384A; }
+.mc-ev { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-bottom: 1px solid #25384A; font-size: 15px; }
 .mc-ev:last-child { border-bottom: 0; }
-.mc-ev .d { min-width: 64px; flex: none; white-space: nowrap; text-align: center; font: 500 17px 'IBM Plex Mono', monospace; }
-.mc-ev.next { border: 1px solid rgba(124,184,255,.35); background: rgba(124,184,255,.08); border-radius: 12px; }
-.mc-ev.next .d { height: 60px; border-radius: 12px; background: #7CB8FF; color: #0B0F17; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 24px; line-height: 1; }
-.mc-ev.next .d small { font: 600 11px 'IBM Plex Sans', sans-serif; }
+.mc-ev .d { min-width: 64px; flex: none; white-space: nowrap; text-align: center; font: 500 17px 'DM Mono', monospace; }
+.mc-ev.next { border: 1px solid rgba(94,234,212,.35); background: rgba(94,234,212,.08); border-radius: 12px; }
+.mc-ev.next .d { height: 60px; border-radius: 12px; background: #5EEAD4; color: #062B26; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 24px; line-height: 1; }
+.mc-ev.next .d small { font: 600 11px 'Plus Jakarta Sans', sans-serif; }
 .mc-cot { display: grid; grid-template-columns: minmax(70px, 1fr) minmax(60px, 2fr) 32px minmax(0, 1fr); gap: 12px; align-items: center; font-size: 14px; }
-.mc-div { position: relative; height: 12px; border-radius: 6px; background: #1A2233; }
-.mc-div::before { content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 18px; background: #3A475C; }
+.mc-cotg { grid-template-columns: minmax(84px, 1fr) minmax(60px, 2fr) 56px 44px; }
+.mc-div { position: relative; height: 12px; border-radius: 6px; background: #1E2D3D; }
+.mc-div::before { content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 18px; background: #8FA6B2; }
 .mc-div i { position: absolute; top: 0; height: 12px; }
 .mc-srow { display: grid; grid-template-columns: 24px 56px minmax(0, 1fr) 44px; gap: 12px; align-items: center; }
 .mc-pairs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
-.mc-pair { padding: 14px; border-radius: 12px; background: #0E131D; border: 1px solid #243044; display: flex; flex-direction: column; gap: 8px; }
+.mc-pair { padding: 14px; border-radius: 12px; background: #0F1720; border: 1px solid #25384A; display: flex; flex-direction: column; gap: 8px; }
 .mc-pair .tag { padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; }
-.mc-scale { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #F87171 0 40%, #243044 40% 60%, #34D399 60%); }
-.mc-scale i { position: absolute; top: -4px; width: 3px; height: 14px; border-radius: 2px; background: #E6EAF2; }
+.mc-scale { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #FF9DA7 0 40%, #25384A 40% 60%, #7BE0A4 60%); }
+.mc-scale i { position: absolute; top: -4px; width: 3px; height: 14px; border-radius: 2px; background: #EAF2F5; }
 @media (max-width: 640px) {
   .mc-wrow { grid-template-columns: 12px minmax(0, 1fr) 44px 36px; }
   .mc-wrow .mc-track { display: none; }
@@ -120,10 +138,6 @@ def hero_html(regimes: dict[str, str]) -> str:
 def portfolio_html(weights: dict, deltas: dict | None, title: str, subtitle: str) -> str:
     items = sorted(weights.items(), key=lambda kv: -kv[1])
     colors = {k: WEIGHT_COLORS[i % len(WEIGHT_COLORS)] for i, (k, _) in enumerate(items)}
-    stops, acc = [], 0.0
-    for k, v in items:
-        stops.append(f"{colors[k]} {acc:.2f}% {acc + v - 0.4:.2f}%, #111827 {acc + v - 0.4:.2f}% {acc + v:.2f}%")
-        acc += v
     equity = sum(v for k, v in weights.items() if "Azionario" in k)
     top = items[0][1] or 1
     rows = "".join(
@@ -133,9 +147,20 @@ def portfolio_html(weights: dict, deltas: dict | None, title: str, subtitle: str
         f'<span class="mc-r" style="font-size:13px">{_signed(deltas[k]) if deltas else ""}</span></div>'
         for k, v in items
     )
+    segs, tips, acc = "", "", 0.0
+    for i, (k, v) in enumerate(items):
+        a0, a1 = acc / 100 * 2 * pi, max(acc + v - 0.4, acc) / 100 * 2 * pi
+        n = max(int((a1 - a0) / 0.05), 1)
+        pts = ["50% 50%"] + [f"{50 + 75 * sin(a0 + (a1 - a0) * j / n):.2f}% {50 - 75 * cos(a0 + (a1 - a0) * j / n):.2f}%" for j in range(n + 1)]
+        segs += f'<div class="s s{i}" style="background:{colors[k]};clip-path:polygon({", ".join(pts)})"></div>'
+        tips += (
+            f'<div class="c tip t{i}"><b>{v:.0f}<span class="mc-muted" style="font-size:20px">%</span></b>'
+            f'<span style="font-size:12px;color:{colors[k]}">{escape(k)}</span></div>'
+        )
+        acc += v
     donut = (
-        f'<div class="mc-donut" role="img" aria-label="Quota azionaria {equity:.0f}%" style="background:conic-gradient({", ".join(stops)})">'
-        f'<div class="c"><b>{equity:.0f}<span class="mc-muted" style="font-size:20px">%</span></b><span class="mc-muted" style="font-size:13px">azionario</span></div></div>'
+        f'<div class="mc-donut" role="img" aria-label="Quota azionaria {equity:.0f}%">{segs}<div class="hole"></div>'
+        f'<div class="c def"><b>{equity:.0f}<span class="mc-muted" style="font-size:20px">%</span></b><span class="mc-muted" style="font-size:13px">azionario</span></div>{tips}</div>'
     )
     delta_note = "vs aggiornamento precedente" if deltas else ""
     return (
@@ -148,13 +173,13 @@ def portfolio_html(weights: dict, deltas: dict | None, title: str, subtitle: str
 def area_hero_html(area: str, regime: str, phase: str, streak_q: int, description: str) -> str:
     color = REGIME_COLORS.get(regime, MUTED)
     steps = "".join(f'<span class="{"on" if p == phase else ""}">{p}</span>' for p in PHASES)
-    streak = f'<span class="mc-muted" style="font-size:16px">da <span class="mc-mono" style="color:#E6EAF2">{streak_q}</span> {"trimestre" if streak_q == 1 else "trimestri"}</span>' if streak_q else ""
+    streak = f'<span class="mc-muted" style="font-size:16px">da <span class="mc-mono" style="color:#EAF2F5">{streak_q}</span> {"trimestre" if streak_q == 1 else "trimestri"}</span>' if streak_q else ""
     return (
-        f'<div class="mc-card" style="background:linear-gradient(180deg,color-mix(in srgb,{color} 9%,transparent),transparent 60%),#111827;height:100%;box-sizing:border-box">'
+        f'<div class="mc-card" style="background:linear-gradient(180deg,color-mix(in srgb,{color} 9%,transparent),transparent 60%),#172330;height:100%;box-sizing:border-box">'
         f'<span class="mc-muted" style="font-size:13px">Regime macro · {escape(area)}</span>'
         f'<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:16px"><p class="mc-regime" style="color:{color}">{escape(regime)}</p>{streak}</div>'
         f'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px"><span class="mc-muted" style="font-size:14px">Fase del ciclo</span><div class="mc-steps">{steps}</div></div>'
-        f'<p style="margin:0;font-size:15px;line-height:1.55;color:#C9D1DD">{description}</p></div>'
+        f'<p style="margin:0;font-size:15px;line-height:1.55;color:#EAF2F5">{description}</p></div>'
     )
 
 
@@ -168,7 +193,7 @@ def prob_html(probs: dict, note: str) -> str:
 
 
 def risk_meter_html(level: str, score: int, total: int) -> str:
-    color = {"Alto": DOWN, "Medio": "#FBBF24"}.get(level, UP)
+    color = {"Alto": DOWN, "Medio": "#FFC878"}.get(level, UP)
     blocks = "".join(f'<i style="background:{color}"></i>' if k < score else "<i></i>" for k in range(total))
     return (
         f'<div class="mc-head"><h3 class="mc-disp" style="margin:0;font-size:18px">Indicatori anticipatori</h3>'
@@ -196,23 +221,23 @@ def events_html(events: list[dict]) -> str:
     return f'<div class="mc-card"><h3>Prossimi eventi</h3>{"".join(rows)}</div>'
 
 
-def cot_html(rows: list[dict], date: str) -> str:
-    """rows: Mercato, Percentile 5 anni, Posizionamento."""
+def cot_groups_html(market: str, rows: list[dict], date: str) -> str:
+    """rows: Categoria, Netto (% open interest), Variazione (punti, vs settimana prima), Percentile (5 anni). Solo informativo, nessun giudizio."""
     out = []
     for r in rows:
-        pct = r["Percentile 5 anni"]
-        extreme = pct < 15 or pct > 85
-        color = (DOWN if pct > 50 else UP) if extreme else MUTED
+        pct = r["Percentile"]
         left, width = (50, pct - 50) if pct >= 50 else (pct, 50 - pct)
         out.append(
-            f'<span>{escape(r["Mercato"])}</span>'
-            f'<div class="mc-div" role="img" aria-label="percentile {pct}"><i style="left:{left}%;width:{width}%;background:{color};border-radius:{"0 6px 6px 0" if pct >= 50 else "6px 0 0 6px"}"></i></div>'
-            f'<span class="mc-mono mc-r">{pct}</span><span class="lbl" style="color:{color};font-weight:{600 if extreme else 400}">{escape(r["Posizionamento"])}</span>'
+            f'<span>{escape(r["Categoria"])}</span>'
+            f'<div class="mc-div" role="img" aria-label="percentile {pct}"><i style="left:{left}%;width:{width}%;background:#8FA6B2;border-radius:{"0 6px 6px 0" if pct >= 50 else "6px 0 0 6px"}"></i></div>'
+            f'<span class="mc-mono mc-r">{r["Netto"]:+.1f}%</span><span class="mc-mono mc-r mc-muted">{r["Variazione"]:+.1f}</span>'
         )
     return (
-        f'<div class="mc-card"><div class="mc-head"><h3>Posizionamento speculatori (COT)</h3><span>percentile 5 anni · dato del {escape(date)}</span></div>'
-        f'<div class="mc-cot">{"".join(out)}</div>'
-        '<span class="mc-muted" style="font-size:12px">Barra dal centro: a destra più long della media, a sinistra più short. Estremi (&lt;15 o &gt;85) evidenziati.</span></div>'
+        f'<div class="mc-card"><div class="mc-head"><h3>Posizioni per categoria: {escape(market)}</h3><span>dato del {escape(date)}</span></div>'
+        f'<div class="mc-cot mc-cotg">{"".join(out)}</div>'
+        '<span class="mc-muted" style="font-size:12px">Netto = long meno short in % dell open interest. Variazione in punti rispetto alla settimana prima. '
+        'Barra dal centro: percentile sugli ultimi 5 anni (destra = più long del solito, sinistra = più short). '
+        'Dealer/Produttori/Swap dealer sono in gran parte coperture, non scommesse direzionali. Dati CFTC (TFF e Disaggregated); private equity e sentiment non fanno parte del report.</span></div>'
     )
 
 
@@ -220,7 +245,7 @@ def strength_html(scores: dict[str, int | None]) -> str:
     ranked = sorted(((c, s) for c, s in scores.items() if s is not None), key=lambda x: -x[1])
     rows = "".join(
         f'<div class="mc-srow"><span class="mc-mono mc-muted">{i}</span><b class="mc-disp" style="font-size:20px">{c}</b>'
-        f'<div class="mc-track" style="height:14px"><i style="width:{s}%;background:{UP if s >= 60 else DOWN if s <= 40 else "#7CB8FF"}"></i></div>'
+        f'<div class="mc-track" style="height:14px"><i style="width:{s}%;background:{UP if s >= 60 else DOWN if s <= 40 else "#5EEAD4"}"></i></div>'
         f'<span class="mc-mono mc-r" style="font-size:20px">{s}</span></div>'
         for i, (c, s) in enumerate(ranked, 1)
     )
@@ -229,11 +254,11 @@ def strength_html(scores: dict[str, int | None]) -> str:
 
 def pairs_html(rows: list[dict]) -> str:
     """rows: Coppia, Punteggio, Segnale (Buy/Sell/Neutra)."""
-    tag = {"Buy": ("#34D399", "#0B0F17"), "Sell": ("#F87171", "#0B0F17")}
+    tag = {"Buy": ("#7BE0A4", "#0F1720"), "Sell": ("#FF9DA7", "#0F1720")}
     cards = "".join(
-        f'<div class="mc-pair" style="border-color:{tag[r["Segnale"]][0] if r["Segnale"] in tag else "#243044"}">'
-        f'<div class="mc-head"><span class="mc-mono" style="font-size:16px;color:#E6EAF2">{escape(r["Coppia"])}</span>'
-        f'<span class="tag" style="background:{tag.get(r["Segnale"], ("#1A2233",))[0]};color:{tag.get(r["Segnale"], ("", MUTED))[1]}">{escape(r["Segnale"]).upper()}</span></div>'
+        f'<div class="mc-pair" style="border-color:{tag[r["Segnale"]][0] if r["Segnale"] in tag else "#25384A"}">'
+        f'<div class="mc-head"><span class="mc-mono" style="font-size:16px;color:#EAF2F5">{escape(r["Coppia"])}</span>'
+        f'<span class="tag" style="background:{tag.get(r["Segnale"], ("#1E2D3D",))[0]};color:{tag.get(r["Segnale"], ("", MUTED))[1]}">{escape(r["Segnale"]).upper()}</span></div>'
         f'<span class="mc-mono" style="font-size:28px">{r["Punteggio"]}</span>'
         f'<div class="mc-scale"><i style="left:{r["Punteggio"]}%"></i></div></div>'
         for r in rows

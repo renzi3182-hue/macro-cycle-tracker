@@ -132,6 +132,13 @@ def update_market_context(fred_key: str) -> None:
         except Exception:
             logger.exception("%s: fetch fallito, salto e continuo", indicator)
 
+    for name in fetch_cot.CONTRACTS:
+        try:
+            for group, series in fetch_cot.fetch_net_by_group(name).items():
+                cache.write_indicator_series(MARKET_AREA, f"cotg_{name}_{group}", series)
+        except Exception:
+            logger.exception("cot gruppi %s: fetch fallito, salto e continuo", name)
+
     fx_fetchers = {name: lambda name=name: fetch_fx.fetch_fx(name, fred_key) for name in fetch_fx.FX_SERIES}
     fx_fetchers.update({f"rate_{c}": lambda c=c: fetch_fx.fetch_short_rate(c, fred_key) for c in fetch_fx.RATE_SERIES})
     for indicator, fetch_fn in fx_fetchers.items():

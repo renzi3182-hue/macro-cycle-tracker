@@ -12,12 +12,12 @@ from src.classify.gip import gip_view
 from src.classify.leading import SIGNALS, leading_risk
 from src.classify.regime import direction_position, regime_history, regime_probabilities, to_quarterly
 from src.classify.recession import recession_confirmed, sahm_gap
-from src.classify.positioning import percentile_rank, positioning_label
-from src.data.fetch_cot import CONTRACTS, WEEKS as COT_WEEKS
+from src.classify.positioning import percentile_rank
+from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, ASSET_ALLOCATION, combined_portfolio_weights
 from src.data import cache
 from src.ui.cards import (
-    CSS, area_hero_html, changes_strip, chips_html, cot_html, events_html, hero_html, pairs_html,
+    CSS, area_hero_html, changes_strip, chips_html, cot_groups_html, events_html, hero_html, pairs_html,
     portfolio_html, prob_html, regime_streak, risk_meter_html, strength_html, weight_deltas,
 )
 from src.ui.overview import overview_html, signal
@@ -32,10 +32,10 @@ AREA_FLAGS = {
 }
 
 REGIME_COLORS = {
-    "Espansione": "#34D399",
-    "Reflazione": "#60A5FA",
-    "Stagflazione": "#F87171",
-    "Deflazione": "#A78BFA",
+    "Espansione": "#7BE0A4",
+    "Reflazione": "#FFC878",
+    "Stagflazione": "#FF9DA7",
+    "Deflazione": "#8AB4FF",
 }
 
 REGIME_MEANING = {
@@ -54,9 +54,9 @@ PHASE_MEANING = {
 
 
 INDICATOR_COLORS = {
-    "Crescita YoY %": "#34D399",
-    "Inflazione YoY %": "#F87171",
-    "Disoccupazione %": "#60A5FA",
+    "Crescita YoY %": "#7BE0A4",
+    "Inflazione YoY %": "#FF9DA7",
+    "Disoccupazione %": "#8AB4FF",
 }
 
 LEADING_LABELS = {
@@ -147,7 +147,7 @@ def describe_regime(regime: str, phase: str, growth: pd.Series, inflation: pd.Se
 
 CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}
 CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone"}
-LABEL_COLORS = {"Buy": "#34D399", "Sell": "#F87171", "Neutra": "#9CA3AF"}
+LABEL_COLORS = {"Buy": "#7BE0A4", "Sell": "#FF9DA7", "Neutra": "#8FA6B2"}
 
 
 def _last(area: str, indicator: str) -> float | None:
@@ -191,7 +191,9 @@ def spark(ser: pd.Series, n: int = 24) -> list[float] | None:
     return None if len(ser) < 3 else ser.tail(n).round(2).tolist()
 
 
-st.set_page_config(page_title="Macro Cycle Tracker", page_icon=":material/monitoring:", layout="wide")
+LOGO = str(Path(__file__).resolve().parent.parent / "assets" / "logo-mark.svg")
+st.set_page_config(page_title="Macro Cycle Tracker · Soft Investing", page_icon=LOGO, layout="wide")
+st.logo(LOGO, size="large")
 
 # Stile del redesign (richiesto dall'utente): componenti HTML in src/ui/cards.py, colori e
 # font in .streamlit/config.toml. Qui solo entrata delle card e segnali anticipatori attivi.
@@ -206,7 +208,7 @@ st.html(
         from { opacity: 0; transform: translateY(8px); }
         to { opacity: 1; transform: translateY(0); }
     }
-    [class*="st-key-sig-on-"] [data-testid="stMetric"] { border-color: #FBBF24; }
+    [class*="st-key-sig-on-"] [data-testid="stMetric"] { border-color: #FFC878; }
     </style>
     """
 )
@@ -235,15 +237,15 @@ if view == "Portafoglio":
     changes = []
     for area, h in histories.items():
         if len(h) > 1 and h[0]["regime"] != h[1]["regime"]:
-            changes.append((REGIME_COLORS.get(h[0]["regime"], "#9AA6B8"), f"{area} passa a <b>{h[0]['regime']}</b>"))
+            changes.append((REGIME_COLORS.get(h[0]["regime"], "#8FA6B2"), f"{area} passa a <b>{h[0]['regime']}</b>"))
         elif len(h) > 1 and h[0]["phase"] != h[1]["phase"]:
-            changes.append(("#FBBF24", f"{area}: fase <b>{h[0]['phase']}</b>"))
+            changes.append(("#FFC878", f"{area}: fase <b>{h[0]['phase']}</b>"))
     if not changes:
-        changes.append(("#9AA6B8", "Nessun cambio di regime o fase"))
+        changes.append(("#8FA6B2", "Nessun cambio di regime o fase"))
     events = upcoming_events()
     if events:
         e = events[0]
-        changes.append(("#7CB8FF", f"{e['Evento']} fra <b>{e['giorni']}</b> {'giorno' if e['giorni'] == 1 else 'giorni'}"))
+        changes.append(("#5EEAD4", f"{e['Evento']} fra <b>{e['giorni']}</b> {'giorno' if e['giorni'] == 1 else 'giorni'}"))
     st.html(changes_strip(changes))
 
     regimes = {area: h[0]["regime"] for area, h in histories.items()}
@@ -400,7 +402,7 @@ elif view == "Aree":
                             {"time": idx.strftime("%Y-%m-%d"), "value": round(float(v), 2)}
                             for idx, v in chart_df[col].dropna().items()
                         ],
-                        "options": {"color": INDICATOR_COLORS.get(col, "#94A3B8"), "lineWidth": 2},
+                        "options": {"color": INDICATOR_COLORS.get(col, "#8FA6B2"), "lineWidth": 2},
                     }
                     for col in visible
                 ]
@@ -411,7 +413,7 @@ elif view == "Aree":
                 st.html(
                     '<div class="mc-row">'
                     + "".join(
-                        f'<span class="mc-chip o"><i class="mc-dot" style="background:{INDICATOR_COLORS.get(col, "#94A3B8")}"></i>{col}</span>'
+                        f'<span class="mc-chip o"><i class="mc-dot" style="background:{INDICATOR_COLORS.get(col, "#8FA6B2")}"></i>{col}</span>'
                         for col in visible
                     )
                     + "</div>"
@@ -421,15 +423,15 @@ elif view == "Aree":
                         "chart": {
                             "layout": {
                                 "background": {"type": "solid", "color": "transparent"},
-                                "textColor": "#9AA6B8",
-                                "fontFamily": "IBM Plex Mono, monospace",
+                                "textColor": "#8FA6B2",
+                                "fontFamily": "DM Mono, monospace",
                             },
                             "grid": {
-                                "vertLines": {"color": "rgba(154,166,184,0.08)"},
-                                "horzLines": {"color": "rgba(154,166,184,0.08)"},
+                                "vertLines": {"color": "rgba(143,166,178,0.08)"},
+                                "horzLines": {"color": "rgba(143,166,178,0.08)"},
                             },
-                            "rightPriceScale": {"visible": True, "borderColor": "#1E2738"},
-                            "timeScale": {"borderColor": "#1E2738", "rightOffset": 6},
+                            "rightPriceScale": {"visible": True, "borderColor": "#25384A"},
+                            "timeScale": {"borderColor": "#25384A", "rightOffset": 6},
                             "height": 320,
                         },
                         "series": series_config,
@@ -490,16 +492,17 @@ elif view == "Mercato":
         else:
             st.caption("Nessuna data in cache: esegui l'aggiornamento dati.")
     with col_cot:
+        market = st.selectbox("Mercato COT", list(CONTRACTS), label_visibility="collapsed")
         rows, last_date = [], None
-        for name in CONTRACTS:
-            cot = load_indicator("Mercati", f"cot_{name}")
+        for group in (DISAGG_GROUPS if market in DISAGG_MARKETS else TFF_GROUPS):
+            cot = load_indicator("Mercati", f"cotg_{market}_{group}")
             if cot.empty:
                 continue
-            pct = percentile_rank(cot.tail(COT_WEEKS))
-            rows.append({"Mercato": name, "Percentile 5 anni": round(pct), "Posizionamento": positioning_label(pct)})
-            last_date = max(last_date or cot.index[-1], cot.index[-1])
+            rows.append({"Categoria": group, "Netto": cot.iloc[-1], "Variazione": cot.iloc[-1] - cot.iloc[-2] if len(cot) > 1 else 0.0,
+                         "Percentile": round(percentile_rank(cot.tail(COT_WEEKS)))})
+            last_date = cot.index[-1]
         if rows:
-            st.html(cot_html(rows, f"{last_date:%d/%m}"))
+            st.html(cot_groups_html(market, rows, f"{last_date:%d/%m}"))
         else:
             st.info("Nessun dato COT in cache. Esegui `python -m src.scheduler.update_data`.")
 
