@@ -7,6 +7,7 @@ REGIME_COLORS = {"Espansione": "#7BE0A4", "Reflazione": "#FFC878", "Stagflazione
 SIGNAL_COLORS = {1: "#7BE0A4", 0: "#FFC878", -1: "#FF9DA7"}
 QUAD_EDGE = 0.5  # soglie di deadband che portano il punto sul bordo (le variazioni recenti sono quasi sempre < 0.5)
 QUAD_FILL = 0.92  # frazione del semi-lato usata dal punto sul bordo
+MINI_QUARTERS = 12  # trimestri mostrati nel mini storico di ogni card
 SIGNAL_EPS = 0.1  # variazione minima (punti %) sotto cui l'indicatore e' "neutro"
 
 CSS = """
@@ -21,6 +22,13 @@ CSS = """
 .ov-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .ov-sb { display: flex; gap: 2px; height: 10px; }
 .ov-sb i { display: block; height: 100%; border-radius: 2px; min-width: 2px; }
+.ov-cap { font-size: 11px; color: #8FA6B2; margin-top: 5px; }
+.ov-mini { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; margin-top: 10px; }
+.ov-mini i { display: block; height: 12px; border-radius: 2px; }
+.ov-mini i.now { outline: 2px solid #EAF2F5; outline-offset: 1px; }
+.ov-mx { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; font-size: 9px; color: #8FA6B2; margin-top: 3px; height: 12px; }
+.ov-mx span { white-space: nowrap; }
+.ov-mx span.now { color: #EAF2F5; font-weight: 700; text-align: right; direction: rtl; }
 .ov-two { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; }
 .ov h3 { margin: 0 0 12px; font: 600 18px 'Plus Jakarta Sans', sans-serif; }
 .ov-heat { display: grid; grid-template-columns: 84px repeat(3, minmax(0, 1fr)); gap: 4px; font-size: 13px; }
@@ -58,7 +66,25 @@ def _prob_bar(probs: dict | None) -> str:
         f'<i style="width:{probs[r] * 100:.1f}%;background:{REGIME_COLORS[r]}" title="{r} {probs[r] * 100:.0f}%"></i>'
         for r in REGIMES
     )
-    return f'<div class="ov-sb" role="img" aria-label="{label}">{segs}</div>'
+    return f'<div class="ov-sb" role="img" aria-label="{label}">{segs}</div><div class="ov-cap">Probabilità dei 4 regimi</div>'
+
+
+def _mini_timeline(hist: pd.Series | None) -> str:
+    """Ultimi MINI_QUARTERS trimestri, dal piu' vecchio (sinistra) a oggi (destra, cerchiato). Anno sotto ogni T1."""
+    if hist is None or hist.empty:
+        return ""
+    hist = hist.iloc[-MINI_QUARTERS:]
+    last = len(hist) - 1
+    cells = "".join(
+        f'<i{" class=now" if i == last else ""} style="background:{REGIME_COLORS.get(r, "#8FA6B2")}" '
+        f'title="{d.strftime("%Y")} T{d.quarter}: {r}"></i>'
+        for i, (d, r) in enumerate(hist.items())
+    )
+    labels = "".join(
+        '<span class="now">oggi</span>' if i == last else f'<span>{d.year}</span>' if d.quarter == 1 else "<span></span>"
+        for i, d in enumerate(hist.index)
+    )
+    return f'<div class="ov-mini">{cells}</div><div class="ov-mx">{labels}</div>'
 
 
 def _legend() -> str:
@@ -157,13 +183,20 @@ def overview_html(areas: list[dict]) -> str:
     """areas: dict con area, code, regime, phase, probs|None, pos|None, signals [(label, value|None, sig)]*3, history|None."""
     def streak(a):
         n = a.get("streak") or 0
-        return f' · da {n} trim.' if n else ""
+        hist = a.get("history")
+        if not n:
+            return ""
+        if hist is None or n >= len(hist):  # storico di 20 trimestri: l'inizio reale e' piu' indietro
+            return f' · da {n}+ trim.'
+        d = hist.index[-n]
+        return f' · da T{d.quarter} {d.year} ({n} trim.)'
 
     cards = "".join(
         f'<div class="ov-card"{" style=\"border-color:" + REGIME_COLORS.get(a["regime"], "#8FA6B2") + "\"" if a.get("changed") else ""}>'
         f'<h4>{escape(a["area"])}{" · cambiato" if a.get("changed") else ""}</h4>'
         f'<div class="ov-rg"><i class="ov-dot" style="background:{REGIME_COLORS.get(a["regime"], "#8FA6B2")}"></i>{escape(a["regime"])}</div>'
-        f'<div class="ov-ph">Fase: {escape(a["phase"])}{streak(a)}</div>{_prob_bar(a.get("probs"))}</div>'
+        f'<div class="ov-ph">Fase: {escape(a["phase"])}{streak(a)}</div>{_prob_bar(a.get("probs"))}'
+        f'{_mini_timeline(a.get("history"))}</div>'
         for a in areas
     )
     return (
