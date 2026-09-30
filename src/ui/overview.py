@@ -2,10 +2,10 @@ from html import escape
 
 import pandas as pd
 
-REGIMES = ["Espansione", "Reflazione", "Stagflazione", "Deflazione"]
-REGIME_COLORS = {"Espansione": "#7BE0A4", "Reflazione": "#FFC878", "Stagflazione": "#FF9DA7", "Deflazione": "#8AB4FF"}
+REGIMES = ["Goldilocks", "Reflazione", "Stagflazione", "Deflazione"]
+REGIME_COLORS = {"Goldilocks": "#7BE0A4", "Reflazione": "#FFC878", "Stagflazione": "#FF9DA7", "Deflazione": "#8AB4FF", "Transizione": "#8FA6B2"}
 SIGNAL_COLORS = {1: "#7BE0A4", 0: "#FFC878", -1: "#FF9DA7"}
-QUAD_EDGE = 0.5  # soglie di deadband che portano il punto sul bordo (le variazioni recenti sono quasi sempre < 0.5)
+QUAD_EDGE = 2.0  # bande laterali (z in unita' di FLAT_BAND_ENTER) che portano il punto sul bordo
 QUAD_FILL = 0.92  # frazione del semi-lato usata dal punto sul bordo
 MINI_QUARTERS = 12  # trimestri mostrati nel mini storico di ogni card
 SIGNAL_EPS = 0.1  # variazione minima (punti %) sotto cui l'indicatore e' "neutro"
@@ -89,7 +89,7 @@ def _mini_timeline(hist: pd.Series | None) -> str:
 
 def _legend() -> str:
     return '<div class="ov-legend">' + "".join(
-        f'<span><i class="ov-dot" style="background:{REGIME_COLORS[r]}"></i>{r}</span>' for r in REGIMES
+        f'<span><i class="ov-dot" style="background:{REGIME_COLORS[r]}"></i>{r}</span>' for r in (*REGIMES, "Transizione")
     ) + "</div>"
 
 
@@ -98,9 +98,9 @@ def _quadrant(areas: list[dict]) -> str:
     def pct(v):
         return 50 + max(-QUAD_EDGE, min(QUAD_EDGE, v)) / QUAD_EDGE * 50 * QUAD_FILL
 
-    corners = [("Reflazione", "top:6px;left:8px"), ("Espansione", "top:6px;right:8px"),
+    corners = [("Goldilocks", "top:6px;left:8px"), ("Reflazione", "top:6px;right:8px"),
                ("Stagflazione", "bottom:6px;right:8px"), ("Deflazione", "bottom:6px;left:8px")]
-    quads = [("Reflazione", "top:0;left:0"), ("Espansione", "top:0;left:50%"),
+    quads = [("Goldilocks", "top:0;left:0"), ("Reflazione", "top:0;left:50%"),
              ("Stagflazione", "top:50%;left:50%"), ("Deflazione", "top:50%;left:0")]
     out = ['<div class="ov-quad" role="img" aria-label="Quadrante crescita e inflazione">']
     out += [f'<div class="q" style="{pos};background:color-mix(in srgb,{REGIME_COLORS[r]} 12%,transparent)"></div>' for r, pos in quads]
@@ -119,7 +119,7 @@ def _quadrant(areas: list[dict]) -> str:
                 q["cls"], p["cls"] = ("d", "u") if p["y"] < q["y"] else ("u", "d")
     for p in pts:
         a = p["a"]
-        tip = escape(f'{a["area"]}: {a["regime"]}, crescita {a["pos"][1]:+.1f}, inflazione {a["pos"][0]:+.1f} (in soglie di deadband)')
+        tip = escape(f'{a["area"]}: {a["regime"]}, crescita {a["pos"][1]:+.1f}, inflazione {a["pos"][0]:+.1f} (in bande laterali)')
         out.append(
             f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:{REGIME_COLORS.get(a["regime"], "#8FA6B2")}">'
             f'<b class="{p["cls"]}">{escape(a["code"])}</b></div>'
@@ -204,6 +204,6 @@ def overview_html(areas: list[dict]) -> str:
         + f'<div class="ov"><div class="ov-cards">{cards}</div>'
         f'<div class="ov-two"><div class="ov-card"><h3>Segnali degli indicatori</h3>{_heatmap(areas)}</div>'
         f'<div class="ov-card"><h3>Quadrante crescita e inflazione</h3>{_quadrant(areas)}'
-        '<div class="ov-legend"><span>bordo = mezza soglia di cambio direzione. Posizione = variazione recente; il regime ha memoria (deadband) e può stare in un altro quadrante</span></div></div></div>'
+        '<div class="ov-legend"><span>Posizione = variazione recente in bande laterali (±1 = soglia su/giù); vicino al centro un asse è stabile e il regime è Transizione</span></div></div></div>'
         f'<div class="ov-card"><h3>Storico regime, ultimi 5 anni</h3>{_timeline(areas)}{_legend()}</div></div>'
     )

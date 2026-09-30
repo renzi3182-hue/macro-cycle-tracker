@@ -1,15 +1,11 @@
 import pandas as pd
 
-from src.classify.regime import TREND_WINDOW, _direction_series, regime_probabilities
+from src.classify.regime import axis_states, axis_z, probabilities_from_z, regime_name
 
-# Versione mensile e "onesta" del quadrante crescita/inflazione stile Hedgeye GIP:
-# stessa logica di regime.py (direzione rispetto alla media dei 3 mesi precedenti)
-# ma su dati mensili tempestivi (produzione industriale, CPI) e con overlay sulla
-# politica monetaria. Hedgeye usa stime di consenso a pagamento: qui no.
-# Deadband = 75° percentile delle variazioni mensili storiche dal 1975 (stessa
-# convenzione di regime.py/cycle.py).
-GIP_GROWTH_DEADBAND = 1.4  # punti % di INDPRO YoY
-GIP_INFLATION_DEADBAND = 0.6  # punti % di CPI YoY
+# Versione mensile del quadrante crescita/inflazione stile Hedgeye GIP: stessa logica di
+# regime.py (z della variazione rispetto alla media dei 3 mesi precedenti, 3 stati con isteresi)
+# ma su dati mensili tempestivi (produzione industriale, CPI) e con overlay sulla politica
+# monetaria. Hedgeye usa stime di consenso a pagamento: qui no.
 FED_MOVE_THRESHOLD = 0.25  # punti % di variazione dei Fed Funds in FED_MOVE_MONTHS
 FED_MOVE_MONTHS = 6
 
@@ -27,13 +23,8 @@ def policy_stance(fed_funds: pd.Series) -> str:
 
 def gip_view(industrial_production: pd.Series, inflation: pd.Series, fed_funds: pd.Series) -> dict:
     """Regime mensile alternativo (USA), probabilita' per regime e stance della Fed."""
-    growth_dir = _direction_series(industrial_production, TREND_WINDOW, GIP_GROWTH_DEADBAND).iloc[-1]
-    inflation_dir = _direction_series(inflation, TREND_WINDOW, GIP_INFLATION_DEADBAND).iloc[-1]
-    regime = {
-        ("up", "down"): "Reflazione", ("up", "up"): "Espansione",
-        ("down", "up"): "Stagflazione", ("down", "down"): "Deflazione",
-    }[(growth_dir, inflation_dir)]
-    probs = regime_probabilities(
-        industrial_production, inflation, TREND_WINDOW, GIP_GROWTH_DEADBAND, GIP_INFLATION_DEADBAND
-    )
+    growth_z = axis_z([industrial_production], resample=False)
+    inflation_z = axis_z([inflation], resample=False)
+    regime = regime_name(axis_states(growth_z).iloc[-1], axis_states(inflation_z).iloc[-1])
+    probs = probabilities_from_z(growth_z.iloc[-1], inflation_z.iloc[-1])
     return {"regime": regime, "probabilities": probs, "policy": policy_stance(fed_funds)}

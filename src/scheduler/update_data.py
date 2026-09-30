@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.classify.cycle import classify_cycle
 from src.classify.leading import leading_risk
 from src.classify.recession import recession_confirmed
-from src.classify.regime import classify_regime
+from src.classify.regime import GROWTH_INPUTS, INFLATION_INPUTS, classify_regime, pick_inputs
 from src.data import cache, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +42,7 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
         "USA": {
             "growth_yoy": lambda: fetch_fred.fetch_growth_yoy(fred_key),
             "inflation_yoy": lambda: fetch_fred.fetch_inflation_yoy(fred_key),
+            "core_inflation_yoy": lambda: fetch_fred.fetch_core_inflation_yoy(fred_key),
             "unemployment_rate": lambda: fetch_fred.fetch_unemployment_rate(fred_key),
             "industrial_production": lambda: fetch_fred.fetch_industrial_production_yoy(fred_key),
             "fed_funds": lambda: fetch_fred.fetch_fed_funds(fred_key),
@@ -58,6 +59,7 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
         "Eurozona": {
             "growth_yoy": lambda: fetch_ecb.fetch_growth_yoy("EA21"),
             "inflation_yoy": lambda: fetch_ecb.fetch_inflation_yoy("EA"),
+            "core_inflation_yoy": lambda: fetch_ecb.fetch_core_inflation_yoy("EA"),
             "unemployment_rate": lambda: fetch_ecb.fetch_unemployment_rate("EA21"),
             "esi": lambda: fetch_ecb.fetch_sentiment("EA21"),
             "yield_curve": curve("Eurozona"),
@@ -65,6 +67,7 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
         "Italia": {
             "growth_yoy": lambda: fetch_ecb.fetch_growth_yoy("IT"),
             "inflation_yoy": lambda: fetch_ecb.fetch_inflation_yoy("IT"),
+            "core_inflation_yoy": lambda: fetch_ecb.fetch_core_inflation_yoy("IT"),
             "unemployment_rate": lambda: fetch_ecb.fetch_unemployment_rate("IT"),
             "esi": lambda: fetch_ecb.fetch_sentiment("IT"),
             "btp_bund": lambda: fetch_fred.fetch_spread(*fetch_fred.BTP_BUND, fred_key),
@@ -72,6 +75,7 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
         "UK": {
             "growth_yoy": fetch_boe.fetch_growth_yoy,
             "inflation_yoy": fetch_boe.fetch_inflation_yoy,
+            "core_inflation_yoy": fetch_boe.fetch_core_inflation_yoy,
             "unemployment_rate": fetch_boe.fetch_unemployment_rate,
             "yield_curve": curve("UK"),
         },
@@ -103,7 +107,7 @@ def update_area(area: str, indicator_fetchers: dict) -> None:
         return
 
     growth = series_by_indicator["growth_yoy"]
-    regime = classify_regime(growth, series_by_indicator["inflation_yoy"])
+    regime = classify_regime(pick_inputs(series_by_indicator, GROWTH_INPUTS), pick_inputs(series_by_indicator, INFLATION_INPUTS))
     empty = pd.Series(dtype=float)
     risk = leading_risk(area, series_by_indicator)
     risk_level = risk["level"] if risk else None

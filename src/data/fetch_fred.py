@@ -4,6 +4,7 @@ import requests
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 SERIES_GROWTH = "GDPC1"  # Real GDP
 SERIES_INFLATION = "CPIAUCSL"  # CPI All Urban Consumers
+SERIES_CORE_INFLATION = "CPILFESL"  # CPI escluso cibo ed energia
 SERIES_UNEMPLOYMENT = "UNRATE"  # Civilian Unemployment Rate
 SERIES_YIELD_CURVE = "T10Y3M"  # 10Y - 3M Treasury spread, punti %
 # Baa - 10Y Treasury. Non uso BAMLH0A0HYM2 (HY OAS): FRED ne espone solo 3 anni,
@@ -56,6 +57,10 @@ def fetch_growth_yoy(api_key: str) -> pd.Series:
 
 def fetch_inflation_yoy(api_key: str) -> pd.Series:
     return _fetch_series(SERIES_INFLATION, api_key)
+
+
+def fetch_core_inflation_yoy(api_key: str) -> pd.Series:
+    return _fetch_series(SERIES_CORE_INFLATION, api_key)
 
 
 def fetch_unemployment_rate(api_key: str) -> pd.Series:

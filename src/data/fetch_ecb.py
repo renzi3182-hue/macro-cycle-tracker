@@ -44,18 +44,22 @@ def fetch_growth_yoy(geo: str) -> pd.Series:
     return _parse_jsonstat(resp.json())
 
 
-def fetch_inflation_yoy(geo: str) -> pd.Series:
-    """geo: 'EA' per Eurozona, 'IT' per Italia.
+def fetch_inflation_yoy(geo: str, coicop18: str = "TOTAL") -> pd.Series:
+    """geo: 'EA' per Eurozona, 'IT' per Italia. coicop18: 'TOTAL' o 'TOT_X_NRG_FOOD' (core, senza energia e cibo).
 
     prc_hicp_manr e' congelato a dic 2025 (ultimo update feb 2026): Eurostat e' passata
     a ECOICOP v2 (prc_hicp_minr). Verificato con dati reali (29/09/2026)."""
     resp = requests.get(
         f"{BASE_URL}/prc_hicp_minr",
-        params={"format": "JSON", "lang": "EN", "coicop18": "TOTAL", "unit": "RCH_A", "geo": geo},
+        params={"format": "JSON", "lang": "EN", "coicop18": coicop18, "unit": "RCH_A", "geo": geo},
         timeout=30,
     )
     resp.raise_for_status()
     return _parse_jsonstat(resp.json())
+
+
+def fetch_core_inflation_yoy(geo: str) -> pd.Series:
+    return fetch_inflation_yoy(geo, "TOT_X_NRG_FOOD")
 
 
 def fetch_sentiment(geo: str) -> pd.Series:

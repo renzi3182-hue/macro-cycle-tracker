@@ -10,7 +10,7 @@ from streamlit_lightweight_charts import renderLightweightCharts
 from src.classify.currency import CURRENCIES, PAIRS, cot_component, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.gip import gip_view
 from src.classify.leading import SIGNALS, leading_risk
-from src.classify.regime import direction_position, regime_history, regime_probabilities, to_quarterly
+from src.classify.regime import GROWTH_INPUTS, INFLATION_INPUTS, axis_states, axis_z, direction_position, pick_inputs, regime_history, regime_probabilities
 from src.classify.recession import recession_confirmed, sahm_gap
 from src.classify.positioning import percentile_rank
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
@@ -32,17 +32,19 @@ AREA_FLAGS = {
 }
 
 REGIME_COLORS = {
-    "Espansione": "#7BE0A4",
+    "Goldilocks": "#7BE0A4",
     "Reflazione": "#FFC878",
     "Stagflazione": "#FF9DA7",
     "Deflazione": "#8AB4FF",
+    "Transizione": "#8FA6B2",
 }
 
 REGIME_MEANING = {
-    "Espansione": "crescita in accelerazione e inflazione in salita",
-    "Reflazione": "crescita in accelerazione e inflazione in calo",
+    "Goldilocks": "crescita in accelerazione e inflazione in calo",
+    "Reflazione": "crescita in accelerazione e inflazione in salita",
     "Stagflazione": "crescita in rallentamento e inflazione in salita",
     "Deflazione": "crescita in rallentamento e inflazione in calo",
+    "Transizione": "crescita o inflazione stabili (laterali): nessun quadrante netto",
 }
 
 PHASE_MEANING = {
@@ -85,10 +87,27 @@ def load_indicator(area: str, indicator: str) -> pd.Series:
     return cache.read_indicator_series(area, indicator)
 
 
+def axis_inputs(area: str) -> tuple[list, list]:
+    """Serie che alimentano i due assi (crescita: PIL + CLI; inflazione: totale + core), come in update_data."""
+    series = {n: load_indicator(area, n) for n in (*GROWTH_INPUTS, *INFLATION_INPUTS)}
+    return pick_inputs(series, GROWTH_INPUTS), pick_inputs(series, INFLATION_INPUTS)
+
+
+AXIS_TEXT = {
+    "growth": {"up": "in accelerazione", "flat": "stabile", "down": "in rallentamento"},
+    "inflation": {"up": "in salita", "flat": "stabile", "down": "in calo"},
+}
+
+
+def axis_summary(area: str) -> str:
+    g_in, i_in = axis_inputs(area)
+    g, i = (axis_states(axis_z(x)).iloc[-1] for x in (g_in, i_in))
+    return f"Crescita {AXIS_TEXT['growth'][g]}, inflazione {AXIS_TEXT['inflation'][i]}."
+
+
 def area_probabilities(area: str, growth: pd.Series, inflation: pd.Series) -> tuple[dict | None, dict | None]:
-    # deadband del modello PIL tarati su trimestri: CPI mensile portato a trimestri come in classify_regime
-    g_q, i_q = to_quarterly(growth), to_quarterly(inflation)
-    probs = regime_probabilities(g_q, i_q) if len(g_q) > 3 and len(i_q) > 3 else None
+    g_in, i_in = axis_inputs(area)
+    probs = regime_probabilities(g_in, i_in) if len(growth) > 3 and len(inflation) > 3 else None
     gip = None
     if area == "USA":
         ip, ff = load_indicator(area, "industrial_production"), load_indicator(area, "fed_funds")
@@ -115,13 +134,13 @@ def overview_areas() -> list[dict]:
             "regime": history[0]["regime"],
             "phase": history[0]["phase"],
             "probs": area_probabilities(area, growth, inflation)[0],
-            "pos": direction_position(growth, inflation) if enough else None,
+            "pos": direction_position(*axis_inputs(area)) if enough else None,
             "signals": [
                 ("crescita", *signal(growth, True)),
                 ("inflazione", *signal(inflation, False)),
                 ("disoccupazione", *signal(unemployment, False)),
             ],
-            "history": regime_history(growth, inflation) if enough else None,
+            "history": regime_history(*axis_inputs(area)) if enough else None,
             "changed": len(history) > 1 and history[0]["regime"] != history[1]["regime"],
         })
         areas[-1]["streak"] = regime_streak(areas[-1]["history"])
@@ -306,16 +325,18 @@ elif view == "Aree":
         st.warning("Dati in ritardo anomalo, la fonte potrebbe aver cambiato dataset: " + ", ".join(stale))
 
     probs, gip = area_probabilities(area, growth, inflation)
-    streak = regime_streak(regime_history(growth, inflation, quarters=400)) if enough else 0
+    streak = regime_streak(regime_history(*axis_inputs(area), quarters=400)) if enough else 0
     col_hero, col_probs = st.columns([7, 5])
     with col_hero:
         st.html(area_hero_html(area, current["regime"], current["phase"], streak,
                                describe_regime(current["regime"], current["phase"], growth, inflation, unemployment)))
     with col_probs:
+        if enough:
+            st.caption(axis_summary(area))
         if probs:
             st.html(prob_html(probs, "media PIL + mensile" if gip else "modello PIL"))
             st.caption(
-                "Stima non calibrata su frequenze storiche. L'etichetta del regime ha memoria (deadband): "
+                "Stima non calibrata su frequenze storiche. L'etichetta del regime ha isteresi e una banda laterale: "
                 "può non coincidere con la probabilità più alta."
             )
         if gip:

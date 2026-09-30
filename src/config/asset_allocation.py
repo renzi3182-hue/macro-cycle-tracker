@@ -1,6 +1,8 @@
 # Mapping statico regime -> classi di asset storicamente favorite (stile All Weather).
 # Non e' un consiglio di investimento personalizzato.
 #
+# Nomi dei regimi rinominati il 30/09/2026 (Goldilocks = ex Reflazione, Reflazione = ex Espansione, come
+# Hedgeye/mercato); il backtest sotto e' stato fatto con la logica e i nomi vecchi.
 # Backtest USA (scripts/backtest_assets.py, 29/09/2026, regime point-in-time, mese successivo):
 # nessuna differenza di rendimento fra regimi e' statisticamente significativa per azioni, Treasury
 # e oro (|t| < 2); solo il cash (livello dei tassi) e, al limite, le materie prime (meglio in
@@ -22,10 +24,12 @@
 # e hedge in crisi/geopolitica (2008, 2020) - per questo compare in Stagflazione.
 
 ASSET_ALLOCATION = {
-    "Reflazione": ["Azionario growth", "Obbligazioni lunga durata", "Credito corporate"],
-    "Espansione": ["Azionario", "Materie prime", "Obbligazioni indicizzate all'inflazione", "Immobiliare"],
+    "Goldilocks": ["Azionario growth", "Obbligazioni lunga durata", "Credito corporate"],
+    "Reflazione": ["Azionario", "Materie prime", "Obbligazioni indicizzate all'inflazione", "Immobiliare"],
     "Stagflazione": ["Oro", "Materie prime", "Obbligazioni indicizzate all'inflazione", "Cash", "Azionario value/difensivo"],
     "Deflazione": ["Obbligazioni governative lunga durata", "Cash", "Azionario difensivo"],
+    # Almeno un asse laterale: nessuna scommessa direzionale, mix diversificato stile All Weather.
+    "Transizione": ["Azionario", "Obbligazioni governative lunga durata", "Oro", "Materie prime", "Cash"],
 }
 
 # Quota target sull'azionario per profilo di rischio, il resto va agli asset

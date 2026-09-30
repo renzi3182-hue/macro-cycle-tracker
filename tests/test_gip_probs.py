@@ -7,25 +7,29 @@ import pandas as pd
 import pytest
 
 from src.classify.gip import gip_view, policy_stance
-from src.classify.regime import GROWTH_DEADBAND, regime_probabilities
+from src.classify.regime import FLAT_BAND_ENTER, probabilities_from_z, regime_probabilities
 
 
 def _s(values):
     return pd.Series(values, index=pd.date_range("2020-01-01", periods=len(values), freq="MS"))
 
 
+def _q(values):
+    return pd.Series(values, index=pd.date_range("2020-03-31", periods=len(values), freq="QE"))
+
+
 def test_probabilities_sum_to_one_and_follow_direction():
-    flat = _s([1.0] * 6)
+    flat = _q([1.0] * 6)
     p = regime_probabilities(flat, flat)
     assert sum(p.values()) == pytest.approx(1.0)
     assert all(v == pytest.approx(0.25) for v in p.values())  # nessuna direzione: tutto incerto
-    up_down = regime_probabilities(_s([1, 1, 1, 1 + 3 * GROWTH_DEADBAND]), _s([5, 5, 5, 0]))
-    assert max(up_down, key=up_down.get) == "Reflazione"
+    up_down = regime_probabilities(_q([1, 1, 1, 4]), _q([5, 5, 5, 0]))
+    assert max(up_down, key=up_down.get) == "Goldilocks"
 
 
-def test_probability_at_deadband_is_75_percent():
-    p = regime_probabilities(_s([0, 0, 0, GROWTH_DEADBAND]), _s([0, 0, 0, 0]))
-    assert p["Reflazione"] + p["Espansione"] == pytest.approx(0.75)
+def test_probability_at_band_is_75_percent():
+    p = probabilities_from_z(FLAT_BAND_ENTER, 0.0)
+    assert p["Goldilocks"] + p["Reflazione"] == pytest.approx(0.75)
 
 
 def test_policy_stance():
