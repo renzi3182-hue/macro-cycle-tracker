@@ -192,7 +192,7 @@ def spark(ser: pd.Series, n: int = 24) -> list[float] | None:
 
 
 LOGO = str(Path(__file__).resolve().parent.parent / "assets" / "logo-mark.svg")
-st.set_page_config(page_title="Macro Cycle Tracker · Soft Investing", page_icon=LOGO, layout="wide")
+st.set_page_config(page_title="Soft Investing", page_icon=LOGO, layout="wide")
 st.logo(LOGO, size="large")
 
 # Stile del redesign (richiesto dall'utente): componenti HTML in src/ui/cards.py, colori e
@@ -219,7 +219,7 @@ VIEWS = ["Portafoglio", "Panoramica", "Aree", "Mercato", "Valute"]
 histories = {area: h for area in AREA_FLAGS if (h := load_classifications(area))}
 
 with st.container(horizontal=True, vertical_alignment="center", gap="medium"):
-    st.markdown("#### :material/monitoring: Macro Cycle", width="content")
+    st.markdown("#### Soft Investing", width="content")
     view = st.segmented_control(
         "Sezione", VIEWS, default="Portafoglio", required=True, key="view", bind="query-params",
         label_visibility="collapsed",
