@@ -1,0 +1,46 @@
+# Aggiorna la cache dei dati e la pubblica come asset della release `data-latest`: l'app la scarica da li'
+# (src/data/sync.py). Nessun commit della cache: il repo non cresce. Il primo run parte da workflow_dispatch.
+# Secret richiesti nel repo: FRED_API_KEY, ESTAT_APP_ID.
+name: update-data
+
+on:
+  schedule:
+    - cron: "*/30 6-21 * * 1-5"  # giorni feriali, ogni 30 minuti (UTC): copre le uscite USA ed europee
+    - cron: "0 8 * * 0,6"  # weekend: una volta
+  workflow_dispatch:
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      ESTAT_APP_ID: ${{ secrets.ESTAT_APP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Parti dalla cache pubblicata (storico dei cambi di regime)
+        run: gh release download data-latest -p cache.db -D data --clobber || echo "nessuna release, uso la cache del repo"
+      - run: python -m src.scheduler.update_data
+      - name: Pubblica la cache
+        run: |
+          gh release view data-latest >/dev/null 2>&1 || gh release create data-latest --title "Dati" --notes "Cache aggiornata automaticamente da update-data."
+          gh release upload data-latest data/cache.db --clobber
+      - name: Tieni vivo lo schedule (GitHub lo disattiva dopo 60 giorni senza attivita')
+        run: |
+          if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 3888000 ]; then
+            git config user.name "github-actions"; git config user.email "actions@github.com"
+            git commit --allow-empty -m "keepalive" && git push
+          fi
