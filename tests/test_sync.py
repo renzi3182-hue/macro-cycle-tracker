@@ -36,3 +36,13 @@ def test_network_error_leaves_cache_alone(tmp_path, requests_mock):
     db.write_bytes(b"local")
     requests_mock.head(URL, exc=requests.ConnectionError)
     assert sync_cache(URL, db) is False and db.read_bytes() == b"local"
+
+
+def test_uses_db_timestamp_not_file_date(tmp_path, requests_mock):
+    # dopo un redeploy il file ha la data del checkout: conta l'updated_at scritto nel DB
+    from src.data.cache import write_meta
+    db = tmp_path / "cache.db"
+    write_meta("updated_at", "2026-09-30T13:30:00+00:00", db)
+    requests_mock.head(URL, headers={"Last-Modified": NEWER})
+    requests_mock.get(URL, content=b"new")
+    assert sync_cache(URL, db) is True
