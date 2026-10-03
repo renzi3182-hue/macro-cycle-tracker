@@ -12,7 +12,6 @@ import os
 
 import pandas as pd
 
-from src.classify.cycle import MOMENTUM_DEADBAND, _momentum_direction_series
 from src.classify.leading import CREDIT_SPREAD_STRESS, CURVE_INVERSION, FIN_CONDITIONS_TIGHT, HIGH_RISK_MIN_SIGNALS
 from src.classify.recession import CP_CERTAIN, CP_CONFIRM, SAHM_THRESHOLD, sahm_gap
 from src.data import fetch_fred
@@ -31,16 +30,6 @@ def monthly(s: pd.Series, how: str = "last") -> pd.Series:
 
 def sahm_signal(unrate: pd.Series) -> pd.Series:
     return sahm_gap(unrate) >= SAHM_THRESHOLD
-
-
-def phase_signal(growth: pd.Series, index: pd.DatetimeIndex) -> pd.Series:
-    """'Recessione' secondo classify_cycle, applicata trimestre per trimestre.
-    Il valore del trimestre e' noto solo a trimestre concluso: lo sposto di 3 mesi
-    (ignora comunque il ritardo di pubblicazione ~1 mese, quindi e' ottimistico)."""
-    directions = _momentum_direction_series(growth, MOMENTUM_DEADBAND)
-    rec = (growth.loc[directions.index] <= 0) & (directions == "decel")
-    rec.index = rec.index + pd.DateOffset(months=3)
-    return rec.reindex(index, method="ffill").fillna(False).astype(bool)
 
 
 def leading_signal(curve, credit, nfci, index) -> pd.Series:
@@ -101,7 +90,6 @@ def main() -> None:
     usrec = usrec.loc[START:]
     unrate = fetch_fred.fetch_unemployment_rate(key)
     cp = monthly(fetch_fred.fetch_recession_probability(key)).loc[START:]
-    growth = fetch_fred.fetch_growth_yoy(key)
     idx = usrec.index
     print(f"NBER (USREC): {[(s.strftime('%Y-%m'), e.strftime('%Y-%m')) for s, e in recessions(usrec)]}\n")
 
@@ -110,7 +98,6 @@ def main() -> None:
         "Sahm (>=0.5)": sahm,
         f"Chauvet-Piger (>={CP_CERTAIN:.0f}%)": cp >= CP_CERTAIN,
         f"REGOLA IN USO: (Sahm & CP>={CP_CONFIRM:.0f}%) | CP>={CP_CERTAIN:.0f}%": (sahm & (cp >= CP_CONFIRM)) | (cp >= CP_CERTAIN),
-        "Fase 'Recessione' (PIL)": phase_signal(growth, idx),
     }
     print("MODELLI CONCORRENTI (rilevano la recessione in corso). Lag = mesi dall'inizio NBER al primo segnale.")
     for name, sig in concurrent.items():

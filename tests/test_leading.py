@@ -5,7 +5,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 
-from src.classify.cycle import classify_cycle
 from src.classify.leading import leading_risk
 
 
@@ -36,12 +35,3 @@ def test_non_usa_signals():
     assert risk["level"] == "Alto" and risk["score"] == 2 and risk["total"] == 3
     # CLI sotto 100 ma in risalita: nessun segnale
     assert leading_risk("UK", {"cli": pd.Series([98.0, 98.5, 99.0, 99.5], index=months[:4])})["level"] == "Basso"
-
-
-def test_high_risk_downgrades_expansion_only():
-    idx = pd.date_range("2010-03-31", periods=42, freq="QE")
-    up = pd.Series([2.0, 2.2, 1.8, 2.0] * 10 + [2.6, 3.4], index=idx)
-    assert classify_cycle(up, "Alto") == "Rallentamento"
-    assert classify_cycle(up, "Medio") == "Espansione"
-    down = pd.Series([2.0, 2.2, 1.8, 2.0] * 10 + [-1.0, -2.0], index=idx)
-    assert classify_cycle(down, "Alto") == "Recessione"

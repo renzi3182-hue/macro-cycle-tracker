@@ -45,27 +45,24 @@ Automatico, schedulato una volta al giorno (i dati macro escono comunque mensile
 
 Aggiornamento 29/09/2026: soglie degli anticipatori fuori USA verificate con `scripts/backtest_leading_intl.py`; con rischio "Alto" un'Espansione diventa Rallentamento in ogni area (prima solo USA). Backtest regime -> rendimenti (`scripts/backtest_assets.py`) e con dati real-time ALFRED (`scripts/backtest_alfred.py`): vedi i commenti in `src/config/asset_allocation.py` e sotto "Areas of concern".
 
-### Logica di classificazione (trasparente, regolabile — no black box)
+### Logica di classificazione (riscritta il 03/10/2026, trasparente, regolabile — no black box)
 
-**Regime macro** = funzione di (direzione crescita, direzione inflazione), ciascuna calcolata come trend su finestra mobile (es. valore corrente vs media dei 3 periodi precedenti):
+Tutto mensile, un solo calcolo per scheduler e app (`src/classify/assess.py`). Costanti in cima a `regime.py`, `cycle.py`, `recession.py`.
 
-| Crescita | Inflazione | Regime |
+**Regime macro** = direzione della crescita x pressione dell'inflazione:
+
+| Crescita (CLI OCSE, direzione 3 mesi) | Inflazione (media totale+core vs 2%, + direzione 3 mesi) | Regime |
 |---|---|---|
-| ↑ | ↓ (o bassa) | Reflazione |
-| ↑ | ↑ | Espansione |
-| ↓ | ↑ | Stagflazione |
-| ↓ | ↓ | Deflazione |
+| in accelerazione | sotto controllo | Goldilocks |
+| in accelerazione | alta o in salita | Reflazione |
+| in rallentamento | alta o in salita | Stagflazione |
+| in rallentamento | sotto controllo | Deflazione |
 
-**Fase ciclo economico** = funzione di (livello crescita, momentum crescita — variazione vs periodo precedente):
+Isteresi e conferma di 2 mesi per asse. Niente stato "Transizione": la vicinanza a una soglia si mostra come "solidità" (Alta/Media/Bassa) e come probabilità.
 
-| Livello PIL YoY | Momentum | Fase |
-|---|---|---|
-| > 0 | in accelerazione | Espansione |
-| > 0 | in decelerazione | Rallentamento |
-| < 0 | in ulteriore calo | Recessione |
-| < 0 | in miglioramento | Ripresa |
+**Fase del ciclo**: momentum = asse crescita del regime; livello = PIL annuo contro la sua media 10 anni (la disoccupazione contro la media 10 anni, usata fino al 03/10/2026, coincideva con la crescita sopra il trend a posteriori solo nel 42-57% dei mesi: in Europa e Giappone scende da anni per demografia); Recessione solo con conferma dura (Sahm, negli USA con Chauvet-Piger, fuori dagli USA per 2 mesi; oppure PIL annuo <= 0). Gli anticipatori (`leading.py`) si mostrano a parte e non cambiano la fase.
 
-**Soglie tarate su dati storici reali (FRED USA, 1948-2026, 310+ trimestri)**: senza una soglia minima di variazione ("deadband"), il regime cambiava nel 45.5% dei trimestri e la fase nel 47.6% — quasi sempre rumore statistico, non veri cambi di ciclo. Soglie scelte al 75° percentile delle variazioni trimestrali osservate (crescita 2.0pp, inflazione 1.4pp, momentum 1.4pp): riducono i cambi al 15.5%/13.7%, mantenendo rilevabili le crisi vere (2008-09, Covid 2020, inflazione 2021-22). Vedi `src/classify/regime.py` e `cycle.py` per le costanti, `wiki/macro-cycle-tracker.md` per il dettaglio del backtest.
+**Perché** (`scripts/evaluate_model.py`, con ritardi di pubblicazione veri): il modello precedente (trimestrale, z della variazione di PIL e CPI) coincideva con la lettura a posteriori nel 5-20% dei mesi ed era "Transizione" il 40-60% del tempo. Il nuovo: 90-95%, ~1 cambio di regime l'anno. Il livello del CLI rispetto a 100 viene rivisto troppo (66-88% di coerenza nelle vintage ALFRED 2018-2026), la direzione no (79-93%).
 
 ### Asset allocation
 Tabella statica in config (`src/config/asset_allocation.py`), regime → classi di asset favorite (azioni, obbligazioni, materie prime, oro, cash), basata su framework storico noto (stile All Weather). Non dinamica, non backtestata in v1.
@@ -89,7 +86,7 @@ macro-cycle-tracker/
 
 ## Areas of concern
 - **Giappone**: e-Stat richiede registrazione per application ID; dati meno standardizzati di FRED/ECB. Se il setup si rivela troppo fragile durante il build, va segnalato e si può derubricare il Giappone a v2 invece di bloccare tutto il resto.
-- **Soglie di classificazione**: calibrate su backtest storico reale USA (vedi sopra). Non ancora ricalibrate separatamente per Eurozona/UK/Giappone (usano le stesse soglie USA per ora — verificare se serve differenziare quando ci sono più anni di dati cache accumulati).
-- **Dati real-time (ALFRED, 1992-2026)**: con il PIL della prima pubblicazione il regime coincide con quello su dati rivisti solo nel 70% dei trimestri (il deadband con memoria amplifica revisioni piccole). La fase "Recessione" da PIL rileva solo il 2008, con 15 mesi di ritardo. Sahm real-time: ritardo 3-4 mesi, perde il 2020 (troppo breve).
-- **Regime -> rendimenti (USA)**: nessuna differenza significativa per azioni, Treasury, oro; il portafoglio per regime non batte All Weather o pesi uguali in rischio/rendimento.
+- **Soglie**: in unità di deviazione standard della stessa serie (crescita) o in punti % contro il 2% (inflazione), uguali per tutte le aree.
+- **Ciclo UK e Giappone**: poco preciso contro i rallentamenti OCSE (UK 51% dentro / 45% fuori, Giappone 61% / 17%).
+- **Regime -> rendimenti (USA 1960-2026, `scripts/backtest_assets.py`)**: con il nuovo regime le differenze hanno senso economico (Treasury migliori in Stagflazione t=2.8, materie prime migliori in Goldilocks t=2.4 e peggiori in Stagflazione t=-2.1), ma la tabella statica di `asset_allocation.py` le contraddice in parte: da rivedere con l'utente.
 - **Asset allocation storica**: è un mapping statico dichiarato come tale nella UI (non un consiglio di investimento personalizzato/dinamico), per restare nei limiti di "solo dati macro" richiesti dall'intent.

@@ -4,14 +4,9 @@ import os
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.classify.cycle import classify_cycle
-from src.classify.leading import leading_risk
-from src.classify.recession import recession_confirmed
-from src.classify.regime import GROWTH_INPUTS, INFLATION_INPUTS, classify_regime, pick_inputs
+from src.classify.assess import assess
 from src.data import cache, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
 logging.basicConfig(level=logging.INFO)
@@ -93,34 +88,25 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
 
 
 def update_area(area: str, indicator_fetchers: dict) -> None:
-    series_by_indicator = {}
     for indicator, fetch_fn in indicator_fetchers.items():
         try:
-            series = fetch_fn()
-            cache.write_indicator_series(area, indicator, series)
-            series_by_indicator[indicator] = series
+            cache.write_indicator_series(area, indicator, fetch_fn())
         except Exception:
-            logger.exception("%s: fetch fallito per indicatore %s, salto e continuo", area, indicator)
+            logger.exception("%s: fetch fallito per indicatore %s, tengo la serie in cache e continuo", area, indicator)
 
-    if "growth_yoy" not in series_by_indicator or "inflation_yoy" not in series_by_indicator:
-        logger.warning("%s: crescita o inflazione mancanti, salto classificazione", area)
+    # Si classifica sulla cache, non sui soli fetch riusciti: un'API giu' per un giorno non cambia il regime.
+    result = assess(area, {n: cache.read_indicator_series(area, n) for n in indicator_fetchers})
+    if result is None:
+        logger.warning("%s: crescita o inflazione mancanti anche in cache, salto classificazione", area)
         return
-
-    growth = series_by_indicator["growth_yoy"]
-    regime = classify_regime(pick_inputs(series_by_indicator, GROWTH_INPUTS), pick_inputs(series_by_indicator, INFLATION_INPUTS))
-    empty = pd.Series(dtype=float)
-    risk = leading_risk(area, series_by_indicator)
-    risk_level = risk["level"] if risk else None
-    confirmed = "recession_prob" in indicator_fetchers and recession_confirmed(
-        series_by_indicator.get("unemployment_rate", empty), series_by_indicator.get("recession_prob", empty)
-    )
-    phase = classify_cycle(growth, risk_level, confirmed, pick_inputs(series_by_indicator, GROWTH_INPUTS))
-    computed_at = datetime.datetime.now().isoformat(timespec="seconds")
+    regime, phase = result["regime"], result["phase"] or "n/d"
     last = cache.read_last_two_classifications(area)
     # Una riga solo quando regime o fase cambiano: con aggiornamenti ogni 30 minuti "cambiato dall'ultima volta" sparirebbe subito.
     if not last or (last[0]["regime"], last[0]["phase"]) != (regime, phase):
-        cache.write_classification(area, computed_at, regime, phase)
-    logger.info("%s: regime=%s phase=%s", area, regime, phase)
+        cache.write_classification(area, datetime.datetime.now().isoformat(timespec="seconds"), regime, phase)
+    if result["stale"]:
+        logger.warning("%s: dati in ritardo anomalo: %s", area, ", ".join(result["stale"]))
+    logger.info("%s: regime=%s phase=%s solidita=%s (dati a %s)", area, regime, phase, result["confidence"], f"{result['month']:%Y-%m}")
 
 
 def update_market_context(fred_key: str) -> None:

@@ -7,79 +7,76 @@ import pandas as pd
 import pytest
 
 from src.classify.regime import (
-    FLAT_BAND_ENTER,
+    GROWTH_BAND,
+    INFLATION_HIGH,
     axis_states,
-    axis_z,
     classify_regime,
-    pick_inputs,
+    growth_z,
+    probabilities,
     regime_history,
 )
 
 
-def _series(values, freq="QE"):
-    return pd.Series(values, index=pd.date_range("2024-01-01", periods=len(values), freq=freq))
+def _m(values, start="2020-01-01"):
+    return pd.Series(values, index=pd.date_range(start, periods=len(values), freq="MS"))
+
+
+WAVE = [100.0, 100.3, 100.1, 99.8, 100.0, 100.2] * 5  # CLI che oscilla senza direzione per 30 mesi
+RISING = WAVE + [100.5, 101.0, 101.5, 102.0, 102.5]
+FALLING = WAVE + [99.5, 99.0, 98.5, 98.0, 97.5]
+HIGH = [3.5] * 35  # inflazione stabile ben sopra il 2%
+LOW = [1.0] * 35
 
 
 @pytest.mark.parametrize(
-    "growth_vals,inflation_vals,expected",
+    "cli,inflation,expected",
     [
-        ([1.0, 1.0, 1.0, 2.0], [3.0, 3.0, 3.0, 1.0], "Goldilocks"),
-        ([1.0, 1.0, 1.0, 2.0], [1.0, 1.0, 1.0, 3.0], "Reflazione"),
-        ([2.0, 2.0, 2.0, 1.0], [1.0, 1.0, 1.0, 3.0], "Stagflazione"),
-        ([2.0, 2.0, 2.0, 1.0], [3.0, 3.0, 3.0, 1.0], "Deflazione"),
-        # un asse laterale: nessun quadrante netto
-        ([1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 3.0], "Transizione"),
-        ([1.0, 1.0, 1.0, 2.0], [3.0, 3.0, 3.0, 3.0], "Transizione"),
+        (RISING, LOW, "Goldilocks"),
+        (RISING, HIGH, "Reflazione"),
+        (FALLING, HIGH, "Stagflazione"),
+        (FALLING, LOW, "Deflazione"),
     ],
 )
-def test_classify_regime(growth_vals, inflation_vals, expected):
-    assert classify_regime(_series(growth_vals), _series(inflation_vals)) == expected
+def test_classify_regime(cli, inflation, expected):
+    assert classify_regime(_m(cli), _m(inflation)) == expected
 
 
-def test_classify_regime_needs_enough_data():
+def test_needs_enough_data():
     with pytest.raises(ValueError):
-        classify_regime(_series([1.0, 2.0]), _series([1.0, 2.0, 3.0, 4.0]))
+        classify_regime(_m([100.0, 101.0]), _m([2.0, 2.0]))
 
 
-def test_small_steady_rise_is_detected_on_a_quiet_series():
-    # Regressione Eurozona 2026: l'inflazione oscilla di +-0.1 per anni, poi sale da 2.0 a 3.2.
-    # Una soglia fissa (1.4) non scattava mai e teneva "giu'" da otto trimestri; la banda e' relativa alla serie.
-    inflation = _series([2.0, 2.1, 1.9, 2.0] * 5 + [2.4, 2.8, 3.2])
-    assert axis_states(axis_z(inflation)).iloc[-1] == "up"
+def test_inflation_falling_fast_from_high_level_is_not_stagflation():
+    # Europa fine 2008: livello ancora sopra il 2% ma in caduta veloce -> Deflazione, non Stagflazione.
+    inflation = _m([4.0] * 30 + [3.6, 3.0, 2.4, 2.1, 2.0])
+    assert classify_regime(_m(FALLING), inflation) == "Deflazione"
 
 
-def test_hysteresis_holds_state_between_exit_and_enter():
-    low = (FLAT_BAND_ENTER + 0.2) / 2  # sopra EXIT, sotto ENTER
-    z = pd.Series([FLAT_BAND_ENTER + 0.1, low, low, -low])
-    assert list(axis_states(z)) == ["up", "up", "up", "flat"]
+def test_one_month_spike_does_not_flip_the_axis():
+    score = pd.Series([1.0] * 6 + [-1.0] + [1.0] * 3)
+    assert set(axis_states(score, INFLATION_HIGH, -0.25)) == {"up"}  # serve la conferma di 2 mesi
+    assert axis_states(pd.Series([1.0] * 6 + [-1.0, -1.0]), INFLATION_HIGH, -0.25).iloc[-1] == "down"
 
 
-def test_missing_inputs_are_skipped():
-    s = _series([1.0, 1.5, 1.0, 2.0, 1.0, 3.0])
-    assert axis_z([pd.Series(dtype=float), s]).equals(axis_z(s))
-    assert pick_inputs({"a": s, "b": pd.Series(dtype=float)}, ("a", "b", "c")) == [s]
+def test_hysteresis_keeps_state_inside_band():
+    z = pd.Series([1.0, 1.0, 0.0, 0.0, 0.0])
+    assert list(axis_states(z, GROWTH_BAND, -GROWTH_BAND)) == ["up"] * 5
 
 
-def test_leading_series_decides_the_quarter_gdp_has_not_reported():
-    gdp = _series([1.0, 1.2, 1.0, 1.1] * 5, "QE")  # ultimo trimestre 2028Q4
-    cli = pd.Series([100.0] * 80 + [101.0, 102.0, 103.0], index=pd.date_range("2024-01-31", periods=83, freq="ME"))
-    z = axis_z([gdp, cli])
-    assert z.index[-1] > to_end(gdp)
+def test_quarterly_gdp_fallback_works_monthly():
+    gdp = pd.Series([2.0, 2.2, 1.8, 2.0] * 4 + [2.5, 3.0], index=pd.date_range("2020-01-01", periods=18, freq="QS"))
+    z = growth_z(gdp)
+    assert z.index.freqstr == "MS" and z.iloc[-1] > 0
 
 
-def to_end(s):
-    return s.index[-1]
+def test_history_has_both_axes_and_matches_classify():
+    h = regime_history(_m(RISING), _m(HIGH))
+    assert {"growth", "inflation", "regime", "inflation_level"} <= set(h.columns)
+    assert h["regime"].iloc[-1] == classify_regime(_m(RISING), _m(HIGH))
 
 
-def test_monthly_input_is_moved_to_quarters():
-    months = pd.date_range("2023-01-31", periods=24, freq="ME")
-    z = axis_z(pd.Series([float(i % 5) for i in range(24)], index=months))
-    assert len(z) == 5  # 8 trimestri meno la finestra di 3
-
-
-def test_regime_history_matches_classify_on_last_quarter():
-    g = _series([1.0, 1.0, 1.0, 2.0, 2.0, 2.0])
-    i = _series([3.0, 3.0, 3.0, 1.0, 1.0, 1.0])
-    hist = regime_history(g, i)
-    assert hist.iloc[-1] == classify_regime(g, i)
-    assert len(hist) == 3
+def test_probabilities_sum_to_one_and_are_75_percent_on_the_band():
+    p = probabilities(GROWTH_BAND, (INFLATION_HIGH + -0.25) / 2)
+    assert sum(p.values()) == pytest.approx(1.0)
+    assert p["Goldilocks"] + p["Reflazione"] == pytest.approx(0.75)
+    assert p["Reflazione"] == pytest.approx(p["Goldilocks"])  # inflazione al centro della banda: 50/50

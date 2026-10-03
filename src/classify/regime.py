@@ -2,124 +2,100 @@ import math
 
 import pandas as pd
 
-TREND_WINDOW = 3
+# Regime macro mensile = direzione della crescita x pressione dell'inflazione (riscritto il 03/10/2026).
+# Verifica in scripts/evaluate_model.py, con i ritardi di pubblicazione veri (PIL +4 mesi, CPI e CLI +1):
+# il modello precedente (trimestrale, z della variazione di PIL e CPI, stato "laterale") coincideva con
+# la lettura a posteriori solo nel 5-20% dei mesi ed era "Transizione" il 40-60% del tempo. La seconda
+# derivata del PIL non si vede in tempo reale con dati gratuiti: anche il miglior modello a momentum
+# arriva al ~60%. Questo coincide nell'88-91% dei mesi e cambia ~1 volta l'anno.
+#
+# Crescita: direzione del CLI OCSE su 3 mesi (sopra/sotto il ritmo di trend). Nelle vintage ALFRED
+# 2018-2026 la direzione del CLI resta la stessa dopo le revisioni nel 79-93% dei casi; il LIVELLO
+# rispetto a 100 no (66-88%), per questo non si usa. Senza CLI: direzione del PIL annuo.
+GROWTH_INPUT = "cli"
+GROWTH_FALLBACK = "growth_yoy"
+GROWTH_CHANGE_MONTHS = 3
+GROWTH_BAND = 0.4  # z della variazione: sopra +BAND "up", sotto -BAND "down", in mezzo resta lo stato precedente
 
-# Serie (nomi degli indicatori in cache) che alimentano i due assi; quelle mancanti si saltano.
-# Il CLI OCSE e' mensile e anticipa il PIL: da solo il PIL arriva con ~4 mesi di ritardo.
-GROWTH_INPUTS = ("growth_yoy", "cli")
+# Inflazione: livello (media totale + core) rispetto al target delle banche centrali, corretto per la
+# direzione del totale su 3 mesi. Solo livello: Europa in "Stagflazione" a fine 2008 con prezzi gia' in
+# caduta; solo direzione: rumore. Punteggio = (livello - target) + peso * variazione 3 mesi, punti %.
 INFLATION_INPUTS = ("inflation_yoy", "core_inflation_yoy")
+INFLATION_TARGET = 2.0  # Fed, BCE, BoE, BoJ (dal 2013)
+INFLATION_DIRECTION_WEIGHT = 1.0
+INFLATION_HIGH = 0.5  # punteggio sopra: inflazione alta/in salita
+INFLATION_LOW = -0.25  # punteggio sotto: inflazione sotto controllo/in calo
 
-# Ogni asse ha 3 stati (su / laterale / giù) sulla variazione rispetto alla media dei trimestri
-# precedenti, misurata in deviazioni standard della STESSA serie fino a quel momento (point-in-time):
-# la banda si adatta a ogni area (l'Eurozona si muove meno degli USA) invece di una soglia fissa.
-# Isteresi: si entra in su/giù oltre ENTER, si esce solo sotto EXIT, per non oscillare sul confine.
-# Valori convenzionali, non calibrati sul backtest (vedi scripts/backtest_regime.py).
-FLAT_BAND_ENTER = 0.3
-FLAT_BAND_EXIT = 0.1
-# Conferma su 2 periodi: cambi regime 35-44% -> 21-26% dei trimestri, ma la svolta arriva 1 trimestre dopo
-# (GFC 2008Q4 letto come Stagflazione invece di Deflazione). Si tiene 1: meglio rumore che svolte in ritardo.
-CONFIRM_PERIODS = 1
-MIN_SCALE_PERIODS = 8  # sotto questi punti la deviazione standard usa tutto il campione
-# Probabilita' che una direzione sia "up": logistica su z, P = 0.75 quando z = FLAT_BAND_ENTER.
-PROB_AT_BAND = 0.75
-Z_CLIP = 10.0  # evita l'overflow del logistico su serie quasi piatte (scala ~0)
+CONFIRM_MONTHS = 2  # un asse cambia stato solo se il nuovo regge 2 mesi: cambi di regime ~1.7 -> ~1.1 l'anno
+MIN_SCALE_MONTHS = 24  # sotto questi punti la deviazione standard usa tutto il campione
+PROB_AT_BAND = 0.75  # probabilita' di "up" quando un asse e' esattamente sulla soglia d'ingresso
 
 REGIMES = ["Goldilocks", "Reflazione", "Stagflazione", "Deflazione"]
-TRANSITION = "Transizione"  # almeno un asse laterale: nessun quadrante netto
 
 
-def to_quarterly(series: pd.Series) -> pd.Series:
-    """Ultimo valore di ogni trimestre. La finestra e la scala sono in trimestri: una serie
-    mensile va portata a trimestri prima. Il trimestre in corso usa l'ultimo mese disponibile."""
-    return series.resample("QE").last().dropna()
+def monthly(series: pd.Series) -> pd.Series:
+    """Un valore per mese (inizio mese). Un dato trimestrale resta valido finche' non arriva il successivo."""
+    return series.resample("MS").last().ffill()
 
 
-def pick_inputs(series_by_name: dict, names: tuple) -> list:
-    return [series_by_name[n] for n in names if n in series_by_name and not series_by_name[n].empty]
+def growth_z(series: pd.Series) -> pd.Series:
+    """Variazione a 3 mesi in deviazioni standard della stessa serie fino a quel momento (point-in-time)."""
+    m = monthly(series)
+    d = (m - m.shift(GROWTH_CHANGE_MONTHS)).dropna()
+    scale = d.expanding(min_periods=MIN_SCALE_MONTHS).std().fillna(d.std()).fillna(0)
+    return d / scale.clip(lower=1e-9)
 
 
-def _as_list(inputs) -> list:
-    return [inputs] if isinstance(inputs, pd.Series) else list(inputs)
+def inflation_level(headline: pd.Series, core: pd.Series | None = None) -> pd.Series:
+    parts = [monthly(headline)] + ([monthly(core)] if core is not None and not core.empty else [])
+    return pd.concat(parts, axis=1).mean(axis=1)
 
 
-def _z_series(series: pd.Series, window: int, resample: bool) -> pd.Series:
-    if series.empty:
-        return series
-    s = to_quarterly(series) if resample else series
-    delta = (s - s.rolling(window).mean().shift(1)).dropna()
-    if delta.empty:
-        return delta
-    scale = delta.expanding(min_periods=MIN_SCALE_PERIODS).std().fillna(delta.std()).fillna(0)
-    return delta / scale.clip(lower=1e-9)  # serie piatta: delta 0 -> z 0; scala nulla e delta != 0 -> z enorme
+def inflation_score(headline: pd.Series, core: pd.Series | None = None) -> pd.Series:
+    h = monthly(headline)
+    return ((inflation_level(headline, core) - INFLATION_TARGET) + INFLATION_DIRECTION_WEIGHT * (h - h.shift(GROWTH_CHANGE_MONTHS))).dropna()
 
 
-def _standardize(z: pd.Series) -> pd.Series:
-    scale = z.expanding(min_periods=MIN_SCALE_PERIODS).std().fillna(z.std()).fillna(0)
-    return z / scale.clip(lower=1e-9)
-
-
-def axis_z(inputs, window: int = TREND_WINDOW, resample: bool = True) -> pd.Series:
-    """z di un asse: media degli z delle serie disponibili in ogni periodo (se ne manca una, conta l'altra)."""
-    zs = [z for z in (_z_series(s, window, resample) for s in _as_list(inputs)) if not z.empty]
-    if not zs:
-        raise ValueError(f"servono almeno {window + 1} punti per almeno una serie")
-    # la media di z poco correlati ha varianza < 1: senza ri-standardizzare la banda laterale si allarga
-    return _standardize(pd.concat(zs, axis=1).mean(axis=1)) if len(zs) > 1 else zs[0]
-
-
-def _raw_state(v: float, prev: str) -> str:
-    if v > FLAT_BAND_ENTER or (prev == "up" and v > FLAT_BAND_EXIT):
-        return "up"
-    if v < -FLAT_BAND_ENTER or (prev == "down" and v < -FLAT_BAND_EXIT):
-        return "down"
-    return "flat"
-
-
-def axis_states(z: pd.Series) -> pd.Series:
-    """Stato dell'asse con isteresi di soglia e conferma: cambia solo se il nuovo stato regge CONFIRM_PERIODS periodi."""
-    states, current, pending, count = [], "flat", None, 0
-    for v in z:
-        raw = _raw_state(v, current)
+def axis_states(score: pd.Series, high: float, low: float, confirm: int = CONFIRM_MONTHS) -> pd.Series:
+    """'up' sopra high, 'down' sotto low, in mezzo resta lo stato precedente; un cambio vale dopo `confirm` mesi."""
+    states, current, pending, count = [], None, None, 0
+    for v in score:
+        if current is None:
+            current = "up" if v >= (high + low) / 2 else "down"
+        raw = "up" if v > high else "down" if v < low else current
         if raw == current:
             pending, count = None, 0
-        elif raw == pending:
-            count += 1
         else:
-            pending, count = raw, 1
-        if pending is not None and count >= CONFIRM_PERIODS:
-            current, pending, count = pending, None, 0
+            count = count + 1 if raw == pending else 1
+            pending = raw
+            if count >= confirm:
+                current, pending, count = raw, None, 0
         states.append(current)
-    return pd.Series(states, index=z.index)
+    return pd.Series(states, index=score.index, dtype=object)
 
 
 def regime_name(growth_state: str, inflation_state: str) -> str:
-    if "flat" in (growth_state, inflation_state):
-        return TRANSITION
     if growth_state == "up":
         return "Reflazione" if inflation_state == "up" else "Goldilocks"
     return "Stagflazione" if inflation_state == "up" else "Deflazione"
 
 
-def regime_history(growth, inflation, quarters: int = 20) -> pd.Series:
-    """Regime per trimestre (ultimi `quarters`). growth/inflation: una serie o una lista di serie.
-    Gli assi hanno date diverse (il PIL esce dopo il CPI): lo stato piu' vecchio resta valido finche' non arriva il nuovo."""
-    df = pd.DataFrame({"g": axis_states(axis_z(growth)), "i": axis_states(axis_z(inflation))}).ffill().dropna()
-    return pd.Series([regime_name(g, i) for g, i in zip(df["g"], df["i"])], index=df.index).tail(quarters)
+def _up_probability(x: float) -> float:
+    """x = distanza dalla soglia in unita' di banda: x = 1 -> PROB_AT_BAND."""
+    k = math.log(PROB_AT_BAND / (1 - PROB_AT_BAND))
+    return 1 / (1 + math.exp(-k * max(-10.0, min(10.0, x))))
 
 
-def classify_regime(growth, inflation) -> str:
-    return regime_history(growth, inflation, quarters=1).iloc[-1]
+def axis_positions(g_z: float, i_score: float) -> tuple[float, float]:
+    """(crescita, inflazione) in unita' di banda: +-1 = soglia d'ingresso in su/giu'."""
+    mid, half = (INFLATION_HIGH + INFLATION_LOW) / 2, (INFLATION_HIGH - INFLATION_LOW) / 2
+    return g_z / GROWTH_BAND, (i_score - mid) / half
 
 
-def direction_position(growth, inflation) -> tuple[float, float]:
-    """(inflazione, crescita) come z dell'ultimo periodo in unita' di banda: +-1 = soglia di ingresso in su/giu'."""
-    return axis_z(inflation).iloc[-1] / FLAT_BAND_ENTER, axis_z(growth).iloc[-1] / FLAT_BAND_ENTER
-
-
-def probabilities_from_z(growth_z: float, inflation_z: float) -> dict:
-    """Probabilita' dei 4 regimi, assumendo crescita e inflazione indipendenti."""
-    k = math.log(PROB_AT_BAND / (1 - PROB_AT_BAND)) / FLAT_BAND_ENTER
-    pg, pi = (1 / (1 + math.exp(-k * max(-Z_CLIP, min(Z_CLIP, z)))) for z in (growth_z, inflation_z))
+def probabilities(g_z: float, i_score: float) -> dict:
+    """Probabilita' dei 4 regimi, assumendo i due assi indipendenti. Stima, non frequenza storica."""
+    xg, xi = axis_positions(g_z, i_score)
+    pg, pi = _up_probability(xg), _up_probability(xi)
     return {
         "Goldilocks": pg * (1 - pi),
         "Reflazione": pg * pi,
@@ -128,5 +104,22 @@ def probabilities_from_z(growth_z: float, inflation_z: float) -> dict:
     }
 
 
-def regime_probabilities(growth, inflation) -> dict:
-    return probabilities_from_z(axis_z(growth).iloc[-1], axis_z(inflation).iloc[-1])
+def regime_history(growth: pd.Series, headline: pd.Series, core: pd.Series | None = None) -> pd.DataFrame:
+    """Regime per mese con i due assi. growth: CLI (o PIL annuo); headline/core: inflazione annua.
+    Gli assi hanno date diverse: l'ultimo stato noto di un asse resta valido finche' non arriva il nuovo."""
+    gz, isc = growth_z(growth), inflation_score(headline, core)
+    if gz.empty or isc.empty:
+        raise ValueError(f"servono almeno {GROWTH_CHANGE_MONTHS + 1} mesi di crescita e inflazione")
+    df = pd.DataFrame({
+        "growth_z": gz,
+        "growth": axis_states(gz, GROWTH_BAND, -GROWTH_BAND),
+        "inflation_score": isc,
+        "inflation": axis_states(isc, INFLATION_HIGH, INFLATION_LOW),
+        "inflation_level": inflation_level(headline, core),
+    }).ffill().dropna(subset=["growth", "inflation"])
+    df["regime"] = [regime_name(g, i) for g, i in zip(df["growth"], df["inflation"])]
+    return df
+
+
+def classify_regime(growth: pd.Series, headline: pd.Series, core: pd.Series | None = None) -> str:
+    return regime_history(growth, headline, core)["regime"].iloc[-1]

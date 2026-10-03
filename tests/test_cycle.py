@@ -6,45 +6,54 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 import pytest
 
-from src.classify.cycle import classify_cycle
-
-QUIET = [2.0, 2.2, 1.8, 2.0] * 10  # 10 anni di PIL annuo intorno a 2%
+from src.classify.cycle import LEVEL_MIN_MONTHS, phase_history, phase_name
 
 
-def _q(values):
-    return pd.Series(values, index=pd.date_range("2010-03-31", periods=len(values), freq="QE"))
+def _m(values):
+    return pd.Series(values, index=pd.date_range("2015-01-01", periods=len(values), freq="MS"))
+
+
+N = LEVEL_MIN_MONTHS + 12
 
 
 @pytest.mark.parametrize(
-    "tail,expected",
+    "growth,above,recession,expected",
     [
-        ([2.6, 3.4], "Espansione"),  # sopra trend e in accelerazione
-        ([1.6, 0.9], "Rallentamento"),  # ancora positivo ma in calo
-        ([0.5, -0.5, -1.5], "Recessione"),  # negativo e in calo
-        ([1.0, 0.5, 1.0, 1.8], "Ripresa"),  # sotto trend (3%) e in risalita
+        ("up", True, False, "Espansione"),
+        ("down", True, False, "Rallentamento"),
+        ("down", False, False, "Rallentamento"),  # sotto potenziale ma senza conferma dura: niente Recessione
+        ("up", False, False, "Ripresa"),
+        ("down", False, True, "Recessione"),
+        ("up", False, True, "Ripresa"),  # CLI gia' in risalita durante la recessione: si esce dal fondo
     ],
 )
-def test_classify_cycle(tail, expected):
-    base = QUIET if expected != "Ripresa" else [3.0, 3.2, 2.8, 3.0] * 10
-    assert classify_cycle(_q(base + tail)) == expected
+def test_phase_name(growth, above, recession, expected):
+    assert phase_name(growth, above, recession) == expected
 
 
-def test_classify_cycle_needs_enough_data():
+def test_gdp_below_trend_is_recovery_even_with_low_unemployment():
+    # Europa 2026: disoccupazione ai minimi storici ma PIL sotto il trend -> non e' Espansione
+    states = _m(["up"] * N)
+    low_u = _m([8.0] * (N - 6) + [6.0] * 6)
+    assert phase_history(states, low_u, _m([1.5] * (N - 6) + [1.0] * 6)).iloc[-1] == "Ripresa"
+    assert phase_history(states, low_u, _m([1.5] * (N - 6) + [2.0] * 6)).iloc[-1] == "Espansione"
+
+
+def test_negative_gdp_or_sahm_confirms_recession():
+    states = _m(["down"] * N)
+    u = _m([5.0] * N)
+    gdp_neg = pd.Series([1.0] * (N // 3 - 1) + [-0.5], index=pd.date_range("2015-01-01", periods=N // 3, freq="QS"))
+    assert phase_history(states, u, gdp_neg).iloc[-1] == "Recessione"
+    assert phase_history(states, u, recession=_m([False] * (N - 1) + [True])).iloc[-1] == "Recessione"
+    assert phase_history(states, u).iloc[-1] == "Rallentamento"
+
+
+def test_rising_unemployment_is_fallback_without_gdp():
+    states = _m(["up"] * N)
+    assert phase_history(states, _m([5.0] * (N - 6) + [4.0] * 6)).iloc[-1] == "Espansione"
+    assert phase_history(states, _m([5.0] * (N - 6) + [6.0] * 6)).iloc[-1] == "Ripresa"
+
+
+def test_needs_level_data():
     with pytest.raises(ValueError):
-        classify_cycle(_q([1.0, 2.0]))
-
-
-def test_small_steady_rise_is_detected_on_a_quiet_series():
-    # Regressione Eurozona: la soglia fissa (1.4) non scattava mai e lasciava il momentum "in calo" per anni.
-    assert classify_cycle(_q(QUIET + [2.4, 2.8, 3.2])) == "Espansione"
-
-
-def test_flat_growth_below_trend_is_slowdown_not_expansion():
-    assert classify_cycle(_q([3.0, 3.2, 2.8, 3.0] * 10 + [1.0] * 4)) == "Rallentamento"
-
-
-def test_leading_series_can_lift_the_phase():
-    growth = _q([3.0, 3.2, 2.8, 3.0] * 10 + [1.0] * 4)  # PIL fermo sotto trend
-    cli = pd.Series([100.0] * 126 + [100.5, 101.0, 101.5, 102.0, 102.5, 103.0],
-                    index=pd.date_range("2010-01-31", periods=132, freq="ME"))
-    assert classify_cycle(growth, momentum_inputs=[growth, cli]) == "Ripresa"
+        phase_history(_m(["up"] * 5))

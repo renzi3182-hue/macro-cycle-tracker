@@ -5,8 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 
-from src.classify.cycle import classify_cycle
-from src.classify.recession import recession_confirmed, sahm_gap
+from src.classify.recession import recession_confirmed, recession_flags, sahm_gap
 
 
 def _unrate(values):
@@ -34,7 +33,8 @@ def test_confirmation_rules():
     assert not recession_confirmed(pd.Series(dtype=float), _prob(90.0))  # dati mancanti = spento
 
 
-def test_confirmed_recession_overrides_gdp_phase():
-    up = pd.Series([2.0, 2.2, 1.8, 2.0] * 10 + [2.6, 3.4], index=pd.date_range("2010-03-31", periods=42, freq="QE"))
-    assert classify_cycle(up, None, True) == "Recessione"
-    assert classify_cycle(up, None, False) == "Espansione"
+def test_flags_without_probability_need_two_months_of_sahm():
+    assert recession_flags(_unrate([3.5] * 13 + [3.6, 4.0, 4.4, 4.6])).iloc[-1]
+    assert not recession_flags(_unrate([3.5] * 14 + [4.0, 4.6])).iloc[-1]  # un solo mese sopra soglia
+    assert not recession_flags(FLAT).iloc[-1]
+    assert recession_flags(pd.Series(dtype=float)).empty

@@ -1,35 +1,33 @@
 # Mapping statico regime -> classi di asset storicamente favorite (stile All Weather).
 # Non e' un consiglio di investimento personalizzato.
 #
-# Nomi dei regimi rinominati il 30/09/2026 (Goldilocks = ex Reflazione, Reflazione = ex Espansione, come
-# Hedgeye/mercato); il backtest sotto e' stato fatto con la logica e i nomi vecchi.
-# Backtest USA (scripts/backtest_assets.py, 29/09/2026, regime point-in-time, mese successivo):
-# nessuna differenza di rendimento fra regimi e' statisticamente significativa per azioni, Treasury
-# e oro (|t| < 2); solo il cash (livello dei tassi) e, al limite, le materie prime (meglio in
-# Deflazione, t = 2.0, contrario alla tabella). Portafoglio per regime 2000-2026 (profilo Medio):
-# 5.2%/anno, vol 9.9%, drawdown -26% con PIL rivisto; 6.0%, 9.3%, -19% con PIL real-time ALFRED.
-# All Weather statico: 4.9%, 6.4%, -14%; pesi uguali: 5.5%, 7.7%, -19%. Rischio/rendimento simile
-# o peggiore dei portafogli statici: la tabella e' un'opinione ragionata, non un vantaggio dimostrato.
+# Tabella riallineata il 03/10/2026 al backtest del regime attuale (scripts/backtest_assets.py, USA
+# 1960-2026, regime point-in-time, rendimento del mese successivo). Differenze significative (|t| > 2):
+# - Goldilocks: materie prime migliori (19%/anno, t = 2.4), Treasury peggiori (t = -2.0);
+# - Stagflazione: Treasury migliori (9.9%/anno, t = 2.8), materie prime peggiori (-4.5%/anno, t = -2.1).
+# Il resto (azioni, oro, Deflazione) non e' significativo: segue i rendimenti medi (oro primo in Reflazione
+# e Deflazione) e la teoria. Il cash rende di piu' quando l'inflazione e' alta solo per il livello dei tassi.
+# Portafoglio per regime 2000-2026 (profilo Medio, tabella precedente): 4.4%/anno contro 4.8% dell'All
+# Weather statico: la tabella e' un'opinione guidata dai dati, non un vantaggio dimostrato.
 #
 # Fonti (ricerca 28/09/2026): Bridgewater All Weather, Merrill Lynch Investment
 # Clock (Greetham, 2004), letteratura su correlazione azioni-obbligazioni.
 #
 # Nota 1: la correlazione azioni-obbligazioni NON e' sempre negativa - diventa
 # positiva quando l'inflazione sale sopra ~2% (es. 2022, corr. arrivata a +0.52).
-# Le obbligazioni nominali perdono quindi la funzione di copertura proprio in
-# Stagflazione. Per questo qui si usano obbligazioni indicizzate all'inflazione
-# e cash in quello scenario, non obbligazioni nominali a lunga durata.
+# Le obbligazioni nominali perdono quindi la funzione di copertura quando l'inflazione
+# accelera (2022). In Stagflazione si usano scadenze medie (rischio tasso minore)
+# affiancate da indicizzate e cash, non obbligazioni nominali a lunga durata.
 # Nota 2: l'oro ha correlazione storica diretta con l'inflazione debole (~0.07),
 # ma resta utile come diversificatore (bassa corr. con azionario/obbligazionario)
 # e hedge in crisi/geopolitica (2008, 2020) - per questo compare in Stagflazione.
 
 ASSET_ALLOCATION = {
-    "Goldilocks": ["Azionario growth", "Obbligazioni lunga durata", "Credito corporate"],
-    "Reflazione": ["Azionario", "Materie prime", "Obbligazioni indicizzate all'inflazione", "Immobiliare"],
-    "Stagflazione": ["Oro", "Materie prime", "Obbligazioni indicizzate all'inflazione", "Cash", "Azionario value/difensivo"],
-    "Deflazione": ["Obbligazioni governative lunga durata", "Cash", "Azionario difensivo"],
-    # Almeno un asse laterale: nessuna scommessa direzionale, mix diversificato stile All Weather.
-    "Transizione": ["Azionario", "Obbligazioni governative lunga durata", "Oro", "Materie prime", "Cash"],
+    "Goldilocks": ["Azionario growth", "Materie prime", "Credito corporate"],
+    "Reflazione": ["Azionario", "Oro", "Materie prime", "Obbligazioni indicizzate all'inflazione"],
+    "Stagflazione": ["Obbligazioni governative medio termine", "Obbligazioni indicizzate all'inflazione", "Oro", "Cash",
+                     "Azionario value/difensivo"],
+    "Deflazione": ["Azionario difensivo", "Oro", "Obbligazioni governative lunga durata"],
 }
 
 # Quota target sull'azionario per profilo di rischio, il resto va agli asset

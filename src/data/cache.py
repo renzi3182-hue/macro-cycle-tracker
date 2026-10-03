@@ -39,10 +39,29 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+MIN_KEEP_RATIO = 0.5  # una serie nuova con meno della meta' dei punti in cache e' sospetta (API cambiata)
+MAX_LAST_DATE_REGRESSION_DAYS = 365
+GUARD_MIN_POINTS = 24  # sotto questi punti (es. date future del calendario) la serie si sostituisce senza controlli
+
+
 def write_indicator_series(area: str, indicator: str, series: pd.Series, db_path: Path = DB_PATH) -> None:
+    """Sostituisce la serie. Rifiuta (ValueError) serie vuote o molto piu' corte/vecchie di quella in cache:
+    una fonte che risponde male non deve cancellare lo storico, che e' anche l'unica copia dei dati."""
+    series = series[pd.notna(series)]
+    if series.empty:
+        raise ValueError(f"{area}/{indicator}: serie vuota, cache non toccata")
     rows = [(area, indicator, str(date.date() if hasattr(date, "date") else date), float(value))
             for date, value in series.items()]
     with get_connection(db_path) as conn:
+        old_n, old_last = conn.execute(
+            "SELECT COUNT(*), MAX(date) FROM indicators WHERE area = ? AND indicator = ?", (area, indicator)
+        ).fetchone()
+        new_last = max(r[2] for r in rows)
+        guarded = old_n >= GUARD_MIN_POINTS
+        if guarded and len(rows) < old_n * MIN_KEEP_RATIO:
+            raise ValueError(f"{area}/{indicator}: {len(rows)} punti contro {old_n} in cache, cache non toccata")
+        if guarded and (pd.Timestamp(old_last) - pd.Timestamp(new_last)).days > MAX_LAST_DATE_REGRESSION_DAYS:
+            raise ValueError(f"{area}/{indicator}: ultimo dato {new_last} contro {old_last} in cache, cache non toccata")
         # Sostituisce la serie intera: se la fonte cambia (dataset o frequenza) non restano righe vecchie mescolate.
         conn.execute("DELETE FROM indicators WHERE area = ? AND indicator = ?", (area, indicator))
         conn.executemany(

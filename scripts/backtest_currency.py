@@ -14,16 +14,18 @@ import numpy as np
 import pandas as pd
 
 from src.classify.currency import (
-    BUY_ABOVE, CURRENCIES, PAIRS, SELL_BELOW, cot_component, momentum_returns, pair_view, strength_score, vix_component,
+    BUY_ABOVE, CURRENCIES, MOMENTUM_DAYS, PAIRS, SELL_BELOW, cot_component, momentum_returns, pair_view, strength_score, vix_component,
 )
 from src.data import cache
+from src.data.fetch_cot import WEEKS
 
 CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone"}
 CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}
 LAG_DAYS = {"growth": 120, "inflation": 45, "rate": 30}
 MIN_COT_WEEKS = 52
 MIN_VIX_OBS = 500
-HORIZONS = [1, 3, 6, 12]  # mesi; rebalance ogni h mesi = periodi non sovrapposti
+HORIZONS = [1, 3, 6, 12]
+COT_CALIBRATION_START = "2021-10-01"  # mesi; rebalance ogni h mesi = periodi non sovrapposti
 
 
 def load(area, name):
@@ -50,9 +52,11 @@ def main():
 
     rows = []
     for i, t in enumerate(month_ends):
-        if len(lvl[lvl.index <= t]) <= 64:
+        if len(lvl[lvl.index <= t]) <= MOMENTUM_DAYS + 1:
             continue
-        mom = momentum_returns(*(fx[n][fx[n].index <= t] for n in ("eurusd", "gbpusd", "usdjpy")))
+        past = [fx[n][fx[n].index <= t] for n in ("eurusd", "gbpusd", "usdjpy")]
+        mom = momentum_returns(*past)  # 12 mesi (MOMENTUM_DAYS)
+        mom3 = momentum_returns(*past, days=63)
         vp = pct_expanding(vix, t) if len(vix[vix.index <= t]) else (None, 0)
         vix_pct = vp[0] if vp[1] >= MIN_VIX_OBS else None
         comp = {}
@@ -60,29 +64,23 @@ def main():
             d = data[c]
             rate, infl = asof(d["rate"], t, LAG_DAYS["rate"]), asof(d["infl"], t, LAG_DAYS["inflation"])
             real = None if rate is None or infl is None else rate - infl
-            real_d = {}
-            for months in (6, 12):  # variazione del tasso reale vs mesi fa (point-in-time con gli stessi lag)
-                tp = t - pd.DateOffset(months=months)
-                r0, i0 = asof(d["rate"], tp, LAG_DAYS["rate"]), asof(d["infl"], tp, LAG_DAYS["inflation"])
-                real_d[months] = None if real is None or r0 is None or i0 is None else real - (r0 - i0)
             cot_pct = None
             if len(d["cot"][d["cot"].index <= t]) >= MIN_COT_WEEKS:
-                cot_pct = pct_expanding(d["cot"], t)[0]
-            comp[c] = dict(real=real, d6=real_d[6], d12=real_d[12], growth=asof(d["growth"], t, LAG_DAYS["growth"]), mom=mom[c],
+                cot_pct = pct_expanding(d["cot"][d["cot"].index <= t].tail(WEEKS), t)[0]  # stessa finestra 5 anni dell'app
+            # momentum 3m per 2: stessa scala MOMENTUM_RANGE (+-12%) del 12 mesi
+            comp[c] = dict(real=real, growth=asof(d["growth"], t, LAG_DAYS["growth"]), mom=mom[c], mom3=mom3[c] * 2,
                            cot=cot_component(cot_pct), vix=vix_component(c, vix_pct))
         variants = {
-            "completo": lambda x, c: strength_score(x["real"], x["growth"], x["mom"], x["cot"], x["vix"]),
-            "senza COT/VIX": lambda x, c: strength_score(x["real"], x["growth"], x["mom"]),
-            "solo tasso reale": lambda x, c: strength_score(x["real"], None, None),
-            "solo var tasso reale 6m": lambda x, c: strength_score(x["d6"], None, None),
-            "solo var tasso reale 12m": lambda x, c: strength_score(x["d12"], None, None),
-            "solo crescita": lambda x, c: strength_score(None, x["growth"], None),
-            "solo momentum": lambda x, c: strength_score(None, None, x["mom"]),
-            "solo COT": lambda x, c: strength_score(None, None, None, cot=x["cot"]),
-            "solo VIX": lambda x, c: strength_score(None, None, None, vix=x["vix"]),
+            "IN USO (pesi currency.py)": lambda x: strength_score(x["real"], x["growth"], x["mom"], x["cot"], x["vix"]),
+            "PRIMA (COT 25%, momentum 3m)": lambda x: strength_score(x["real"], x["growth"], x["mom3"], x["cot"], x["vix"], cot_weight=0.25),
+            "solo crescita": lambda x: strength_score(None, x["growth"], None),
+            "solo momentum 3m": lambda x: strength_score(None, None, x["mom3"]),
+            "solo momentum 12m": lambda x: strength_score(None, None, x["mom"]),
+            "solo COT contrarian": lambda x: strength_score(None, None, None, cot=x["cot"], cot_weight=0.25),
+            "solo VIX": lambda x: strength_score(None, None, None, vix=x["vix"]),
         }
         for vname, fn in variants.items():
-            sc = {c: fn(comp[c], c)["score"] for c in CURRENCIES}
+            sc = {c: fn(comp[c])["score"] for c in CURRENCIES}
             for base, quote in PAIRS:
                 if sc[base] is None or sc[quote] is None:
                     continue
@@ -106,17 +104,16 @@ def main():
 
     def report(d, title):
         print(f"\n=== {title}: {d.t.min().date()} -> {d.t.max().date()} ===")
-        print(d.groupby("variant").apply(stats, include_groups=False).round(3).to_string())
+        print(d.groupby("variant", sort=False)[["t", "score", "fwd"]].apply(stats).round(3).to_string())
 
     for h in HORIZONS:
         report(df[df.h == h], f"orizzonte {h} mesi, periodi non sovrapposti")
-    print()
-    print("Per coppia, orizzonte 3 e 12 mesi:")
-    for h in (3, 12):
-        for v in ("solo tasso reale", "solo var tasso reale 6m", "solo var tasso reale 12m"):
-            print()
-            print(f"[{v}, {h}m]")
-            print(df[(df.h == h) & (df.variant == v)].groupby("pair").apply(stats, include_groups=False).round(3).to_string())
+    # Out-of-sample: i pesi originali sono stati scelti quando la cache COT copriva solo ott 2021 -> oggi.
+    # Il periodo prima e' fuori campione per il COT; le due meta' dicono se un segnale e' stabile nel tempo.
+    for h in (3, 6, 12):
+        d = df[df.h == h]
+        report(d[d.t < COT_CALIBRATION_START], f"FUORI CAMPIONE (prima di {COT_CALIBRATION_START}), orizzonte {h} mesi")
+        report(d[d.t >= COT_CALIBRATION_START], f"NEL CAMPIONE di calibrazione originale, orizzonte {h} mesi")
 
 
 if __name__ == "__main__":
