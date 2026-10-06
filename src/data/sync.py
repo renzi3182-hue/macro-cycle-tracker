@@ -13,6 +13,9 @@ import requests
 
 DATA_URL = "https://github.com/renzi3182-hue/macro-cycle-tracker/releases/download/data-latest/cache.db"
 DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "cache.db"
+# Il workflow scrive updated_at e poi carica il file: Last-Modified arriva qualche secondo/minuto dopo.
+# Senza margine il DB appena scaricato sembrerebbe sempre piu' vecchio e si riscaricherebbe a ogni avvio.
+UPLOAD_SLACK_SECONDS = 15 * 60
 
 
 def local_updated_at(db_path: Path) -> float:
@@ -36,7 +39,7 @@ def sync_cache(url: str = DATA_URL, db_path: Path = DB_PATH) -> bool:
         if head.status_code != 200 or "Last-Modified" not in head.headers:
             return False
         remote = parsedate_to_datetime(head.headers["Last-Modified"]).timestamp()
-        if db_path.exists() and local_updated_at(db_path) >= remote:
+        if db_path.exists() and local_updated_at(db_path) + UPLOAD_SLACK_SECONDS >= remote:
             return False
         resp = requests.get(url, timeout=120)
         resp.raise_for_status()

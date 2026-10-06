@@ -46,3 +46,12 @@ def test_uses_db_timestamp_not_file_date(tmp_path, requests_mock):
     requests_mock.head(URL, headers={"Last-Modified": NEWER})
     requests_mock.get(URL, content=b"new")
     assert sync_cache(URL, db) is True
+
+
+def test_skips_download_of_the_same_upload(tmp_path, requests_mock):
+    # Last-Modified del file caricato pochi minuti dopo l'updated_at scritto nel DB: e' lo stesso dato
+    from src.data.cache import write_meta
+    db = tmp_path / "cache.db"
+    write_meta("updated_at", "2026-10-01T09:57:00+00:00", db)
+    requests_mock.head(URL, headers={"Last-Modified": NEWER})
+    assert sync_cache(URL, db) is False

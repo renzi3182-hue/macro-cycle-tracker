@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from src.classify import score
 from src.classify.assess import assess
 from src.data import cache, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
@@ -155,6 +156,15 @@ def update_market_context(fred_key: str) -> None:
             logger.exception("calendario %s: fetch fallito, salto e continuo", name)
 
 
+def update_asset_prices() -> None:
+    """Chiusure mensili rettificate degli ETF del punteggio asset (src/classify/score.py). Un ticker che fallisce non blocca gli altri."""
+    for ticker in score.UNIVERSE:
+        try:
+            cache.write_indicator_series(score.ASSET_AREA, ticker, fetch_market.fetch_yahoo(ticker, "max", "1mo", adjusted=True))
+        except Exception:
+            logger.exception("asset %s: fetch fallito, salto e continuo", ticker)
+
+
 def main() -> None:
     _load_dotenv()
     fred_key = os.environ.get("FRED_API_KEY", "")
@@ -165,6 +175,7 @@ def main() -> None:
         except Exception:
             logger.exception("update fallito per area %s, salto e continuo", area)
     update_market_context(fred_key)
+    update_asset_prices()
     cache.write_meta("updated_at", datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"))
 
 

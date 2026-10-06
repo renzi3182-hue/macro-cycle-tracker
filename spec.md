@@ -15,6 +15,7 @@ USA, Eurozona (aggregato + Italia), UK, Giappone.
 ### v2 — Sentiment e Risk On/Off (da modello Quantaste, fonte: libro "Investire nel breve e lungo termine" di Marco Casario)
 6. **Smart Quant Sentiment**: score 0-100 (Sell/Hold/Buy) su sentiment di mercato quantitativo.
 7. **Risk On/Off**: score 0-100 (propensione al rischio: Ext. Risk Off → Neutral → Ext. Risk On), con split suggerito Risk assets/Difensivo/Cash.
+   **Implementato 06/10/2026** (`src/classify/risk.py`, Panoramica): VIX, spread Baa-10Y e quota di ETF sopra la media a 10 mesi, a pesi uguali. Verificato (`scripts/evaluate_risk.py`): anticipa la volatilità, non il rendimento, quindi niente split suggerito Risk assets/Difensivo/Cash.
 
 Metodologia esatta (indicatori di input, pesi, soglie) da definire dopo aver ricevuto dal libro i capitoli su sentiment quant e risk on/off — non a tavolino. Finché non definita, questi due punti restano requisiti aperti, non implementati.
 
@@ -22,6 +23,7 @@ Metodologia esatta (indicatori di input, pesi, soglie) da definire dopo aver ric
 
 ### Idea aperta v3 — rotazione settoriale per fase ciclo
 Fidelity ("Business Cycle Approach to Equity Sector Investing") mappa 4 fasi cicliche a settori azionari favoriti (early-cycle: consumer discretionary/industrials/tech; late-cycle: difensivi come health care/consumer staples/utilities). Ricerca solo parziale (mid-cycle e recessione non ancora verificati con fonte primaria) — non implementato, da approfondire se si vuole granularità settoriale oltre le 4 classi di asset attuali.
+**06/10/2026**: aggiunta la rotazione settori USA (RRG mensile, `src/classify/rrg.py`, pagina Classifica) come mappa descrittiva: verificata con `scripts/evaluate_rrg.py`, il quadrante non prevede l'extra-rendimento. Mappa fase → settori Fidelity ancora non implementata.
 
 ### Aggiornamento dati
 Automatico, schedulato una volta al giorno (i dati macro escono comunque mensile/trimestrale, giornaliero è più che sufficiente). Windows Task Scheduler lancia lo script di update; la dashboard legge sempre dalla cache locale, mai dalle API in diretta.

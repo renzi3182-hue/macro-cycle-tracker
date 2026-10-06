@@ -1,4 +1,6 @@
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pandas as pd
@@ -32,11 +34,17 @@ CREATE TABLE IF NOT EXISTS classifications (
 """
 
 
-def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
+@contextmanager
+def get_connection(db_path: Path = DB_PATH) -> Iterator[sqlite3.Connection]:
+    """Commit alla fine e chiusura sempre: su Windows una connessione rimasta aperta blocca la sostituzione del file (sync)."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
-    conn.executescript(_SCHEMA)
-    return conn
+    try:
+        conn.executescript(_SCHEMA)
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 MIN_KEEP_RATIO = 0.5  # una serie nuova con meno della meta' dei punti in cache e' sospetta (API cambiata)

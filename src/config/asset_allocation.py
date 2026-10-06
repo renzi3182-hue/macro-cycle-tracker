@@ -78,3 +78,26 @@ ALL_WEATHER_WEIGHTS = {
     "Oro": 7.5,
     "Materie prime": 7.5,
 }
+
+
+# Filtro di tendenza (scripts/backtest_assets.py, 06/10/2026): un asset sotto la sua media a 10 mesi va in cash.
+# 2000-2026 su 4 portafogli: drawdown massimo -55/75%, rendimento -0,1/0,9 punti l'anno. Riduce il rischio, non
+# aggiunge rendimento. ETF di riferimento fra quelli del punteggio asset (src/classify/score.py); tutto
+# l'azionario usa SPY come nel backtest. Senza ETF (credito, cash) il peso resta com'e'.
+TREND_PROXY = {
+    "Azionario": "SPY", "Azionario growth": "SPY", "Azionario difensivo": "SPY", "Azionario value/difensivo": "SPY",
+    "Obbligazioni governative lunga durata": "TLT", "Obbligazioni governative medio termine": "IEF",
+    "Obbligazioni medio termine": "IEF", "Obbligazioni indicizzate all'inflazione": "TIP",
+    "Oro": "GLD", "Materie prime": "DBC",
+}
+CASH = "Cash"
+
+
+def apply_trend(weights: dict, above: dict[str, bool]) -> dict:
+    """Sposta in cash il peso degli asset il cui ETF e' sotto la media (above[ticker] False). Ticker senza dato: invariato."""
+    out = {}
+    for asset, w in weights.items():
+        keep = above.get(TREND_PROXY.get(asset), True)
+        key = asset if keep else CASH
+        out[key] = out.get(key, 0.0) + w
+    return out

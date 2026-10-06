@@ -6,11 +6,19 @@ Per ogni mese t si prende il regime USA calcolato con i soli dati pubblicati ent
 Asset (serie gratuite, limiti dichiarati):
 - Azionario: S&P 500 prezzo (Yahoo ^GSPC, mensile dal 1985), SENZA dividendi (~2%/anno in meno, uguale in ogni regime)
 - Treasury 10Y: rendimento sintetico di un decennale alla pari dal DGS10 (FRED, dal 1962): cedola + variazione di prezzo
-- Oro: future COMEX (Yahoo GC=F), dal 2000
+- Oro: future COMEX (Yahoo GC=F, giornaliero ridotto a fine mese), dal 2000
 - Materie prime: S&P GSCI (Yahoo ^SPGSCI), dal 1985
 - Cash: T-bill 3 mesi (FRED TB3MS)
 Poche osservazioni per regime (Espansione/Stagflazione ~80-110 mesi dal 1962, meno per oro e azioni):
 i t-stat contano piu' delle medie.
+
+Filtro di tendenza (06/10/2026, 2000-08 -> 2026-08, niente costi): ogni asset sotto la media a 10 mesi va in cash.
+Su tutti e 4 i portafogli il drawdown massimo scende di 55-75% (60/40 -31% -> -13%, All Weather -17% -> -6%,
+regime -29% -> -11%) e la volatilita' di ~30%, il rendimento cala di 0,1-0,9 punti l'anno. Prima del 2014 il
+filtro rende anche di piu' (60/40 3,5% -> 5,6%), dal 2014 costa 1-3 punti l'anno: protegge nei crolli lunghi
+(2001-02, 2008), perde nei rimbalzi veloci. ~8 cambi entra/esci l'anno sommando i 4 asset.
+Il portafoglio per regime (9,1% contro 5,5% dell'All Weather) usa la tabella riallineata il 03/10 su questi stessi
+dati: risultato in-sample, non una prova di vantaggio.
 Uso: py -3.12 scripts/backtest_assets.py   (serve FRED_API_KEY in .env)
 """
 import sys
@@ -26,6 +34,7 @@ import pandas as pd
 
 from scripts.evaluate_model import INPUTS, lagged
 from src.classify.assess import assess
+from src.classify.score import TREND_MONTHS
 from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, portfolio_weights
 from src.data import cache, fetch_fred, fetch_market
 from src.scheduler.update_data import _load_dotenv
@@ -58,7 +67,7 @@ def bond_returns(yield_pct: pd.Series) -> pd.Series:
 def asset_returns(key: str) -> pd.DataFrame:
     prices = {
         "Azionario": fetch_market.fetch_yahoo("^GSPC", "max", "1mo"),
-        "Oro": fetch_market.fetch_yahoo("GC=F", "max", "1mo"),
+        "Oro": fetch_market.fetch_yahoo("GC=F", "max", "1d"),  # il mensile Yahoo del future salta ~15% dei mesi
         "Materie prime": fetch_market.fetch_yahoo("^SPGSCI", "max", "1mo"),
     }
     rets = {}
@@ -129,14 +138,36 @@ def main() -> None:
 
     common = df[assets].dropna().index  # tutti gli asset disponibili (oro dal 2000)
     d = df.loc[common]
-    strategies = {
-        "Regime (profilo Medio)": d.apply(lambda r: sum(r[a] * w for a, w in to_testable(portfolio_weights(r["regime"], "Medio")).items()), axis=1),
-        "All Weather statico": d[assets].mul(pd.Series(to_testable(ALL_WEATHER_WEIGHTS))).sum(axis=1, min_count=1),
-        "60/40 statico": d["Azionario"] * 0.6 + d["Treasury 10Y"] * 0.4,
-        "Pesi uguali 5 asset": d[assets].mean(axis=1),
-    }
+
+    def strategies(r: pd.DataFrame) -> dict:
+        return {
+            "Regime (profilo Medio)": r.apply(lambda x: sum(x[a] * w for a, w in to_testable(portfolio_weights(d.at[x.name, "regime"], "Medio")).items()), axis=1),
+            "All Weather statico": r[assets].mul(pd.Series(to_testable(ALL_WEATHER_WEIGHTS))).sum(axis=1, min_count=1),
+            "60/40 statico": r["Azionario"] * 0.6 + r["Treasury 10Y"] * 0.4,
+            "Pesi uguali 5 asset": r[assets].mean(axis=1),
+        }
+
+    # Filtro di tendenza (Faber 2007): un asset si tiene solo se a fine mese il suo indice di rendimento e' sopra la
+    # media a TREND_MONTHS mesi, altrimenti la sua quota va in cash per il mese dopo. Stessa regola del punteggio asset.
+    idx = (1 + rets).cumprod()
+    on = (idx > idx.rolling(TREND_MONTHS).mean()).loc[common].assign(Cash=True)
+    risky = [a for a in assets if a != "Cash"]
+    held = d[assets].where(on[assets], d["Cash"], axis=0)
+    switches = on[risky].astype(int).diff().abs().sum().sum() / len(on) * 12
+
+    plain, trend = strategies(d), strategies(held)
+    rows = {}
+    for k in plain:
+        rows[k] = perf(plain[k])
+        rows[f"{k} + tendenza"] = perf(trend[k])
     print(f"\nPortafogli, ribilanciati ogni mese, {common[0]} -> {common[-1]} (azioni senza dividendi, niente costi):")
-    print(pd.DataFrame({k: perf(v) for k, v in strategies.items()}).T.round(1).to_string())
+    print(pd.DataFrame(rows).T.round(1).to_string())
+    print(f"Filtro di tendenza: {switches:.1f} cambi entra/esci all'anno sommando i {len(risky)} asset; mesi fuori: "
+          + ", ".join(f"{a} {(~on[a]).mean() * 100:.0f}%" for a in risky))
+    for label, (a, b) in {"<2014": (None, "2013-12"), ">=2014": ("2014-01", None)}.items():
+        print(f"- {label}: " + " | ".join(
+            f"{k} {perf(plain[k].loc[a:b])['rend. annuo %']:.1f}% -> {perf(trend[k].loc[a:b])['rend. annuo %']:.1f}% "
+            f"(DD {perf(plain[k].loc[a:b])['max drawdown %']:.0f}% -> {perf(trend[k].loc[a:b])['max drawdown %']:.0f}%)" for k in plain))
 
 
 if __name__ == "__main__":

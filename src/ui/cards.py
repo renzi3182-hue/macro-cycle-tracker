@@ -8,6 +8,7 @@ import pandas as pd
 
 from src.classify.cycle import PHASES
 from src.classify.regime import REGIMES
+from src.classify.score import STRONG, WEAK
 from src.ui.theme import DONUT_SLOTS, phase_color, regime_color
 
 MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
@@ -95,6 +96,17 @@ def legend_html(phases: bool = False) -> str:
 LABEL_NEAR_X, LABEL_GAP_Y = 22, 8  # % del quadrante
 
 
+def _place_labels(pts: list[dict]) -> None:
+    """Etichette a sinistra del punto nella meta' destra; sullo stesso lato e vicine in x si scostano in verticale (chiave ly)."""
+    placed = []
+    for p in sorted(pts, key=lambda p: p["y"]):
+        p["ly"] = p["y"]
+        for q in sorted(placed, key=lambda q: q["ly"]):
+            if q["left"] == p["left"] and abs(q["x"] - p["x"]) < LABEL_NEAR_X and abs(q["ly"] - p["ly"]) < LABEL_GAP_Y:
+                p["ly"] = q["ly"] + LABEL_GAP_Y
+        placed.append(p)
+
+
 def quadrant_html(areas: list[dict], codes: dict[str, str]) -> str:
     """Posizione di ogni area: x = inflazione, y = crescita, in unita' di banda (+-1 = soglia). Div in %, niente svg."""
     edge, fill = 2.5, 0.9
@@ -116,14 +128,7 @@ def quadrant_html(areas: list[dict], codes: dict[str, str]) -> str:
     for a in areas:
         xg, xi = a["positions"]
         pts.append({"a": a, "x": pct(xi), "y": 100 - pct(xg), "left": pct(xi) > 60})
-    # etichette a sinistra del punto nella meta' destra; sullo stesso lato e vicine in x si scostano in verticale
-    placed = []
-    for p in sorted(pts, key=lambda p: p["y"]):
-        p["ly"] = p["y"]
-        for q in sorted(placed, key=lambda q: q["ly"]):
-            if q["left"] == p["left"] and abs(q["x"] - p["x"]) < LABEL_NEAR_X and abs(q["ly"] - p["ly"]) < LABEL_GAP_Y:
-                p["ly"] = q["ly"] + LABEL_GAP_Y
-        placed.append(p)
+    _place_labels(pts)
     for p in pts:
         a = p["a"]
         xg, xi = a["positions"]
@@ -144,13 +149,13 @@ def prob_html(probs: dict) -> str:
     )
 
 
-def gauge_html(x: float, lo_label: str, hi_label: str, lo_var: str, hi_var: str) -> str:
+def gauge_html(x: float, lo_label: str, hi_label: str, lo_var: str, hi_var: str, mid_label: str = "stabile") -> str:
     """Posizione su una scala da -2.5 a +2.5 bande; la zona centrale (+-1) e' quella in cui lo stato non cambia."""
     left = 50 + max(-2.5, min(2.5, x)) / 2.5 * 50
     return (
         f'<div class="gauge" style="--lo:var(--{lo_var});--hi:var(--{hi_var})" role="img" aria-label="posizione {x:+.1f} bande">'
         f'<div class="bar"></div><b style="left:{left:.1f}%"></b></div>'
-        f'<div class="gauge-l"><span>{escape(lo_label)}</span><span>stabile</span><span>{escape(hi_label)}</span></div>'
+        f'<div class="gauge-l"><span>{escape(lo_label)}</span><span>{escape(mid_label)}</span><span>{escape(hi_label)}</span></div>'
     )
 
 
@@ -227,7 +232,7 @@ def risk_html(level: str, score: int, total: int) -> str:
     )
 
 
-def portfolio_html(weights: dict, deltas: dict | None, title: str, subtitle: str) -> str:
+def portfolio_html(weights: dict, deltas: dict | None, title: str, subtitle: str, delta_note: str = "vs regimi precedenti") -> str:
     items = sorted(weights.items(), key=lambda kv: -kv[1])[:DONUT_SLOTS]
     colors = {k: f"var(--{WEIGHT_VARS[i % len(WEIGHT_VARS)]})" for i, (k, _) in enumerate(items)}
     equity = sum(v for k, v in weights.items() if "Azionario" in k)
@@ -253,8 +258,23 @@ def portfolio_html(weights: dict, deltas: dict | None, title: str, subtitle: str
     )
     return (
         f'<div class="si two"><div class="card"><div class="head"><h3>{escape(title)}</h3><span class="note">{escape(subtitle)}</span></div>{donut}</div>'
-        f'<div class="card"><div class="head"><h3>Pesi per asset class</h3><span class="note">{"vs regimi precedenti" if deltas else ""}</span></div>{rows}</div></div>'
+        f'<div class="card"><div class="head"><h3>Pesi per asset class</h3><span class="note">{escape(delta_note) if deltas else ""}</span></div>{rows}</div></div>'
     )
+
+
+def trend_html(rows: list[tuple[str, str, float]], month: pd.Timestamp) -> str:
+    """rows: (asset class, ticker, distanza % dalla media a 10 mesi)."""
+    items = "".join(
+        f'<div class="row">{_dot("var(--r-gold)" if d > 0 else "var(--r-stag)")}<span class="grow">{escape(a)} '
+        f'<span class="mono muted" style="font-size:12px">{escape(t)}</span></span>'
+        f'<span class="mono" style="color:var(--{"r-gold" if d > 0 else "r-stag"})">{f"{d:+.1f}".replace(".", ",").replace("-", "−")}%</span></div>'
+        for a, t, d in rows
+    )
+    return (f'<div class="si card"><div class="head"><h3>Tendenza</h3><span class="note">fine {month_it(month)}, prezzo vs media 10 mesi</span></div>'
+            f'<div class="list">{items}</div>'
+            '<p class="note">Rosso = sotto la media: con il filtro attivo quella quota va in cash. Nel backtest 2000-2026 il filtro ha '
+            'ridotto il drawdown massimo del 55-75% (60/40 da −31% a −13%) e il rendimento di 0,1-0,9 punti l\'anno: '
+            'protegge nei crolli lunghi, perde nei rimbalzi veloci.</p></div>')
 
 
 def events_html(events: list[dict]) -> str:
@@ -313,6 +333,49 @@ def pairs_html(rows: list[dict]) -> str:
     return f'<div class="si card"><div class="head"><h3>Coppie</h3><span class="note">Buy ≥ 60 · Sell ≤ 40</span></div><div class="pairs">{cards}</div></div>'
 
 
+def score_color(s: float) -> str:
+    return f"var(--{'r-gold' if s > STRONG else 'r-stag' if s <= WEAK else 'muted'})"
+
+
+def ranking_html(rows: list[dict], month: pd.Timestamp) -> str:
+    """rows: ticker, nome, gruppo, punteggio, delta (vs mese prima o None), Tendenza e Momentum (frazioni), storico (serie mensile)."""
+    head = ('<div class="arow th"><span>#</span><span>Asset</span><span class="opt">Ultimi 12 mesi</span>'
+            '<span class="r opt">Tendenza</span><span class="r opt">Mom. 12-1</span><span class="r">Punt.</span><span class="r">Var.</span></div>')
+    body = "".join(
+        f'<div class="arow"><span class="mono muted">{i}</span>'
+        f'<span style="min-width:0"><b style="font-weight:600">{escape(r["nome"])}</b> '
+        f'<span class="mono muted" style="font-size:12px">{escape(r["ticker"])}<span class="opt"> · {escape(r["gruppo"])}</span></span></span>'
+        f'<span class="opt">{ribbon_html(r["storico"], score_color, 12, thin=True, ticks=False)}</span>'
+        f'<span class="mono r opt">{r["Tendenza"] * 100:+.1f}%</span><span class="mono r opt">{r["Momentum"] * 100:+.1f}%</span>'
+        f'<span class="r"><span class="chip tint mono" style="--c:{score_color(r["punteggio"])};font-weight:700">{r["punteggio"]:.0f}</span></span>'
+        f'<span class="r" style="font-size:13px">{_signed(r["delta"]) if r["delta"] is not None else ""}</span></div>'
+        for i, r in enumerate(rows, 1)
+    )
+    return (f'<div class="si card"><div class="head"><h3>Classifica</h3><span class="note">punteggio di fine {month_it(month)}, 1-100</span></div>'
+            f'<div class="list">{head}{body}</div></div>')
+
+
+def bands_html(table: pd.DataFrame, horizon: int, since: pd.Timestamp) -> str:
+    """table: band_table() di score.py, indice = fascia ('81-100'), colonne mediana e sopra in %."""
+    top = max(table["mediana"].abs().max(), 0.01)
+    rows = []
+    for band, r in table.iloc[::-1].iterrows():
+        m, lo = r["mediana"], int(str(band).split("-")[0])
+        left, width = (50, m / top * 50) if m >= 0 else (50 + m / top * 50, -m / top * 50)
+        rows.append(
+            f'<span class="mono">{escape(str(band))}</span>'
+            f'<div class="div" role="img" aria-label="extra-rendimento mediano {m:+.2f}%"><i style="left:{left:.1f}%;width:{width:.1f}%;'
+            f'background:{score_color(lo)};border-radius:{"0 5px 5px 0" if m >= 0 else "5px 0 0 5px"}"></i></div>'
+            f'<span class="mono r">{f"{m:+.2f}".replace(".", ",").replace("-", "−")}%</span><span class="mono r muted lbl">{r["sopra"]:.0f}%</span>'
+        )
+    return (
+        f'<div class="si card"><div class="head"><h3>Cosa ha voluto dire</h3><span class="note">{int(table["casi"].sum())} casi da {month_it(since, True)}</span></div>'
+        f'<div class="cot">{"".join(rows)}</div>'
+        f'<p class="note">Per fascia di punteggio: extra-rendimento mediano nei {horizon} mesi successivi contro la media degli asset, '
+        'e quante volte l\'asset ha fatto meglio della media. Ogni mese usa solo i prezzi noti in quel momento.</p></div>'
+    )
+
+
 def chips_html(items: list[str]) -> str:
     return '<div class="si" style="display:flex;flex-wrap:wrap;gap:8px">' + "".join(f'<span class="chip">{escape(i)}</span>' for i in items) + "</div>"
 
@@ -343,3 +406,62 @@ def calendar_html(events: list[dict], tz: str = "Europe/Rome", today: pd.Timesta
                 f'<span>{escape(e["title"])}</span><span class="v">{values}</span></div>'
             )
     return f'<div class="si card cal"><div class="list">{"".join(out)}</div></div>'
+
+
+RRG_VARS = {"Guida": "r-gold", "Indebolisce": "r-refl", "Arretra": "r-stag", "Migliora": "r-defl"}
+
+
+def rrg_html(rows: list[dict], month: pd.Timestamp) -> str:
+    """rows: ticker, nome, ratio, momentum, quadrante. x = RS-Ratio, y = RS-Momentum, centro 100. Div in %, niente svg."""
+    span = max(2.0, *(abs(r[k] - 100) for r in rows for k in ("ratio", "momentum"))) * 1.1
+
+    def pct(v):
+        return 50 + (v - 100) / span * 50 * 0.9
+
+    quads = [("Migliora", "top:0;left:0"), ("Guida", "top:0;left:50%"), ("Indebolisce", "top:50%;left:50%"), ("Arretra", "top:50%;left:0")]
+    labels = [("Migliora", "top:10px;left:12px"), ("Guida", "top:10px;right:12px"),
+              ("Indebolisce", "bottom:10px;right:12px"), ("Arretra", "bottom:10px;left:12px")]
+    out = [f'<div class="card"><div class="head"><h3>Rotazione settori USA</h3><span class="note">fine {month_it(month)}</span></div>'
+           '<div class="quad" role="img" aria-label="Forza relativa dei settori USA contro lo S&amp;P 500">']
+    out += [f'<div class="q" style="{pos};background:color-mix(in srgb,var(--{RRG_VARS[q]}) 13%,transparent)"></div>' for q, pos in quads]
+    out.append('<div class="ax-v"></div><div class="ax-h"></div>')
+    out += [f'<span class="ql" style="{pos};color:var(--{RRG_VARS[q]})">{q}</span>' for q, pos in labels]
+    out.append('<span class="ql" style="bottom:32px;right:12px;font-weight:500">forza relativa →</span>')
+    out.append('<span class="ql" style="top:34px;left:calc(50% + 8px);font-weight:500">↑ slancio</span>')
+    pts = [{"r": r, "x": pct(r["ratio"]), "y": 100 - pct(r["momentum"]), "left": pct(r["ratio"]) > 60} for r in rows]
+    _place_labels(pts)
+    for p in pts:
+        r = p["r"]
+        tip = escape(f'{r["nome"]}: {r["quadrante"]} (RS-Ratio {r["ratio"]:.1f}, RS-Momentum {r["momentum"]:.1f})')
+        side = f'right:calc({100 - p["x"]:.1f}% + 12px)' if p["left"] else f'left:calc({p["x"]:.1f}% + 12px)'
+        out.append(f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:var(--{RRG_VARS[r["quadrante"]]})"></div>'
+                   f'<b class="pl" style="{side};top:{min(p["ly"], 96):.1f}%">{escape(r["ticker"])}</b>')
+    out.append("</div>")
+    out.append(chips_html([f'{r["ticker"]} {r["nome"]}: {r["quadrante"]}' for r in sorted(rows, key=lambda r: -r["ratio"])]))
+    out.append('<p class="note">Forza relativa = settore contro lo S&amp;P 500 rispetto alla sua media a 10 mesi; slancio = '
+               'variazione della forza relativa in 3 mesi. Mappa descrittiva: dal 1999 i settori in Guida non hanno '
+               'fatto meglio di quelli che Arretrano nei 3 mesi dopo.</p></div>')
+    return "".join(out)
+
+
+def _pct_it(x: float, digits: int = 0) -> str:
+    return f"{x * 100:+.{digits}f}".replace(".", ",").replace("-", "−") + "%"
+
+
+def stress_html(rows: list[tuple[str, str, tuple | None, tuple | None]], mc: dict | None, years: int, skipped: list[str]) -> str:
+    """rows: (crisi, periodo, (rendimento, drawdown) del portafoglio o None, idem S&P 500). mc: percentile -> valore di 100."""
+    items = "".join(
+        f'<div class="row"><span class="grow">{escape(name)} <span class="muted" style="font-size:12px">{escape(period)}</span></span>'
+        + (f'<span class="mono" style="color:var(--{"r-gold" if p[0] >= 0 else "r-stag"})" title="drawdown massimo {_pct_it(p[1])}">{_pct_it(p[0])}</span>'
+           if p else '<span class="muted" style="font-size:13px">n/d</span>')
+        + f'<span class="mono muted opt" style="font-size:12px;min-width:92px;text-align:right">S&amp;P {_pct_it(s[0]) if s else "n/d"}</span></div>'
+        for name, period, p, s in rows
+    )
+    band = (f'<p>Dopo {years} anni, 100 diventano <b class="mono">{mc[5]:.0f}</b> nel 5% dei casi peggiori, '
+            f'<b class="mono">{mc[50]:.0f}</b> a metà, <b class="mono">{mc[95]:.0f}</b> nel 5% migliore.</p>' if mc else "")
+    note = f" Esclusi perché senza ETF: {escape(', '.join(skipped))}." if skipped else ""
+    return (f'<div class="si card"><div class="head"><h3>Stress test</h3><span class="note">rendimento nella crisi</span></div>'
+            f'<div class="list">{items}</div>{band}'
+            '<p class="note">Ogni classe usa il suo ETF (azionario = SPY, cash = SHY), ribilanciamento mensile, niente costi. '
+            'n/d = qualche ETF non esisteva ancora. La banda ricampiona i mesi storici del portafoglio: '
+            f'il passato non garantisce il futuro.{note}</p></div>')

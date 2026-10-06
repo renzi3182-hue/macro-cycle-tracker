@@ -14,16 +14,22 @@ from src.classify.leading import SIGNALS
 from src.classify.positioning import percentile_rank
 from src.classify.recession import sahm_gap
 from src.classify.regime import INFLATION_TARGET, monthly
-from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, ASSET_ALLOCATION, combined_portfolio_weights
+from src.classify.rrg import quadrant, rrg
+from src.classify.stress import MC_YEARS, PROXY, SCENARIOS, monte_carlo, portfolio_returns, scenario, ticker_weights
+from src.classify.risk import components as risk_components, label as risk_label, risk_score
+from src.classify.score import (
+    ASSET_AREA, HORIZON_MONTHS, STRONG, UNIVERSE, WEAK, band_table, complete_months, forward_excess, monthly_prices, pillars, scores,
+)
+from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, ASSET_ALLOCATION, apply_trend, combined_portfolio_weights
 from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.data.sync import sync_cache
 from src.ui.cards import (
-    area_hero_html, area_tile_html, axis_card_html, calendar_html, changes_html, chips_html, cot_groups_html,
+    area_hero_html, area_tile_html, axis_card_html, bands_html, calendar_html, changes_html, chips_html, cot_groups_html,
     events_html, freshness_html, gauge_html, hero_html, history_html, month_it, pairs_html, portfolio_html,
-    prevailing_regime, prob_html, quadrant_html, risk_html, strength_html, weight_deltas,
+    prevailing_regime, prob_html, quadrant_html, ranking_html, risk_html, rrg_html, strength_html, stress_html, trend_html, weight_deltas,
 )
-from src.ui.theme import hex_color, page_css, phase_color, regime_color
+from src.ui.theme import REGIME_VARS, hex_color, page_css, phase_color, regime_color
 
 AREAS = {"USA": "USA", "Eurozona": "EUR", "Italia": "ITA", "UK": "UK", "Giappone": "JP"}
 LEADING_KEYS = sorted({key for signals in SIGNALS.values() for _, key, _ in signals})
@@ -42,6 +48,8 @@ PHASE_MEANING = {
     "Ripresa": "crescita sotto il trend ma in miglioramento",
 }
 CHANGES_MONTHS = 4
+TREND_NAMES = {"SPY": "Azionario", "TLT": "Treasury lunga durata", "IEF": "Treasury medio termine", "TIP": "Indicizzate inflazione",
+               "GLD": "Oro", "DBC": "Materie prime"}
 RISK_PROFILE_LABELS = {"Basso": "Conservativo", "Medio": "Bilanciato", "Alto": "Aggressivo"}
 ALL_WEATHER = "All Weather"
 IMPACT_LABELS_IT = {"Alto": "High", "Medio": "Medium", "Basso": "Low", "Festivo": "Holiday"}
@@ -85,6 +93,56 @@ def last_value(area: str, indicator: str) -> float | None:
 
 def spark(ser: pd.Series, n: int = 24) -> list[float] | None:
     return None if len(ser) < 3 else ser.tail(n).round(2).tolist()
+
+
+@st.cache_data(ttl=300)
+def load_scores() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Prezzi mensili a mese chiuso e punteggi (src/classify/score.py), solo mesi con una classifica."""
+    px = monthly_prices({t: load_indicator(ASSET_AREA, t) for t in UNIVERSE})
+    if px.empty:
+        return px, px
+    px = complete_months(px)
+    return px, scores(px).dropna(how="all")
+
+
+@st.cache_data(ttl=300)
+def load_risk() -> pd.DataFrame:
+    """Componenti del Risk On/Off (src/classify/risk.py) a mese chiuso, piu' la colonna Punteggio."""
+    px, _ = load_scores()
+    if px.empty:
+        return px
+    comp = risk_components(load_indicator("Mercati", "vix"), load_indicator("USA", "credit_spread"), px).loc[:px.index[-1]]
+    return comp.assign(Punteggio=risk_score(comp)).dropna()
+
+
+RISK_VARS = {"Risk Off estremo": "r-stag", "Risk Off": "r-stag", "Neutrale": "r-refl", "Risk On": "r-gold", "Risk On estremo": "r-gold"}
+
+
+def key_numbers(regimes: dict) -> str:
+    """Le 3 cifre in cima alla Panoramica: regime prevalente, Risk On/Off, quota di asset in tendenza positiva."""
+    top, n = prevailing_regime(regimes)
+    share = n / len(regimes) * 100
+    cards = [axis_card_html(
+        "Regime prevalente", top if n > 1 else "Quadro misto", REGIME_VARS.get(top, "muted") if n > 1 else "muted",
+        f"{share:.0f}%", f"delle aree ({n} su {len(regimes)})", gauge_html((share - 50) / 20, "aree divise", "tutte concordi", "line", "accent", ""),
+        "Quante aree condividono lo stesso regime macro.")]
+    risk = load_risk()
+    if not risk.empty:
+        r = risk.iloc[-1]
+        state = risk_label(r["Punteggio"])
+        cards.append(axis_card_html(
+            f"Risk On/Off · fine {month_it(risk.index[-1])}", state, RISK_VARS[state], f'{r["Punteggio"]:.0f}',
+            f'/100 · VIX {r["VIX"]:.0f}, credito {r["Credito"]:.0f}, ampiezza {r["Ampiezza"]:.0f}',
+            gauge_html((r["Punteggio"] - 50) / 20, "Risk Off", "Risk On", "r-stag", "r-gold", "neutrale"),
+            "Anticipa la volatilità, non il rendimento: dal 1999, dopo un mese Risk Off estremo l'S&P 500 si è mosso "
+            "in media del 5,8% il mese dopo, dopo Risk On estremo del 2,3%."))
+        b = r["Ampiezza"]
+        b_state, b_var = ("Tendenza ampia", "r-gold") if b >= 60 else ("Tendenza debole", "r-stag") if b <= 40 else ("Tendenza mista", "r-refl")
+        cards.append(axis_card_html(
+            "Asset in tendenza positiva", b_state, b_var, f"{b:.0f}%", f"dei {len(UNIVERSE)} ETF della Classifica",
+            gauge_html((b - 50) / 20, "pochi", "quasi tutti", "r-stag", "r-gold", ""),
+            "Quota sopra la media a 10 mesi, la regola del filtro di tendenza."))
+    return '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">' + "".join(cards) + "</div>"
 
 
 def recent_changes(assessments: dict) -> list[tuple[str, str, str]]:
@@ -196,6 +254,8 @@ def page_overview() -> None:
         f"Lettura meno solida, vicina a un cambio: {', '.join(weak)}." if weak else "",
     ]
     ui(hero_html(f"Panoramica · dati fino a {month_it(last_month)}", title, " ".join(x for x in lead if x)))
+    ui(key_numbers(regimes))
+    st.space("small")
     ui('<div class="grid">' + "".join(area_tile_html(a, f"aree?area={area}") for area, a in assessments.items()) + "</div>")
     st.space("small")
     ui('<div class="two">'
@@ -308,9 +368,83 @@ def page_portfolio() -> None:
             changed = a["history"]["regime"][a["history"]["regime"] != a["regime"]]
             prev[area] = changed.iloc[-1] if not changed.empty else a["regime"]
         deltas = weight_deltas(weights, combined_portfolio_weights(prev, risk_profile))
-    ui(portfolio_html(weights, deltas, "Allocazione", RISK_PROFILE_LABELS.get(risk_profile, "pesi statici")))
+    delta_note = "vs regimi precedenti"
+    px, _ = load_scores()
+    trend = pillars(px)["Tendenza"].iloc[-1].dropna() if len(px) else pd.Series(dtype=float)
+    use_trend = st.toggle("Filtro di tendenza: in cash gli asset sotto la media a 10 mesi", key="trend", disabled=trend.empty)
+    if use_trend:
+        filtered = apply_trend(weights, (trend > 0).to_dict())
+        weights, deltas, delta_note = filtered, weight_deltas(filtered, weights), "vs senza filtro"
+    col_p, col_t = st.columns([8, 4])
+    with col_p:
+        ui(portfolio_html(weights, deltas, "Allocazione", RISK_PROFILE_LABELS.get(risk_profile, "pesi statici"), delta_note))
+    with col_t:
+        if trend.empty:
+            st.info("Nessun prezzo degli ETF in cache per il filtro di tendenza.", icon=":material/database:")
+        else:
+            ui(trend_html([(name, t, trend[t] * 100) for t, name in TREND_NAMES.items() if t in trend], px.index[-1]))
+    if not px.empty:
+        stress_section(weights, px)
     st.caption("Dentro ogni regime la quota azionaria segue il profilo (Basso 30%, Medio 50%, Alto 70%). "
                "Solo informativo, non è consulenza: il backtest non mostra un vantaggio sui portafogli statici (sezione Metodo).")
+
+STRESS_ASSETS = sorted({*PROXY, *ALL_WEATHER_WEIGHTS, *(a for v in ASSET_ALLOCATION.values() for a in v)})
+
+
+def stress_section(weights: dict, px: pd.DataFrame) -> None:
+    """Posizioni modificabili (partono dall'allocazione mostrata) e loro stress test (src/classify/stress.py)."""
+    col_in, col_out = st.columns([5, 7])
+    with col_in:
+        st.markdown("**Le tue posizioni**")
+        edited = st.data_editor(
+            pd.DataFrame({"Asset": list(weights), "Peso %": [round(w, 1) for w in weights.values()]}),
+            num_rows="dynamic", hide_index=True, width="stretch",
+            column_config={"Asset": st.column_config.SelectboxColumn(options=STRESS_ASSETS, required=True),
+                           "Peso %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=1.0, format="%.1f")})
+        st.caption("Parte dall'allocazione qui sopra: cambia pesi o aggiungi righe. I pesi si riportano a 100.")
+    edited = edited.dropna()
+    tw, skipped = ticker_weights(edited.groupby("Asset")["Peso %"].sum().to_dict())
+    with col_out:
+        if not tw:
+            st.info("Inserisci almeno una posizione con un ETF di riferimento.", icon=":material/edit:")
+            return
+        r, spy = portfolio_returns(tw, px), px["SPY"].pct_change(fill_method=None)
+        rows = [(name, f"{month_it(pd.Timestamp(a), True)} – {month_it(pd.Timestamp(b), True)}", scenario(r, a, b), scenario(spy, a, b))
+                for name, (a, b) in SCENARIOS.items()]
+        ui(stress_html(rows, monte_carlo(r), MC_YEARS, skipped))
+
+
+def page_ranking() -> None:
+    px, s = load_scores()
+    if s.empty:
+        st.info("Nessun prezzo degli asset in cache.", icon=":material/database:")
+        st.stop()
+    month, now = s.index[-1], s.iloc[-1].dropna().sort_values(ascending=False)
+    prev = s.iloc[-2] if len(s) > 1 else pd.Series(dtype=float)
+    p = {k: v.loc[month] for k, v in pillars(px).items()}
+    strong = [UNIVERSE[t][0] for t in now.index if now[t] > STRONG]
+    ui(hero_html(f"Classifica asset · fine {month_it(month)}", "In testa: " + ", ".join(UNIVERSE[t][0] for t in now.index[:3]),
+                 f"Punteggio 1-100 = posizione fra {len(now)} ETF per tendenza (prezzo contro la media a 10 mesi) e momentum "
+                 f"(rendimento 12 mesi escluso l'ultimo). Sopra {STRONG}: <b>{', '.join(strong) or 'nessuno'}</b>."))
+    groups = ["Tutti", *dict.fromkeys(g for _, g in UNIVERSE.values())]
+    group = st.segmented_control("Gruppo", groups, default="Tutti", required=True, key="group", label_visibility="collapsed")
+    rows = [{"ticker": t, "nome": UNIVERSE[t][0], "gruppo": UNIVERSE[t][1], "punteggio": sc,
+             "delta": sc - prev[t] if pd.notna(prev.get(t)) else None, **{k: v[t] for k, v in p.items()}, "storico": s[t]}
+            for t, sc in now.items() if group == "Tutti" or UNIVERSE[t][1] == group]
+    col_r, col_e = st.columns([8, 4])
+    with col_r:
+        ui(ranking_html(rows, month))
+    with col_e:
+        ui(bands_html(band_table(s, forward_excess(px, s)), HORIZON_MONTHS, s.index[0]))
+        ratio, mom = (x.iloc[-1].dropna() for x in rrg(px))
+        sectors = [{"ticker": t, "nome": UNIVERSE[t][0], "ratio": ratio[t], "momentum": mom[t], "quadrante": quadrant(ratio[t], mom[t])}
+                   for t in ratio.index.intersection(mom.index)]
+        if sectors:
+            ui(rrg_html(sectors, px.index[-1]))
+    st.caption(f"Solo informativo, non è consulenza. Si aggiorna a fine mese. Verde sopra {STRONG}, rosso fino a {WEAK}. "
+               "Backtest 2002-2026 senza costi (scripts/evaluate_score.py, 06/10/2026): i 5 migliori ribilanciati ogni mese "
+               "12,0% l'anno con drawdown massimo −18%, S&P 500 11,2% e −51%. Il vantaggio è piccolo e sta più nel ridurre le perdite che nel rendimento.")
+
 
 def page_markets() -> None:
     st.caption("Solo informativo: non entra nella classificazione. COT = posizione netta degli speculatori (CFTC), percentile sugli ultimi 5 anni.")
@@ -431,6 +565,7 @@ def page_method() -> None:
 PAGES = [
     st.Page(page_overview, title="Panoramica", icon=":material/public:", url_path="panoramica", default=True),
     st.Page(page_area, title="Aree", icon=":material/location_on:", url_path="aree"),
+    st.Page(page_ranking, title="Classifica", icon=":material/leaderboard:", url_path="classifica"),
     st.Page(page_portfolio, title="Portafoglio", icon=":material/donut_large:", url_path="portafoglio"),
     st.Page(page_markets, title="Mercati", icon=":material/candlestick_chart:", url_path="mercati"),
     st.Page(page_calendar, title="Calendario", icon=":material/calendar_month:", url_path="calendario"),
