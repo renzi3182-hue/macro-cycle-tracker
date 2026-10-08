@@ -1,7 +1,7 @@
 """Valutazione completa di un'area: unica fonte per scheduler e app, cosi' etichetta, grafici e storico non divergono."""
 import pandas as pd
 
-from src.classify.cycle import phase_history
+from src.classify.cycle import momentum_states, phase_history
 from src.classify.leading import leading_risk
 from src.classify.recession import recession_flags
 from src.classify.regime import GROWTH_FALLBACK, GROWTH_INPUT, axis_positions, probabilities, regime_history
@@ -41,7 +41,8 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
     hist = regime_history(s[growth_name], s["inflation_yoy"], s.get("core_inflation_yoy"))
     unemployment = s.get("unemployment_rate")
     recession = recession_flags(unemployment, s.get("recession_prob")) if unemployment is not None else None
-    phases = phase_history(hist["growth"], unemployment, s.get("growth_yoy"), recession)
+    momentum = momentum_states(s["cli"]) if "cli" in s else hist["growth"]
+    phases = phase_history(momentum, unemployment, s.get("growth_yoy"), recession)
     hist = hist.join(phases.rename("phase"), how="left")
     hist["phase"] = hist["phase"].ffill()
 

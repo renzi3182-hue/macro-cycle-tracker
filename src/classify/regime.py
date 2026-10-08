@@ -2,33 +2,33 @@ import math
 
 import pandas as pd
 
-# Regime macro mensile = direzione della crescita x pressione dell'inflazione (riscritto il 03/10/2026).
-# Verifica in scripts/evaluate_model.py, con i ritardi di pubblicazione veri (PIL +4 mesi, CPI e CLI +1):
-# il modello precedente (trimestrale, z della variazione di PIL e CPI, stato "laterale") coincideva con
-# la lettura a posteriori solo nel 5-20% dei mesi ed era "Transizione" il 40-60% del tempo. La seconda
-# derivata del PIL non si vede in tempo reale con dati gratuiti: anche il miglior modello a momentum
-# arriva al ~60%. Questo coincide nell'88-91% dei mesi e cambia ~1 volta l'anno.
-#
-# Crescita: direzione del CLI OCSE su 3 mesi (sopra/sotto il ritmo di trend). Nelle vintage ALFRED
-# 2018-2026 la direzione del CLI resta la stessa dopo le revisioni nel 79-93% dei casi; il LIVELLO
-# rispetto a 100 no (66-88%), per questo non si usa. Senza CLI: direzione del PIL annuo.
-GROWTH_INPUT = "cli"
-GROWTH_FALLBACK = "growth_yoy"
-GROWTH_CHANGE_MONTHS = 3
-GROWTH_BAND = 0.4  # z della variazione: sopra +BAND "up", sotto -BAND "down", in mezzo resta lo stato precedente
+# Regime macro = crescita x inflazione, con la regola di Marco Casario / Quantaste (riscritto l'08/10/2026).
+# Quantaste e' il riferimento dell'utente: sulle 14 letture note (dashboard 10/2026, libro Q1 2024, trimestri
+# 2015-2022 dal blog marcocasario.com) questa regola ne riproduce 13; il modello precedente (direzione del CLI
+# OCSE + inflazione contro il 2%) 5, cioe' quanto il caso. Differenza di fondo: per Casario la crescita e' la
+# VELOCITA' del PIL (annuo in accelerazione o in rallentamento sul trimestre prima), non il livello di attivita'
+# in salita. Esempio USA 10/2026: CLI ancora in salita, ma PIL annuo 2,7% -> 2,1% = rallentamento -> Stagflazione.
+# Prezzo: ~3 cambi di regime l'anno e lettura in tempo reale diversa da quella a posteriori ~1 mese su 2
+# (il PIL esce 1 mese dopo il trimestre e viene rivisto). La fase del ciclo resta sul CLI (src/classify/cycle.py).
+# Verifica in scripts/evaluate_model.py (sezione Quantaste).
+GROWTH_INPUT = "growth_yoy"
+GROWTH_FALLBACK = "cli"
+GROWTH_CHANGE_MONTHS = 3  # un trimestre: il PIL trimestrale riportato a mensile cambia ogni 3 mesi
+GROWTH_BAND = 0.0  # niente zona neutra: accelera o rallenta, come Quantaste
+GROWTH_SCALE = 0.4  # per le probabilita': z della variazione a cui "up" vale PROB_AT_BAND
 
-# Inflazione: livello (media totale + core) rispetto al target delle banche centrali, corretto per la
-# direzione del totale su 3 mesi. Solo livello: Europa in "Stagflazione" a fine 2008 con prezzi gia' in
-# caduta; solo direzione: rumore. Punteggio = (livello - target) + peso * variazione 3 mesi, punti %.
+# Inflazione "alta" se la media a 3 mesi di totale + core e' sopra il 2,5% OPPURE se il totale (media 3 mesi)
+# sale rispetto ai 3 mesi prima. Casario: Reflazione = "inflazione in accelerazione", Stagflazione = "inflazione
+# in aumento". Solo variazione: 11/14 letture (Europa Q1 2024 sbagliata); con il livello 13/14.
 INFLATION_INPUTS = ("inflation_yoy", "core_inflation_yoy")
-INFLATION_TARGET = 2.0  # Fed, BCE, BoE, BoJ (dal 2013)
-INFLATION_DIRECTION_WEIGHT = 1.0
-INFLATION_HIGH = 0.5  # punteggio sopra: inflazione alta/in salita
-INFLATION_LOW = -0.25  # punteggio sotto: inflazione sotto controllo/in calo
+INFLATION_HIGH_LEVEL = 2.5
+INFLATION_HIGH = 0.0  # punteggio = max(livello - 2,5, variazione 3 mesi), punti %
+INFLATION_LOW = 0.0
+INFLATION_SCALE = 0.5  # per le probabilita'
 
-CONFIRM_MONTHS = 2  # un asse cambia stato solo se il nuovo regge 2 mesi: cambi di regime ~1.7 -> ~1.1 l'anno
+CONFIRM_MONTHS = 1  # nessuna conferma: il PIL cambia una volta a trimestre
 MIN_SCALE_MONTHS = 24  # sotto questi punti la deviazione standard usa tutto il campione
-PROB_AT_BAND = 0.75  # probabilita' di "up" quando un asse e' esattamente sulla soglia d'ingresso
+PROB_AT_BAND = 0.75  # probabilita' di "up" quando un asse e' a una scala dalla soglia
 
 REGIMES = ["Goldilocks", "Reflazione", "Stagflazione", "Deflazione"]
 
@@ -52,8 +52,10 @@ def inflation_level(headline: pd.Series, core: pd.Series | None = None) -> pd.Se
 
 
 def inflation_score(headline: pd.Series, core: pd.Series | None = None) -> pd.Series:
-    h = monthly(headline)
-    return ((inflation_level(headline, core) - INFLATION_TARGET) + INFLATION_DIRECTION_WEIGHT * (h - h.shift(GROWTH_CHANGE_MONTHS))).dropna()
+    """Sopra 0 = inflazione alta o in salita (vedi INFLATION_HIGH_LEVEL)."""
+    h = monthly(headline).rolling(GROWTH_CHANGE_MONTHS).mean()
+    level = inflation_level(headline, core).rolling(GROWTH_CHANGE_MONTHS).mean()
+    return pd.concat([level - INFLATION_HIGH_LEVEL, h - h.shift(GROWTH_CHANGE_MONTHS)], axis=1).dropna().max(axis=1)
 
 
 def axis_states(score: pd.Series, high: float, low: float, confirm: int = CONFIRM_MONTHS) -> pd.Series:
@@ -61,7 +63,7 @@ def axis_states(score: pd.Series, high: float, low: float, confirm: int = CONFIR
     states, current, pending, count = [], None, None, 0
     for v in score:
         if current is None:
-            current = "up" if v >= (high + low) / 2 else "down"
+            current = "up" if v > (high + low) / 2 else "down"
         raw = "up" if v > high else "down" if v < low else current
         if raw == current:
             pending, count = None, 0
@@ -81,15 +83,14 @@ def regime_name(growth_state: str, inflation_state: str) -> str:
 
 
 def _up_probability(x: float) -> float:
-    """x = distanza dalla soglia in unita' di banda: x = 1 -> PROB_AT_BAND."""
+    """x = distanza dalla soglia in unita' di scala: x = 1 -> PROB_AT_BAND."""
     k = math.log(PROB_AT_BAND / (1 - PROB_AT_BAND))
     return 1 / (1 + math.exp(-k * max(-10.0, min(10.0, x))))
 
 
 def axis_positions(g_z: float, i_score: float) -> tuple[float, float]:
-    """(crescita, inflazione) in unita' di banda: +-1 = soglia d'ingresso in su/giu'."""
-    mid, half = (INFLATION_HIGH + INFLATION_LOW) / 2, (INFLATION_HIGH - INFLATION_LOW) / 2
-    return g_z / GROWTH_BAND, (i_score - mid) / half
+    """(crescita, inflazione) in unita' di scala dalla soglia: 0 = sulla soglia, +1 = "up" al 75%."""
+    return g_z / GROWTH_SCALE, (i_score - (INFLATION_HIGH + INFLATION_LOW) / 2) / INFLATION_SCALE
 
 
 def probabilities(g_z: float, i_score: float) -> dict:
@@ -105,7 +106,7 @@ def probabilities(g_z: float, i_score: float) -> dict:
 
 
 def regime_history(growth: pd.Series, headline: pd.Series, core: pd.Series | None = None) -> pd.DataFrame:
-    """Regime per mese con i due assi. growth: CLI (o PIL annuo); headline/core: inflazione annua.
+    """Regime per mese con i due assi. growth: PIL annuo (o CLI); headline/core: inflazione annua.
     Gli assi hanno date diverse: l'ultimo stato noto di un asse resta valido finche' non arriva il nuovo."""
     gz, isc = growth_z(growth), inflation_score(headline, core)
     if gz.empty or isc.empty:

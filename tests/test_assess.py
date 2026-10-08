@@ -29,7 +29,7 @@ def test_assess_gives_regime_phase_and_metadata():
     assert a["history"]["regime"].iloc[-1] == a["regime"]
 
 
-def test_missing_inflation_returns_none_and_gdp_replaces_cli():
+def test_missing_inflation_returns_none_and_gdp_is_the_growth_input():
     assert assess("UK", {"cli": CLI}) is None
     gdp = pd.Series([2.0] * 28 + [2.5, 3.0], index=pd.date_range("2015-01-01", periods=30, freq="QS"))
     a = assess("UK", {"growth_yoy": gdp, "inflation_yoy": _m([1.0] * N)}, today=TODAY)

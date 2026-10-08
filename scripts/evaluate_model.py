@@ -7,6 +7,7 @@ CPI/CLI/disoccupazione +1) e ricalcolando una volta sola. Stampa, dal 2000:
    senza ritardi), cambi di regime l'anno, distribuzione, episodi noti.
 2. Ciclo: confronto con NBER (USA) e con i rallentamenti OCSE (EUROREC, ITAREC, GBRREC, JPNREC, fino al 2022).
 3. CLI OCSE: quante volte direzione e livello restano gli stessi dopo le revisioni (vintage ALFRED dal 2018).
+4. Quantaste: quante letture note di Quantaste/Casario il modello riproduce (riferimento dell'utente).
 Uso, da root del monorepo: .venv/Scripts/python code/macro-cycle-tracker/scripts/evaluate_model.py (serve FRED_API_KEY in .env)
 """
 import sys
@@ -30,6 +31,14 @@ PUBLICATION_LAG_MONTHS = {"growth_yoy": 4}  # gli altri: 1 mese
 START = "2000-01-01"
 EPISODES = ["2001-09", "2008-12", "2009-09", "2020-05", "2021-06", "2022-09", "2023-12"]
 REFERENCE = {"USA": "USREC", "Eurozona": "EUROREC", "Italia": "ITAREC", "UK": "GBRREC", "Giappone": "JPNREC"}
+# Letture note di Quantaste / Marco Casario (Espansione = Goldilocks). Trimestri 2015-2022: blog marcocasario.com
+# "il-gold-e-partito" (area non dichiarata, presunta USA; Q4 2022 escluso perche' etichettato due volte); Q1 2024:
+# libro di Casario; 2026Q3: dashboard Quantaste dell'08/10/2026, confrontata con la lettura in tempo reale.
+QUANTASTE = [("USA", "2015Q1", "Goldilocks"), ("USA", "2016Q1", "Stagflazione"), ("USA", "2016Q3", "Reflazione"),
+             ("USA", "2016Q4", "Reflazione"), ("USA", "2017Q2", "Goldilocks"), ("USA", "2018Q3", "Deflazione"),
+             ("USA", "2019Q3", "Goldilocks"), ("USA", "2021Q1", "Reflazione"), ("USA", "2022Q2", "Reflazione"),
+             ("USA", "2022Q3", "Stagflazione"), ("USA", "2024Q1", "Stagflazione"), ("Eurozona", "2024Q1", "Reflazione"),
+             ("USA", "2026Q3", "Stagflazione"), ("Eurozona", "2026Q3", "Reflazione")]
 CLI_FRED = {"USA": "USALOLITOAASTSAM", "Eurozona": "G4ELOLITOAASTSAM", "Italia": "ITALOLITOAASTSAM",
             "UK": "GBRLOLITOAASTSAM", "Giappone": "JPNLOLITOAASTSAM"}
 
@@ -54,6 +63,21 @@ def regime_report(area: str, series: dict) -> pd.DataFrame:
     print(f"   quote regime %: {shares}")
     print("   episodi: " + ", ".join(f"{e}={df.rt.get(pd.Timestamp(e + '-01'), '?')}/{df.phase.get(pd.Timestamp(e + '-01'), '?')}" for e in EPISODES))
     return df
+
+
+def quantaste_report(histories: dict) -> None:
+    """histories: area -> (tempo reale, a posteriori). Trimestri passati a posteriori, trimestre in corso in tempo reale."""
+    hits, misses = 0, []
+    for area, q, label in QUANTASTE:
+        p = pd.Period(q, "Q")
+        real, hind = histories[area]
+        h = real if p.end_time > hind.index[-1] else hind
+        seg = h.loc[p.start_time:p.end_time, "regime"]
+        got = seg.iloc[-1] if len(seg) else h["regime"].iloc[-1]
+        hits += got == label
+        if got != label:
+            misses.append(f"{area} {q}: {got} invece di {label}")
+    print(f"\n== Quantaste: {hits}/{len(QUANTASTE)} letture note riprodotte. " + "; ".join(misses))
 
 
 def cycle_report(area: str, df: pd.DataFrame, key: str) -> None:
@@ -88,14 +112,17 @@ def cli_vintages(area: str, key: str) -> None:
 def main() -> None:
     _load_dotenv()
     key = os.environ["FRED_API_KEY"]
+    histories = {}
     for area in AREAS:
         series = {n: s for n in INPUTS if not (s := cache.read_indicator_series(area, n)).empty}
+        histories[area] = (assess(area, {n: lagged(s, n) for n, s in series.items()})["history"], assess(area, series)["history"])
         df = regime_report(area, series)
         for step in (cycle_report, cli_vintages):
             try:
                 step(area, df, key) if step is cycle_report else step(area, key)
             except (requests.RequestException, KeyError, IndexError) as e:
                 print(f"   {step.__name__}: non disponibile ({e})")
+    quantaste_report(histories)
 
 
 if __name__ == "__main__":

@@ -47,24 +47,24 @@ Automatico, schedulato una volta al giorno (i dati macro escono comunque mensile
 
 Aggiornamento 29/09/2026: soglie degli anticipatori fuori USA verificate con `scripts/backtest_leading_intl.py`; con rischio "Alto" un'Espansione diventa Rallentamento in ogni area (prima solo USA). Backtest regime -> rendimenti (`scripts/backtest_assets.py`) e con dati real-time ALFRED (`scripts/backtest_alfred.py`): vedi i commenti in `src/config/asset_allocation.py` e sotto "Areas of concern".
 
-### Logica di classificazione (riscritta il 03/10/2026, trasparente, regolabile — no black box)
+### Logica di classificazione (regime riscritto l'08/10/2026, trasparente, regolabile — no black box)
 
 Tutto mensile, un solo calcolo per scheduler e app (`src/classify/assess.py`). Costanti in cima a `regime.py`, `cycle.py`, `recession.py`.
 
-**Regime macro** = direzione della crescita x pressione dell'inflazione:
+**Regime macro** = velocità della crescita x pressione dell'inflazione, con la regola di Marco Casario usata da Quantaste (riferimento dell'utente):
 
-| Crescita (CLI OCSE, direzione 3 mesi) | Inflazione (media totale+core vs 2%, + direzione 3 mesi) | Regime |
+| Crescita (PIL annuo vs trimestre prima) | Inflazione (media 3 mesi totale+core > 2,5%, oppure in salita sui 3 mesi prima) | Regime |
 |---|---|---|
 | in accelerazione | sotto controllo | Goldilocks |
 | in accelerazione | alta o in salita | Reflazione |
 | in rallentamento | alta o in salita | Stagflazione |
 | in rallentamento | sotto controllo | Deflazione |
 
-Isteresi e conferma di 2 mesi per asse. Niente stato "Transizione": la vicinanza a una soglia si mostra come "solidità" (Alta/Media/Bassa) e come probabilità.
+Nessuna banda né conferma: il PIL cambia una volta a trimestre. Senza PIL la crescita usa la direzione del CLI OCSE. La vicinanza a una soglia si mostra come "solidità" (Alta/Media/Bassa) e come probabilità.
 
-**Fase del ciclo**: momentum = asse crescita del regime; livello = PIL annuo contro la sua media 10 anni (la disoccupazione contro la media 10 anni, usata fino al 03/10/2026, coincideva con la crescita sopra il trend a posteriori solo nel 42-57% dei mesi: in Europa e Giappone scende da anni per demografia); Recessione solo con conferma dura (Sahm, negli USA con Chauvet-Piger, fuori dagli USA per 2 mesi; oppure PIL annuo <= 0). Gli anticipatori (`leading.py`) si mostrano a parte e non cambiano la fase.
+**Fase del ciclo**: momentum = direzione 3 mesi del CLI OCSE (isteresi, conferma 2 mesi), separato dall'asse crescita del regime dall'08/10/2026; livello = PIL annuo contro la sua media 10 anni (la disoccupazione contro la media 10 anni, usata fino al 03/10/2026, coincideva con la crescita sopra il trend a posteriori solo nel 42-57% dei mesi: in Europa e Giappone scende da anni per demografia); Recessione solo con conferma dura (Sahm, negli USA con Chauvet-Piger, fuori dagli USA per 2 mesi; oppure PIL annuo <= 0). Gli anticipatori (`leading.py`) si mostrano a parte e non cambiano la fase. Regime e fase possono quindi divergere (es. USA 10/2026: Stagflazione in fase di Ripresa).
 
-**Perché** (`scripts/evaluate_model.py`, con ritardi di pubblicazione veri): il modello precedente (trimestrale, z della variazione di PIL e CPI) coincideva con la lettura a posteriori nel 5-20% dei mesi ed era "Transizione" il 40-60% del tempo. Il nuovo: 90-95%, ~1 cambio di regime l'anno. Il livello del CLI rispetto a 100 viene rivisto troppo (66-88% di coerenza nelle vintage ALFRED 2018-2026), la direzione no (79-93%).
+**Perché** (`scripts/evaluate_model.py`): il modello 03/10 (direzione del CLI + inflazione contro il 2%) riproduceva solo 5 delle 14 letture note di Quantaste/Casario, quanto il caso; questa regola 13 (manca solo USA Q2 2022). Per Casario la crescita è la velocità del PIL, non il livello di attività in salita: a ottobre 2026 il CLI USA saliva ancora, ma il PIL annuo era passato dal 2,7% al 2,1%, quindi rallentamento e Stagflazione come Quantaste. Prezzo: ~3 cambi di regime l'anno (prima ~1) e lettura in tempo reale uguale a quella a posteriori nel 46-58% dei mesi (prima 90-95%), perché il PIL esce tardi e viene rivisto. Usare la velocità del CLI al posto del PIL faceva crollare il riconoscimento delle recessioni NBER (100% -> 54%), per questo la fase resta sulla direzione del CLI: invariata (NBER 100%, Recessione fuori 1%).
 
 ### Asset allocation
 Tabella statica in config (`src/config/asset_allocation.py`), regime → classi di asset favorite (azioni, obbligazioni, materie prime, oro, cash), basata su framework storico noto (stile All Weather). Non dinamica, non backtestata in v1.

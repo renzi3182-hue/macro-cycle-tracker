@@ -13,7 +13,7 @@ from src.classify.currency import CURRENCIES, PAIRS, cot_component, momentum_ret
 from src.classify.leading import SIGNALS
 from src.classify.positioning import percentile_rank
 from src.classify.recession import sahm_gap
-from src.classify.regime import INFLATION_TARGET, monthly
+from src.classify.regime import INFLATION_HIGH_LEVEL, monthly
 from src.classify.rrg import quadrant, rrg
 from src.classify.stress import MC_YEARS, PROXY, SCENARIOS, monte_carlo, portfolio_returns, scenario, ticker_weights
 from src.classify.risk import components as risk_components, label as risk_label, risk_score
@@ -163,12 +163,12 @@ def describe(a: dict) -> str:
     h = monthly(headline)
     trend = h.iloc[-1] - h.iloc[-4] if len(h) > 3 else 0.0
     trend_txt = "in salita" if trend > 0.2 else "in calo" if trend < -0.2 else "stabile"
-    growth = "accelera (indicatore anticipatore OCSE in salita)" if a["growth_state"] == "up" else "rallenta (indicatore anticipatore OCSE in calo)"
+    growth = "accelera (PIL annuo in aumento sul trimestre prima)" if a["growth_state"] == "up" else "rallenta (PIL annuo in calo sul trimestre prima)"
     infl = "alta o in salita" if a["inflation_state"] == "up" else "sotto controllo"
     phase = a["phase"]
     return (
-        f"La crescita <b>{growth}</b> e l'inflazione è <b>{infl}</b>: {a['inflation_level']:.1f}% contro un obiettivo del "
-        f"{INFLATION_TARGET:.0f}%, {trend_txt} negli ultimi 3 mesi."
+        f"La crescita <b>{growth}</b> e l'inflazione è <b>{infl}</b>: {a['inflation_level']:.1f}% (soglia "
+        f"{INFLATION_HIGH_LEVEL:.1f}%), {trend_txt} negli ultimi 3 mesi."
         + (f" Ciclo in <b>{phase}</b>: {PHASE_MEANING[phase]}." if phase else "")
     )
 
@@ -230,7 +230,7 @@ def line_chart(series: dict[str, tuple[pd.Series, str]], key: str, height: int =
 
 
 LOGO_DIR = Path(__file__).resolve().parent.parent / "assets"
-st.set_page_config(page_title="Soft Investing", page_icon=str(LOGO_DIR / "logo-mark.svg"), layout="wide")
+st.set_page_config(page_title="Soft Works", page_icon=str(LOGO_DIR / "logo-mark.svg"), layout="wide")
 mode = st.context.theme.type or "dark"
 st.logo(str(LOGO_DIR / ("logo-mark.svg" if mode == "dark" else "logo-mark-light.svg")), size="large")
 st.html(page_css(mode))
@@ -259,9 +259,9 @@ def page_overview() -> None:
     ui('<div class="grid">' + "".join(area_tile_html(a, f"aree?area={area}") for area, a in assessments.items()) + "</div>")
     st.space("small")
     ui('<div class="two">'
-       f'<div class="card"><div class="head"><h3>Crescita e inflazione</h3><span class="note">in bande: ±1 = soglia di cambio</span></div>'
+       f'<div class="card"><div class="head"><h3>Crescita e inflazione</h3><span class="note">0 = soglia di cambio</span></div>'
        f'{quadrant_html(list(assessments.values()), AREAS)}'
-       '<p class="note">Verso l\'alto la crescita accelera, verso destra l\'inflazione è più alta del 2% o sale. '
+       '<p class="note">Verso l\'alto la crescita accelera, verso destra l\'inflazione è sopra il 2,5% o sale. '
        'Un\'area vicina a un asse può cambiare regime.</p></div>'
        f'{changes_html(recent_changes(assessments))}</div>')
     st.caption("Solo informativo, non è consulenza finanziaria. Metodo e affidabilità nella sezione **Metodo**.")
@@ -288,18 +288,20 @@ def page_area() -> None:
            f"Crescita · {'CLI OCSE' if growth_src == 'cli' else 'PIL annuo'}",
            "In accelerazione" if a["growth_state"] == "up" else "In rallentamento",
            "r-gold" if a["growth_state"] == "up" else "r-stag",
-           f"{gser.iloc[-1]:.1f}" + ("" if growth_src == "cli" else "%"), f"{g_change:+.2f} in 3 mesi",
+           f"{gser.iloc[-1]:.1f}" + ("" if growth_src == "cli" else "%"),
+           f"{g_change:+.2f} " + ("in 3 mesi" if growth_src == "cli" else "sul trimestre prima"),
            gauge_html(xg, "rallenta", "accelera", "r-stag", "r-gold"),
-           "Direzione del leading indicator OCSE: anticipa il ciclo e cambia poco con le revisioni.")
+           "PIL annuo contro il trimestre prima, come Quantaste: conta la velocità della crescita, non il livello."
+           if growth_src != "cli" else "Direzione del leading indicator OCSE (PIL non disponibile).")
        + axis_card_html(
            "Inflazione · media totale e core",
            "Alta o in salita" if a["inflation_state"] == "up" else "Sotto controllo",
            "r-stag" if a["inflation_state"] == "up" else "r-gold",
-           f"{a['inflation_level']:.1f}%", f"obiettivo {INFLATION_TARGET:.0f}%",
+           f"{a['inflation_level']:.1f}%", f"soglia {INFLATION_HIGH_LEVEL:.1f}%",
            gauge_html(xi, "sotto controllo", "alta", "r-gold", "r-stag"),
-           "Livello rispetto all'obiettivo delle banche centrali, corretto per la direzione degli ultimi 3 mesi.")
+           "Alta se la media degli ultimi 3 mesi supera la soglia oppure se sale rispetto ai 3 mesi prima.")
        + f'<div class="card"><div class="head"><h3>Probabilità</h3><span class="note">stima dagli assi</span></div>{prob_html(a["probabilities"])}'
-         '<p class="note">Il regime cambia solo dopo 2 mesi oltre la soglia: può restare diverso dalla probabilità più alta.</p></div>'
+         '<p class="note">Più un asse è vicino alla soglia, più il regime è incerto.</p></div>'
        + "</div>")
     st.space("small")
     ui(history_html(a["history"]))
@@ -528,37 +530,41 @@ def page_method() -> None:
     with col_a, st.container(border=True):
         st.markdown(
             "#### Regime macro\n"
-            "Due assi, aggiornati ogni mese.\n\n"
-            "- **Crescita**: direzione a 3 mesi del leading indicator OCSE (CLI). In salita = l'economia accelera rispetto al trend.\n"
-            "- **Inflazione**: media di inflazione totale e core contro l'obiettivo del 2%, corretta per la direzione degli ultimi 3 mesi.\n\n"
-            "Un asse cambia stato solo se supera la soglia per 2 mesi di fila.\n\n"
+            "Due assi, con la regola di Marco Casario usata da Quantaste.\n\n"
+            "- **Crescita**: PIL annuo contro il trimestre prima. In aumento = l'economia accelera, in calo = rallenta, "
+            "anche se cresce ancora.\n"
+            "- **Inflazione**: alta se la media di totale e core degli ultimi 3 mesi supera il 2,5% "
+            "oppure se l'inflazione sale rispetto ai 3 mesi prima.\n\n"
+            "Il PIL cambia una volta a trimestre: il regime può cambiare 3-4 volte l'anno.\n\n"
             "| | Inflazione sotto controllo | Inflazione alta |\n|---|---|---|\n"
             "| **Crescita in accelerazione** | Goldilocks | Reflazione |\n| **Crescita in rallentamento** | Deflazione | Stagflazione |"
         )
     with col_b, st.container(border=True):
         st.markdown(
             "#### Fase del ciclo\n"
-            "- **Espansione**: crescita in accelerazione e PIL annuo sopra la sua media di 10 anni.\n"
-            "- **Ripresa**: crescita in accelerazione con PIL ancora sotto il trend, o dopo una recessione.\n"
-            "- **Rallentamento**: crescita in decelerazione, senza conferme di recessione.\n"
+            "Momentum = direzione a 3 mesi del leading indicator OCSE (CLI), con conferma di 2 mesi.\n\n"
+            "- **Espansione**: CLI in salita e PIL annuo sopra la sua media di 10 anni.\n"
+            "- **Ripresa**: CLI in salita con PIL ancora sotto il trend, o dopo una recessione.\n"
+            "- **Rallentamento**: CLI in calo, senza conferme di recessione.\n"
             "- **Recessione**: solo con conferma dai dati: regola di Sahm sulla disoccupazione "
             "(negli USA confermata dalla probabilità Chauvet-Piger) oppure PIL annuo negativo.\n\n"
             "Gli **indicatori anticipatori** (curva, spread, sentiment) sono mostrati a parte e non cambiano la fase."
         )
     with st.container(border=True):
-        st.markdown("#### Affidabilità, dal 2000 (`scripts/evaluate_model.py`, 03/10/2026)")
+        st.markdown("#### Affidabilità, dal 2000 (`scripts/evaluate_model.py`, 08/10/2026)")
         st.table(pd.DataFrame([
-            {"Area": "USA", "Regime: tempo reale = storico": "90%", "Cambi di regime/anno": "1,2", "Ciclo vs riferimento": "NBER: 100% dei mesi di recessione in Rallentamento o Recessione, Recessione fuori 1%"},
-            {"Area": "Eurozona", "Regime: tempo reale = storico": "92%", "Cambi di regime/anno": "0,9", "Ciclo vs riferimento": "OCSE: 90% dentro, 19% fuori"},
-            {"Area": "Italia", "Regime: tempo reale = storico": "90%", "Cambi di regime/anno": "1,2", "Ciclo vs riferimento": "OCSE: 84% dentro, 26% fuori"},
-            {"Area": "UK", "Regime: tempo reale = storico": "90%", "Cambi di regime/anno": "1,2", "Ciclo vs riferimento": "OCSE: 51% dentro, 45% fuori (debole)"},
-            {"Area": "Giappone", "Regime: tempo reale = storico": "95%", "Cambi di regime/anno": "0,6", "Ciclo vs riferimento": "OCSE: 61% dentro, 17% fuori"},
+            {"Area": "USA", "Regime: tempo reale = storico": "48%", "Cambi di regime/anno": "3,0", "Ciclo vs riferimento": "NBER: 100% dei mesi di recessione in Rallentamento o Recessione, Recessione fuori 1%"},
+            {"Area": "Eurozona", "Regime: tempo reale = storico": "57%", "Cambi di regime/anno": "3,0", "Ciclo vs riferimento": "OCSE: 86% dentro, 19% fuori"},
+            {"Area": "Italia", "Regime: tempo reale = storico": "52%", "Cambi di regime/anno": "2,9", "Ciclo vs riferimento": "OCSE: 80% dentro, 28% fuori"},
+            {"Area": "UK", "Regime: tempo reale = storico": "58%", "Cambi di regime/anno": "2,3", "Ciclo vs riferimento": "OCSE: 51% dentro, 45% fuori (debole)"},
+            {"Area": "Giappone", "Regime: tempo reale = storico": "46%", "Cambi di regime/anno": "3,4", "Ciclo vs riferimento": "OCSE: 66% dentro, 16% fuori"},
         ]).set_index("Area"))
         st.caption(
-            "Tempo reale = con i ritardi di pubblicazione veri (CLI e inflazione 1 mese, PIL 4). Il modello precedente "
-            "(trimestrale, a momentum) coincideva col giudizio a posteriori solo nel 5-20% dei mesi. "
-            "Limiti: il CLI viene rivisto (direzione stabile nel 79-93% delle revisioni 2018-2026); "
-            "nel Regno Unito il ciclo è poco preciso; il regime non prevede i rendimenti futuri."
+            "Confronto con Quantaste: 13 letture note su 14 riprodotte (dashboard 10/2026, libro di Casario Q1 2024, "
+            "trimestri 2015-2022 dal blog). Il modello precedente (direzione del CLI) ne riproduceva 5. "
+            "Tempo reale = con i ritardi di pubblicazione veri (inflazione 1 mese, PIL 4): il PIL del trimestre si "
+            "conosce tardi e viene rivisto, per questo la lettura del momento coincide con quella a posteriori circa "
+            "1 mese su 2. Nel Regno Unito il ciclo è poco preciso; il regime non prevede i rendimenti futuri."
         )
 
 

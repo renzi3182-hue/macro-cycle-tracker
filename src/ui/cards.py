@@ -132,7 +132,7 @@ def quadrant_html(areas: list[dict], codes: dict[str, str]) -> str:
     for p in pts:
         a = p["a"]
         xg, xi = a["positions"]
-        tip = escape(f'{a["label"]}: {a["regime"]} (crescita {xg:+.1f}, inflazione {xi:+.1f} in bande)')
+        tip = escape(f'{a["label"]}: {a["regime"]} (crescita {xg:+.1f}, inflazione {xi:+.1f}; 0 = soglia)')
         side = f'right:calc({100 - p["x"]:.1f}% + 12px)' if p["left"] else f'left:calc({p["x"]:.1f}% + 12px)'
         out.append(f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:{regime_color(a["regime"])}"></div>'
                    f'<b class="pl" style="{side};top:{min(p["ly"], 96):.1f}%">{escape(codes.get(a["area"], a["area"]))}</b>')
