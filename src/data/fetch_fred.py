@@ -3,8 +3,8 @@ import requests
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 SERIES_GROWTH = "GDPC1"  # Real GDP
-SERIES_INFLATION = "CPIAUCSL"  # CPI All Urban Consumers
-SERIES_CORE_INFLATION = "CPILFESL"  # CPI escluso cibo ed energia
+SERIES_INFLATION = "CPIAUCNS"  # CPI All Urban Consumers, non destagionalizzato: sul YoY la stagionalita' si annulla e la serie non viene rivista ogni anno
+SERIES_CORE_INFLATION = "CPILFENS"  # CPI escluso cibo ed energia, non destagionalizzato
 SERIES_UNEMPLOYMENT = "UNRATE"  # Civilian Unemployment Rate
 # Disoccupazione OCSE via FRED per le aree senza fonte nazionale (Cina e India non la pubblicano mensile).
 UNEMPLOYMENT_INTL = {"Canada": "LRUNTTTTCAM156S", "Australia": "LRUNTTTTAUM156S"}
@@ -34,8 +34,12 @@ CURVES = {
 }
 BTP_BUND = ("IRLTLT01ITM156N", "IRLTLT01DEM156N")  # BTP 10Y - Bund 10Y
 
+# Chiamate tentate e riuscite in questo processo: lo scheduler esce con errore se FRED non ha risposto mai.
+calls = {"tried": 0, "ok": 0}
+
 
 def _fetch_series(series_id: str, api_key: str, units: str = "pc1") -> pd.Series:
+    calls["tried"] += 1
     resp = requests.get(
         BASE_URL,
         params={
@@ -50,6 +54,7 @@ def _fetch_series(series_id: str, api_key: str, units: str = "pc1") -> pd.Series
     observations = resp.json()["observations"]
     dates = [pd.Timestamp(o["date"]) for o in observations if o["value"] != "."]
     values = [float(o["value"]) for o in observations if o["value"] != "."]
+    calls["ok"] += 1
     return pd.Series(values, index=dates).sort_index()
 
 

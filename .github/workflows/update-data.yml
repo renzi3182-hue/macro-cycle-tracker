@@ -33,8 +33,11 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Parti dalla cache pubblicata (storico dei cambi di regime)
         run: gh release download data-latest -p cache.db -D data --clobber || echo "nessuna release, uso la cache del repo"
-      - run: python -m src.scheduler.update_data
+      - id: update
+        run: python -m src.scheduler.update_data
       - name: Pubblica la cache
+        # anche se l'update esce con errore (FRED giu'): le altre fonti sono comunque aggiornate
+        if: ${{ !cancelled() && steps.update.outcome != 'skipped' }}
         run: |
           gh release view data-latest >/dev/null 2>&1 || gh release create data-latest --title "Dati" --notes "Cache aggiornata automaticamente da update-data."
           gh release upload data-latest data/cache.db --clobber

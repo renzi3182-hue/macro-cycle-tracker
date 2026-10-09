@@ -188,6 +188,10 @@ def main() -> None:
     update_market_context(fred_key)
     update_asset_prices()
     cache.write_meta("updated_at", datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"))
+    if fetch_fred.calls["tried"] and not fetch_fred.calls["ok"]:
+        # Exit code 1: il workflow fallisce e GitHub manda la mail. La cache con le altre fonti e' gia' scritta.
+        logger.error("tutte le %d chiamate FRED sono fallite (API key o servizio giu')", fetch_fred.calls["tried"])
+        sys.exit(1)
 
 
 if __name__ == "__main__":

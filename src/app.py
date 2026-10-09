@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 from streamlit_lightweight_charts import renderLightweightCharts
 
-from src.classify.assess import USED_INPUTS, assess
+from src.classify.assess import HIGH_FREQ_MAX_DAYS, USED_INPUTS, assess, stale_high_freq
 from src.classify.currency import CURRENCIES, PAIRS, cot_component, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.leading import SIGNALS
 from src.classify.positioning import percentile_rank
@@ -52,7 +52,6 @@ PHASE_MEANING = {
     "Recessione": "contrazione confermata da disoccupazione o PIL",
     "Ripresa": "crescita sotto il trend ma in miglioramento",
 }
-ACTIVITY_LABELS = {"industrial_production": "la produzione industriale", "cli": "il leading indicator OCSE"}
 CHANGES_MONTHS = 4
 TREND_NAMES = {"SPY": "Azionario", "TLT": "Treasury lunga durata", "IEF": "Treasury medio termine", "TIP": "Indicizzate inflazione",
                "GLD": "Oro", "DBC": "Materie prime"}
@@ -307,9 +306,8 @@ def page_area() -> None:
            gauge_html(xi, "sotto controllo", "alta", "r-gold", "r-stag"),
            "Alta se la media degli ultimi 3 mesi supera la soglia oppure se sale rispetto ai 3 mesi prima.")
        + f'<div class="card"><div class="head"><h3>Probabilità · trimestre in corso</h3><span class="note">calibrata dal 2000</span></div>'
-         f'{prob_html(a["probabilities"])}<p class="note">Regime del trimestre in corso, quando ci saranno i dati completi. '
-         f'L\'inflazione si prevede bene; la crescita del trimestre quasi per niente, per questo resta vicina al 50% '
-         f'(si muove con {ACTIVITY_LABELS[a["activity"][0]] if a["activity"] else "nessun dato mensile"}).</p></div>'
+         f'{prob_html(a["inflation_prob"])}<p class="note">Probabilità che l\'inflazione del trimestre in corso risulti alta '
+         f'o in salita a dati completi. La crescita del trimestre non si prevede (resta vicina al 50%): crescita incerta.</p></div>'
        + "</div>")
     st.space("small")
     ui(history_html(a["history"]))
@@ -623,7 +621,7 @@ def page_method() -> None:
             "- **Inflazione**: alta se la media di totale e core degli ultimi 3 mesi supera il 2,5% "
             "oppure se l'inflazione sale rispetto ai 3 mesi prima.\n\n"
             "Il PIL cambia una volta a trimestre: il regime può cambiare 3-4 volte l'anno.\n\n"
-            "**Probabilità**: quanto è probabile ogni regime per il trimestre in corso, a dati completi. Calibrate sul "
+            "**Probabilità**: quanto è probabile che l'inflazione del trimestre in corso risulti alta, a dati completi (la crescita è mostrata come incerta). Calibrate sul "
             "passato (9 aree dal 2000): una probabilità del 70% si è avverata circa 7 volte su 10. L'inflazione si prevede "
             "bene (88% dei mesi dal 2015), l'accelerazione del PIL del trimestre no (56%, quasi una moneta): neanche "
             "la produzione industriale mensile la anticipa davvero.\n\n"
@@ -689,6 +687,10 @@ if meta:
     utc = pd.Timestamp(meta)
     fresh = pd.Timestamp.now(tz="UTC") - utc < pd.Timedelta(hours=6)
     st.caption(f"{':green' if fresh else ':orange'}[●] Dati aggiornati il {utc.tz_convert('Europe/Rome'):%d/%m alle %H:%M}")
+late = stale_high_freq({k: (s.index[-1] if not (s := load_indicator(*k)).empty else None) for k in HIGH_FREQ_MAX_DAYS})
+if late:
+    st.warning("Serie giornaliere/settimanali FRED ferme: " + ", ".join(f"{k[1]} ({k[0]})" for k in late)
+               + ". Possibile problema di aggiornamento.", icon=":material/schedule:")
 if not assessments:
     st.info("Nessun dato in cache. Esegui `python -m src.scheduler.update_data` per popolare.", icon=":material/database:")
     st.stop()

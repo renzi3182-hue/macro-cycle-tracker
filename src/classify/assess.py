@@ -14,6 +14,13 @@ from src.classify.regime import (
 STALE_DAYS = {"growth_yoy": 250, "unemployment_rate": 150}
 STALE_DAYS_DEFAULT = 120
 CORE_INPUTS = (GROWTH_INPUT, "inflation_yoy")  # se uno di questi e' in ritardo la lettura e' poco affidabile
+# Serie FRED ad alta frequenza (area, indicatore): massimo ritardo in giorni di calendario. Giornaliere 5
+# (weekend + un festivo), settimanali 14 (NFCI e sussidi escono 4-6 giorni dopo la settimana di riferimento).
+HIGH_FREQ_MAX_DAYS = {
+    ("USA", "yield_curve"): 5, ("USA", "credit_spread"): 5, ("Mercati", "vix"): 5,
+    ("Mercati", "breakeven_5y"): 5, ("Mercati", "breakeven_5y5y"): 5,
+    ("USA", "fin_conditions"): 14, ("USA", "claims"): 14,
+}
 USED_INPUTS = ("cli", "growth_yoy", "inflation_yoy", "core_inflation_yoy", "unemployment_rate", "recession_prob", "industrial_production")
 
 # Solidita' = quanto l'asse piu' debole e' dentro il suo stato, in unita' di banda (1 = sulla soglia d'ingresso).
@@ -32,6 +39,13 @@ def confidence(growth_state: str, inflation_state: str, xg: float, xi: float, st
     if any(n in stale for n in CORE_INPUTS):
         return "Bassa"
     return "Alta" if margin >= CONFIDENCE_HIGH else "Media" if margin >= CONFIDENCE_MEDIUM else "Bassa"
+
+
+def stale_high_freq(last_dates: dict[tuple[str, str], pd.Timestamp | None], today: pd.Timestamp | None = None) -> list:
+    """Chiavi di HIGH_FREQ_MAX_DAYS con l'ultimo dato troppo vecchio o assente."""
+    today = today or pd.Timestamp.today().normalize()
+    return [k for k, days in HIGH_FREQ_MAX_DAYS.items()
+            if last_dates.get(k) is None or (today - last_dates[k]).days > days]
 
 
 def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None = None) -> dict | None:
@@ -66,7 +80,8 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
         "inflation_state": last["inflation"],
         "inflation_level": last["inflation_level"],
         "positions": (xg, xi),
-        "probabilities": probabilities(act.iloc[-1] if not act.empty else None, last["inflation_score"]),
+        "probabilities": (probs := probabilities(act.iloc[-1] if not act.empty else None, last["inflation_score"])),
+        "inflation_prob": probs["Reflazione"] + probs["Stagflazione"],  # unico asse prevedibile, la crescita e' ~50%
         "activity": (next(n for n in ACTIVITY_INPUTS if n in s), act.iloc[-1]) if not act.empty else None,
         "confidence": confidence(last["growth"], last["inflation"], xg, xi, stale),
         "recession": bool(recession.iloc[-1]) if recession is not None and not recession.empty else False,

@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 import pytest
 
-from src.classify.assess import assess
+from src.classify.assess import HIGH_FREQ_MAX_DAYS, assess, stale_high_freq
 from src.data import cache
 
 
@@ -26,6 +26,7 @@ def test_assess_gives_regime_phase_and_metadata():
     assert a["month"] == CLI.index[-1]
     assert a["stale"] == [] and a["confidence"] in ("Alta", "Media", "Bassa")
     assert sum(a["probabilities"].values()) == pytest.approx(1.0)
+    assert a["inflation_prob"] == pytest.approx(0.5)  # inflazione piatta: punteggio 0, sulla soglia
     assert a["history"]["regime"].iloc[-1] == a["regime"]
 
 
@@ -39,6 +40,16 @@ def test_missing_inflation_returns_none_and_gdp_is_the_growth_input():
 def test_stale_core_input_lowers_confidence():
     a = assess("UK", SERIES, today=TODAY + pd.Timedelta(days=200))
     assert "cli" in a["stale"] and a["confidence"] == "Bassa"
+
+
+def test_stale_high_freq_daily_5_weekly_14():
+    today = pd.Timestamp("2026-10-09")
+    dates = {k: today - pd.Timedelta(days=d) for k, d in HIGH_FREQ_MAX_DAYS.items()}
+    assert stale_high_freq(dates, today) == []
+    dates[("Mercati", "vix")] = today - pd.Timedelta(days=6)
+    dates[("USA", "claims")] = today - pd.Timedelta(days=13)
+    del dates[("USA", "yield_curve")]
+    assert stale_high_freq(dates, today) == [("USA", "yield_curve"), ("Mercati", "vix")]
 
 
 def test_cache_refuses_to_wipe_history(tmp_path):

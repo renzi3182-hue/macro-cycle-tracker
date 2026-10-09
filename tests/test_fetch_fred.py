@@ -3,6 +3,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pytest
+
 from src.data import fetch_fred
 
 
@@ -28,6 +30,17 @@ def test_fetch_inflation_yoy(requests_mock):
     )
     result = fetch_fred.fetch_inflation_yoy("dummy_key")
     assert list(result.values) == [3.1]
+    assert requests_mock.last_request.qs["series_id"] == ["cpiaucns"]  # non destagionalizzato
+    fetch_fred.fetch_core_inflation_yoy("dummy_key")
+    assert requests_mock.last_request.qs["series_id"] == ["cpilfens"]
+
+
+def test_calls_counts_failures(requests_mock):
+    fetch_fred.calls.update(tried=0, ok=0)
+    requests_mock.get(fetch_fred.BASE_URL, status_code=500)
+    with pytest.raises(Exception):
+        fetch_fred.fetch_vix("k")
+    assert fetch_fred.calls == {"tried": 1, "ok": 0}
 
 
 def test_fetch_leading_series(requests_mock):

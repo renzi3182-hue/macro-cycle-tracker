@@ -140,12 +140,13 @@ def quadrant_html(areas: list[dict], codes: dict[str, str]) -> str:
     return "".join(out)
 
 
-def prob_html(probs: dict) -> str:
-    return "".join(
-        f'<div class="prow"><span>{_dot(regime_color(r))} {r}</span>'
-        f'<div class="track"><i style="width:{p * 100:.0f}%;background:{regime_color(r)}"></i></div>'
-        f'<span class="mono r">{p * 100:.0f}%</span></div>'
-        for r, p in sorted(probs.items(), key=lambda x: -x[1])
+def prob_html(p_inflation: float) -> str:
+    """Solo l'asse inflazione: la crescita del trimestre non si prevede (resta ~50%)."""
+    return (
+        f'<div class="prow"><span>{_dot("var(--r-stag)")} Inflazione alta</span>'
+        f'<div class="track"><i style="width:{p_inflation * 100:.0f}%;background:var(--r-stag)"></i></div>'
+        f'<span class="mono r">{p_inflation * 100:.0f}%</span></div>'
+        f'<div class="prow"><span>{_dot("var(--muted)")} Crescita</span><span class="muted">incerta</span><span></span></div>'
     )
 
 
