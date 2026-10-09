@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from src.classify.regime import (
-    GROWTH_SCALE,
     INFLATION_HIGH,
+    activity_z,
     axis_states,
     classify_regime,
     growth_z,
@@ -93,8 +93,20 @@ def test_history_has_both_axes_and_matches_classify():
     assert h["regime"].iloc[-1] == classify_regime(ACCEL, HIGH)
 
 
-def test_probabilities_sum_to_one_and_are_75_percent_one_scale_away():
-    p = probabilities(GROWTH_SCALE, INFLATION_HIGH)
+def test_probabilities_sum_to_one_and_are_50_50_on_thresholds():
+    p = probabilities(0.0, 0.0)
     assert sum(p.values()) == pytest.approx(1.0)
-    assert p["Goldilocks"] + p["Reflazione"] == pytest.approx(0.75)
-    assert p["Reflazione"] == pytest.approx(p["Goldilocks"])  # inflazione sulla soglia: 50/50
+    assert all(v == pytest.approx(0.25) for v in p.values())
+
+
+def test_probabilities_follow_activity_and_inflation():
+    p = probabilities(2.0, 1.0)  # attivita' in accelerazione, inflazione 1 punto sopra la soglia
+    assert max(p, key=p.get) == "Reflazione"
+    assert probabilities(None, 1.0)["Reflazione"] == pytest.approx(probabilities(None, 1.0)["Stagflazione"])
+
+
+def test_activity_prefers_industrial_production_over_cli():
+    ip = _m([1.0] * 30 + [2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+    cli = _m([100.0] * 30 + [99.0, 98.0, 97.0, 96.0, 95.0, 94.0])
+    assert activity_z(ip, cli).iloc[-1] > 0 > activity_z(None, cli).iloc[-1]
+    assert activity_z(None, None).empty

@@ -42,9 +42,9 @@ Da fare manualmente (è una modifica di sistema, non automatizzata da questo rep
 1. Apri **Utilità di pianificazione** (Task Scheduler).
 2. Crea attività di base → trigger giornaliero, orario a scelta.
 3. Azione: avvia programma.
-   - Programma: `C:\Users\renzi\OneDrive\Desktop\soft-investing\.venv\Scripts\python.exe`
+   - Programma: `C:\Users\renzi\OneDrive\Desktop\soft-works\.venv\Scripts\python.exe`
    - Argomenti: `-m src.scheduler.update_data`
-   - Cartella di lavoro (importante): `C:\Users\renzi\OneDrive\Desktop\soft-investing`
+   - Cartella di lavoro (importante): `C:\Users\renzi\OneDrive\Desktop\soft-works`
 
 ## Test
 

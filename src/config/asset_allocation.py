@@ -1,14 +1,15 @@
 # Mapping statico regime -> classi di asset storicamente favorite (stile All Weather).
 # Non e' un consiglio di investimento personalizzato.
 #
-# Tabella riallineata il 03/10/2026 al backtest del regime attuale (scripts/backtest_assets.py, USA
-# 1960-2026, regime point-in-time, rendimento del mese successivo). Differenze significative (|t| > 2):
-# - Goldilocks: materie prime migliori (19%/anno, t = 2.4), Treasury peggiori (t = -2.0);
-# - Stagflazione: Treasury migliori (9.9%/anno, t = 2.8), materie prime peggiori (-4.5%/anno, t = -2.1).
-# Il resto (azioni, oro, Deflazione) non e' significativo: segue i rendimenti medi (oro primo in Reflazione
-# e Deflazione) e la teoria. Il cash rende di piu' quando l'inflazione e' alta solo per il livello dei tassi.
-# Portafoglio per regime 2000-2026 (profilo Medio, tabella precedente): 4.4%/anno contro 4.8% dell'All
-# Weather statico: la tabella e' un'opinione guidata dai dati, non un vantaggio dimostrato.
+# Tabella riallineata il 03/10/2026 al backtest del regime di allora (direzione del CLI). Ricontrollata il
+# 09/10/2026 sulla regola Casario/Quantaste (scripts/backtest_assets.py, USA 1960-2026, regime point-in-time,
+# rendimento del mese successivo): resta una sola differenza significativa (|t| > 2), materie prime peggiori in
+# Stagflazione (-2.8%/anno, t = -2.2), gia' escluse. Spariti i vantaggi di prima (Treasury in Stagflazione,
+# materie prime in Goldilocks). Unica stonatura: in Reflazione l'azionario e' l'ultimo dei 5 asset (4.5%/anno,
+# t = -1.8, non significativo); resta in tabella perche' lo indicano Casario e la teoria. Il cash rende di piu'
+# con inflazione alta solo per il livello dei tassi.
+# Portafoglio per regime 2000-2026 (profilo Medio): 8.5%/anno contro 5.5% dell'All Weather statico, ma la
+# tabella e' stata scelta guardando questi dati: e' un'opinione guidata dai dati, non un vantaggio dimostrato.
 #
 # Fonti (ricerca 28/09/2026): Bridgewater All Weather, Merrill Lynch Investment
 # Clock (Greetham, 2004), letteratura su correlazione azioni-obbligazioni.

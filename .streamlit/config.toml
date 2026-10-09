@@ -1,4 +1,4 @@
-# Tema Soft Investing (design system "Soft Glass", artifact NFSg6TDRqqdXEJp3C7hGTx): chiaro e scuro, segue il sistema.
+# Tema Soft Works (design system "Soft Glass", artifact NFSg6TDRqqdXEJp3C7hGTx): chiaro e scuro, segue il sistema.
 # Stessi valori di src/ui/theme.py (TOKENS), usati dai blocchi HTML.
 [theme]
 baseRadius = "18px"

@@ -83,6 +83,17 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
             "yield_curve": curve("Giappone"),
         },
     }
+    for area in fetch_oecd.OECD_ONLY:
+        areas[area] = {
+            "growth_yoy": lambda area=area: fetch_oecd.fetch_growth_yoy(area),
+            "inflation_yoy": lambda area=area: fetch_oecd.fetch_inflation_yoy(area),
+        }
+        if area in fetch_oecd.CORE_AREAS:
+            areas[area]["core_inflation_yoy"] = lambda area=area: fetch_oecd.fetch_inflation_yoy(area, core=True)
+        if area in fetch_fred.UNEMPLOYMENT_INTL:
+            areas[area]["unemployment_rate"] = lambda area=area: fetch_fred.fetch_unemployment_rate(fred_key, fetch_fred.UNEMPLOYMENT_INTL[area])
+    for area in fetch_oecd.IP_AREAS:
+        areas[area]["industrial_production"] = lambda area=area: fetch_oecd.fetch_industrial_production_yoy(area)
     for area, fetchers in areas.items():
         fetchers["cli"] = lambda area=area: fetch_oecd.fetch_cli(area)
     return areas

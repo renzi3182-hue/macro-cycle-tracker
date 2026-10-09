@@ -17,7 +17,7 @@ Aggiornamento dati automatico e schedulato (no refresh manuale ogni volta).
 ## Affected users and systems
 - Utente unico: renzi3182@gmail.com, uso personale, no altri utenti.
 - Sistemi esterni: FRED API (dati USA), ECB Statistical Data Warehouse / Eurostat (Eurozona/Italia), altre fonti da definire per copertura globale (World Bank o simili).
-- Nessun sistema esistente da integrare: progetto nuovo, cartella dedicata `macro-cycle-tracker`, separata dal vault Obsidian `Soft-investing`.
+- Nessun sistema esistente da integrare: progetto nuovo, cartella dedicata `macro-cycle-tracker`, separata dal vault Obsidian del monorepo.
 
 ## Constraints
 - Uso personale: no autenticazione multi-utente, no deploy pubblico richiesto in v1.

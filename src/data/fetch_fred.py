@@ -6,6 +6,8 @@ SERIES_GROWTH = "GDPC1"  # Real GDP
 SERIES_INFLATION = "CPIAUCSL"  # CPI All Urban Consumers
 SERIES_CORE_INFLATION = "CPILFESL"  # CPI escluso cibo ed energia
 SERIES_UNEMPLOYMENT = "UNRATE"  # Civilian Unemployment Rate
+# Disoccupazione OCSE via FRED per le aree senza fonte nazionale (Cina e India non la pubblicano mensile).
+UNEMPLOYMENT_INTL = {"Canada": "LRUNTTTTCAM156S", "Australia": "LRUNTTTTAUM156S"}
 SERIES_YIELD_CURVE = "T10Y3M"  # 10Y - 3M Treasury spread, punti %
 # Baa - 10Y Treasury. Non uso BAMLH0A0HYM2 (HY OAS): FRED ne espone solo 3 anni,
 # inutili per tarare le soglie. BAA10Y parte dal 1986.
@@ -63,8 +65,8 @@ def fetch_core_inflation_yoy(api_key: str) -> pd.Series:
     return _fetch_series(SERIES_CORE_INFLATION, api_key)
 
 
-def fetch_unemployment_rate(api_key: str) -> pd.Series:
-    return _fetch_series(SERIES_UNEMPLOYMENT, api_key, units="lin")  # gia' un tasso %, no trasformazione
+def fetch_unemployment_rate(api_key: str, series_id: str = SERIES_UNEMPLOYMENT) -> pd.Series:
+    return _fetch_series(series_id, api_key, units="lin")  # gia' un tasso %, no trasformazione
 
 
 def fetch_yield_curve(api_key: str) -> pd.Series:

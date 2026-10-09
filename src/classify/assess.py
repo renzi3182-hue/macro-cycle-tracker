@@ -4,7 +4,9 @@ import pandas as pd
 from src.classify.cycle import momentum_states, phase_history
 from src.classify.leading import leading_risk
 from src.classify.recession import recession_flags
-from src.classify.regime import GROWTH_FALLBACK, GROWTH_INPUT, axis_positions, probabilities, regime_history
+from src.classify.regime import (
+    ACTIVITY_INPUTS, GROWTH_FALLBACK, GROWTH_INPUT, activity_z, axis_positions, probabilities, regime_history,
+)
 
 # Un dato e' in ritardo anomalo oltre questi giorni dalla data di riferimento (inizio del periodo):
 # il CPI di agosto (01/08) esce a meta' settembre, il PIL del 2o trimestre (01/04) a fine luglio,
@@ -12,7 +14,7 @@ from src.classify.regime import GROWTH_FALLBACK, GROWTH_INPUT, axis_positions, p
 STALE_DAYS = {"growth_yoy": 250, "unemployment_rate": 150}
 STALE_DAYS_DEFAULT = 120
 CORE_INPUTS = (GROWTH_INPUT, "inflation_yoy")  # se uno di questi e' in ritardo la lettura e' poco affidabile
-USED_INPUTS = ("cli", "growth_yoy", "inflation_yoy", "core_inflation_yoy", "unemployment_rate", "recession_prob")
+USED_INPUTS = ("cli", "growth_yoy", "inflation_yoy", "core_inflation_yoy", "unemployment_rate", "recession_prob", "industrial_production")
 
 # Solidita' = quanto l'asse piu' debole e' dentro il suo stato, in unita' di banda (1 = sulla soglia d'ingresso).
 CONFIDENCE_HIGH = 1.0
@@ -51,6 +53,7 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
     stale = [n for n, d in as_of.items() if (today - d).days > STALE_DAYS.get(n, STALE_DAYS_DEFAULT)]
     last = hist.iloc[-1]
     xg, xi = axis_positions(last["growth_z"], last["inflation_score"])
+    act = activity_z(s.get("industrial_production"), s.get("cli"))
     phase = last["phase"] if isinstance(last["phase"], str) else None
     return {
         "area": area,
@@ -63,7 +66,8 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
         "inflation_state": last["inflation"],
         "inflation_level": last["inflation_level"],
         "positions": (xg, xi),
-        "probabilities": probabilities(last["growth_z"], last["inflation_score"]),
+        "probabilities": probabilities(act.iloc[-1] if not act.empty else None, last["inflation_score"]),
+        "activity": (next(n for n in ACTIVITY_INPUTS if n in s), act.iloc[-1]) if not act.empty else None,
         "confidence": confidence(last["growth"], last["inflation"], xg, xi, stale),
         "recession": bool(recession.iloc[-1]) if recession is not None and not recession.empty else False,
         "leading": leading_risk(area, s),

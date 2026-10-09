@@ -15,7 +15,7 @@ GROWTH_INPUT = "growth_yoy"
 GROWTH_FALLBACK = "cli"
 GROWTH_CHANGE_MONTHS = 3  # un trimestre: il PIL trimestrale riportato a mensile cambia ogni 3 mesi
 GROWTH_BAND = 0.0  # niente zona neutra: accelera o rallenta, come Quantaste
-GROWTH_SCALE = 0.4  # per le probabilita': z della variazione a cui "up" vale PROB_AT_BAND
+GROWTH_SCALE = 0.4  # per indicatori e solidita': z della variazione che vale "1" sulla scala dell'asse
 
 # Inflazione "alta" se la media a 3 mesi di totale + core e' sopra il 2,5% OPPURE se il totale (media 3 mesi)
 # sale rispetto ai 3 mesi prima. Casario: Reflazione = "inflazione in accelerazione", Stagflazione = "inflazione
@@ -24,11 +24,21 @@ INFLATION_INPUTS = ("inflation_yoy", "core_inflation_yoy")
 INFLATION_HIGH_LEVEL = 2.5
 INFLATION_HIGH = 0.0  # punteggio = max(livello - 2,5, variazione 3 mesi), punti %
 INFLATION_LOW = 0.0
-INFLATION_SCALE = 0.5  # per le probabilita'
+INFLATION_SCALE = 0.5  # come GROWTH_SCALE, in punti %
 
 CONFIRM_MONTHS = 1  # nessuna conferma: il PIL cambia una volta a trimestre
 MIN_SCALE_MONTHS = 24  # sotto questi punti la deviazione standard usa tutto il campione
-PROB_AT_BAND = 0.75  # probabilita' di "up" quando un asse e' a una scala dalla soglia
+
+# Probabilita' (09/10/2026): regime del TRIMESTRE IN CORSO come risultera' a dati completi, non dell'etichetta
+# (che usa l'ultimo PIL pubblicato, come Quantaste). Regressione logistica dello stato a posteriori di ogni asse
+# sulla lettura in tempo reale, 9 aree 2000-2026 con i ritardi di pubblicazione veri (scripts/evaluate_model.py,
+# sezione Calibrazione). Crescita: l'ultimo PIL pubblicato non dice nulla sul trimestre dopo (peso ~0, e' gia'
+# passato un trimestre); qualcosa dice l'attivita' mensile (produzione industriale, CLI dove manca), quindi la
+# probabilita' resta vicina al 50% e puo' favorire un regime diverso dall'etichetta. Inflazione: persistente,
+# lo stato a dati completi e' quello in tempo reale nell'88% dei mesi. Pesi senza intercetta (50% sulla soglia).
+PROB_ACTIVITY_WEIGHT = 0.24  # per unita' di z della variazione 3 mesi dell'attivita'
+PROB_INFLATION_WEIGHT = 5.9  # per punto % del punteggio d'inflazione
+ACTIVITY_INPUTS = ("industrial_production", "cli")  # il primo disponibile
 
 REGIMES = ["Goldilocks", "Reflazione", "Stagflazione", "Deflazione"]
 
@@ -82,21 +92,29 @@ def regime_name(growth_state: str, inflation_state: str) -> str:
     return "Stagflazione" if inflation_state == "up" else "Deflazione"
 
 
-def _up_probability(x: float) -> float:
-    """x = distanza dalla soglia in unita' di scala: x = 1 -> PROB_AT_BAND."""
-    k = math.log(PROB_AT_BAND / (1 - PROB_AT_BAND))
-    return 1 / (1 + math.exp(-k * max(-10.0, min(10.0, x))))
-
-
 def axis_positions(g_z: float, i_score: float) -> tuple[float, float]:
-    """(crescita, inflazione) in unita' di scala dalla soglia: 0 = sulla soglia, +1 = "up" al 75%."""
+    """(crescita, inflazione) in unita' di scala dalla soglia: 0 = sulla soglia. Per indicatori e solidita'."""
     return g_z / GROWTH_SCALE, (i_score - (INFLATION_HIGH + INFLATION_LOW) / 2) / INFLATION_SCALE
 
 
-def probabilities(g_z: float, i_score: float) -> dict:
-    """Probabilita' dei 4 regimi, assumendo i due assi indipendenti. Stima, non frequenza storica."""
-    xg, xi = axis_positions(g_z, i_score)
-    pg, pi = _up_probability(xg), _up_probability(xi)
+def activity_z(industrial_production: pd.Series | None = None, cli: pd.Series | None = None) -> pd.Series:
+    """Attivita' mensile per le probabilita': variazione 3 mesi della produzione industriale annua (media 3 mesi)
+    o, dove manca, del CLI OCSE, in deviazioni standard."""
+    if industrial_production is not None and not industrial_production.empty:
+        return growth_z(monthly(industrial_production).rolling(GROWTH_CHANGE_MONTHS).mean().dropna())
+    if cli is not None and not cli.empty:
+        return growth_z(cli)
+    return pd.Series(dtype=float)
+
+
+def _logistic(x: float) -> float:
+    return 1 / (1 + math.exp(-max(-30.0, min(30.0, x))))
+
+
+def probabilities(activity: float | None, i_score: float) -> dict:
+    """Probabilita' dei 4 regimi per il trimestre in corso, assi indipendenti. Senza attivita' la crescita vale 50%."""
+    pg = 0.5 if activity is None or math.isnan(activity) else _logistic(PROB_ACTIVITY_WEIGHT * activity)
+    pi = _logistic(PROB_INFLATION_WEIGHT * i_score)
     return {
         "Goldilocks": pg * (1 - pi),
         "Reflazione": pg * pi,

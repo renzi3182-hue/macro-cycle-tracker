@@ -4,6 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 from streamlit_lightweight_charts import renderLightweightCharts
@@ -20,6 +21,7 @@ from src.classify.risk import components as risk_components, label as risk_label
 from src.classify.score import (
     ASSET_AREA, HORIZON_MONTHS, STRONG, UNIVERSE, WEAK, band_table, complete_months, forward_excess, monthly_prices, pillars, scores,
 )
+from src.config import cot_guide
 from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, ASSET_ALLOCATION, apply_trend, combined_portfolio_weights
 from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
@@ -30,12 +32,15 @@ from src.ui.cards import (
     prevailing_regime, prob_html, quadrant_html, ranking_html, risk_html, rrg_html, strength_html, stress_html, trend_html, weight_deltas,
 )
 from src.ui.theme import REGIME_VARS, hex_color, page_css, phase_color, regime_color
+from src.ui.tool_pages import page_interest, page_sizing
 
-AREAS = {"USA": "USA", "Eurozona": "EUR", "Italia": "ITA", "UK": "UK", "Giappone": "JP"}
+AREAS = {"USA": "USA", "Eurozona": "EUR", "Italia": "ITA", "UK": "UK", "Giappone": "JP",
+         "Canada": "CA", "Cina": "CN", "Australia": "AU", "India": "IN"}
 LEADING_KEYS = sorted({key for signals in SIGNALS.values() for _, key, _ in signals})
 INPUT_LABELS = {
     "cli": "CLI OCSE", "growth_yoy": "PIL annuo", "inflation_yoy": "Inflazione", "core_inflation_yoy": "Inflazione core",
     "unemployment_rate": "Disoccupazione", "recession_prob": "Prob. recessione (Chauvet-Piger)",
+    "industrial_production": "Produzione industriale",
 }
 LEADING_LABELS = {
     "yield_curve": "Curva 10Y-breve (pp)", "credit_spread": "Spread Baa-10Y (pp)", "fin_conditions": "NFCI",
@@ -47,6 +52,7 @@ PHASE_MEANING = {
     "Recessione": "contrazione confermata da disoccupazione o PIL",
     "Ripresa": "crescita sotto il trend ma in miglioramento",
 }
+ACTIVITY_LABELS = {"industrial_production": "la produzione industriale", "cli": "il leading indicator OCSE"}
 CHANGES_MONTHS = 4
 TREND_NAMES = {"SPY": "Azionario", "TLT": "Treasury lunga durata", "IEF": "Treasury medio termine", "TIP": "Indicizzate inflazione",
                "GLD": "Oro", "DBC": "Materie prime"}
@@ -300,8 +306,10 @@ def page_area() -> None:
            f"{a['inflation_level']:.1f}%", f"soglia {INFLATION_HIGH_LEVEL:.1f}%",
            gauge_html(xi, "sotto controllo", "alta", "r-gold", "r-stag"),
            "Alta se la media degli ultimi 3 mesi supera la soglia oppure se sale rispetto ai 3 mesi prima.")
-       + f'<div class="card"><div class="head"><h3>Probabilità</h3><span class="note">stima dagli assi</span></div>{prob_html(a["probabilities"])}'
-         '<p class="note">Più un asse è vicino alla soglia, più il regime è incerto.</p></div>'
+       + f'<div class="card"><div class="head"><h3>Probabilità · trimestre in corso</h3><span class="note">calibrata dal 2000</span></div>'
+         f'{prob_html(a["probabilities"])}<p class="note">Regime del trimestre in corso, quando ci saranno i dati completi. '
+         f'L\'inflazione si prevede bene; la crescita del trimestre quasi per niente, per questo resta vicina al 50% '
+         f'(si muove con {ACTIVITY_LABELS[a["activity"][0]] if a["activity"] else "nessun dato mensile"}).</p></div>'
        + "</div>")
     st.space("small")
     ui(history_html(a["history"]))
@@ -449,7 +457,7 @@ def page_ranking() -> None:
 
 
 def page_markets() -> None:
-    st.caption("Solo informativo: non entra nella classificazione. COT = posizione netta degli speculatori (CFTC), percentile sugli ultimi 5 anni.")
+    st.caption("Solo informativo: non entra nella classificazione.")
     with st.container(horizontal=True):
         for label, (ser_area, key), fmt in [
             ("VIX", ("Mercati", "vix"), "{:.1f}"), ("MOVE (vol. Treasury)", ("Mercati", "move"), "{:.1f}"),
@@ -463,23 +471,102 @@ def page_markets() -> None:
                 delta = f"{ser.iloc[-1] - ser.iloc[-2]:+.2f}" if len(ser) > 1 else None
                 st.metric(label, fmt.format(ser.iloc[-1]), delta, delta_color="off", border=True, chart_data=spark(ser, 60),
                           delta_description="vs rilev. prec.")
-    col_ev, col_cot = st.columns([5, 7])
-    with col_ev:
-        ui(events_html(upcoming_events()))
-    with col_cot:
-        market = st.selectbox("Mercato COT", list(CONTRACTS), label_visibility="collapsed")
-        rows, last_date = [], None
-        for group in (DISAGG_GROUPS if market in DISAGG_MARKETS else TFF_GROUPS):
-            cot = load_indicator("Mercati", f"cotg_{market}_{group}")
-            if cot.empty:
-                continue
-            rows.append({"Categoria": group, "Netto": cot.iloc[-1], "Variazione": cot.iloc[-1] - cot.iloc[-2] if len(cot) > 1 else 0.0,
-                         "Percentile": round(percentile_rank(cot.tail(COT_WEEKS)))})
-            last_date = cot.index[-1]
+    ui(events_html(upcoming_events()))
+    st.caption("Posizionamento dei grandi operatori sui future: pagina **COT**.")
+
+def cot_history_chart(s: pd.Series, lo: float, hi: float) -> alt.LayerChart:
+    """Netto degli speculatori negli ultimi 5 anni con le soglie del 10o e 90o percentile."""
+    d = s.tail(COT_WEEKS).rename("netto").rename_axis("data").reset_index()
+    line = alt.Chart(d).mark_area(
+        line={"color": hex_color(mode, "accent"), "strokeWidth": 2}, opacity=0.18, color=hex_color(mode, "accent")).encode(
+        x=alt.X("data:T", title=None, axis=alt.Axis(format="%Y", tickCount="year")), y=alt.Y("netto:Q", title="Netto speculatori (% open interest)"),
+        tooltip=[alt.Tooltip("data:T", title="Settimana", format="%d/%m/%Y"), alt.Tooltip("netto:Q", title="Netto %", format="+.1f")])
+    bands = alt.Chart(pd.DataFrame({"y": [lo, hi], "q": ["10° percentile", "90° percentile"]})).mark_rule(strokeDash=[5, 4]).encode(
+        y="y:Q", color=alt.Color("q:N", title=None, scale=alt.Scale(range=[hex_color(mode, "r-defl"), hex_color(mode, "r-stag")])))
+    zero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color=hex_color(mode, "muted"), opacity=0.5).encode(y="y:Q")
+    return (line + bands + zero).properties(height=300, background="transparent").configure_view(strokeWidth=0).configure_axis(
+        labelColor=hex_color(mode, "muted"), titleColor=hex_color(mode, "muted"), gridColor=hex_color(mode, "line"),
+        domainColor=hex_color(mode, "line"), labelFont="DM Mono").configure_legend(labelColor=hex_color(mode, "muted"), orient="top")
+
+
+def page_cot() -> None:
+    series = {m: load_indicator("Mercati", f"cot_{m}") for m in CONTRACTS}
+    series = {m: s for m, s in series.items() if len(s) > 1}
+    if not series:
+        st.info("Nessun dato COT in cache.", icon=":material/database:")
+        st.stop()
+    last = max(s.index[-1] for s in series.values())
+    ui(hero_html(f"COT report · CFTC, dato del {last:%d/%m/%Y}", "Chi è posizionato dove",
+                 "Ogni venerdì la CFTC pubblica le posizioni sui future al martedì precedente. Quando gli speculatori "
+                 "sono tutti dalla stessa parte il mercato è <b>affollato</b>: basta poco per una ricopertura violenta."))
+
+    stats = {}
+    for m, s in series.items():
+        pct = percentile_rank(s.tail(COT_WEEKS))
+        stats[m] = (s.iloc[-1], s.iloc[-1] - s.iloc[-2], pct, *cot_guide.crowding(pct))
+    with st.container(horizontal=True):
+        for m, (net, chg, pct, label, color) in stats.items():
+            st.metric(m, f"{net:+.1f}%", label, delta_color=color, delta_arrow="off", border=True, width=232,
+                      delta_description=f"{pct:.0f}° percentile", chart_data=spark(series[m], 52), chart_type="area",
+                      help=f"Speculatori long meno short in % dell'open interest. Variazione settimana: {chg:+.1f} punti.")
+
+    market = st.pills("Mercato", list(series), default=next(iter(series)), key="cot_market", bind="query-params",
+                      selection_mode="single", required=True, label_visibility="collapsed")
+    net, chg, pct, label, color = stats[market]
+    what, reading = cot_guide.MARKET_INFO[market]
+    s = series[market]
+    col_l, col_r = st.columns([7, 5])
+    with col_l, st.container(border=True):
+        with st.container(horizontal=True, vertical_alignment="center"):
+            st.markdown(f"### {market}")
+            st.badge(label, color=color, icon=":material/groups:")
+        st.caption(what)
+        window = s.tail(COT_WEEKS)
+        st.altair_chart(cot_history_chart(s, window.quantile(0.1), window.quantile(0.9)),
+                        alt=f"Posizione netta degli speculatori su {market} negli ultimi 5 anni")
+        st.caption("Sopra la linea rossa: più long del 90% delle settimane degli ultimi 5 anni. Sotto la blu: più short del 90%.")
+    with col_r:
+        with st.container(border=True):
+            st.markdown("**Cosa implica oggi**")
+            st.markdown(cot_guide.implication(market, pct, chg))
+            st.markdown(f"**Come si legge su questo mercato.** {reading}")
+        with st.container(horizontal=True):
+            st.metric("Netto speculatori", f"{net:+.1f}%", f"{chg:+.1f} pt", delta_color="off", border=True,
+                      help="Long meno short dei non-commercial, in % dell'open interest.")
+            st.metric("Percentile 5 anni", f"{pct:.0f}°", border=True,
+                      help="Quota di settimane degli ultimi 5 anni con un netto più basso di oggi.")
+
+    groups = DISAGG_GROUPS if market in DISAGG_MARKETS else TFF_GROUPS
+    rows, gdate = [], None
+    for group in groups:
+        g = load_indicator("Mercati", f"cotg_{market}_{group}")
+        if len(g) < 2:
+            continue
+        rows.append({"Categoria": group, "Netto": g.iloc[-1], "Variazione": g.iloc[-1] - g.iloc[-2],
+                     "Percentile": round(percentile_rank(g.tail(COT_WEEKS)))})
+        gdate = g.index[-1]
+    col_g, col_e = st.columns([7, 5])
+    with col_g:
         if rows:
-            ui(cot_groups_html(market, rows, f"{last_date:%d/%m}"))
-        else:
-            st.info("Nessun dato COT in cache.", icon=":material/database:")
+            ui(cot_groups_html(market, rows, f"{gdate:%d/%m}"))
+    with col_e, st.container(border=True):
+        st.markdown(f"**Le categorie nel report {'Disaggregated' if market in DISAGG_MARKETS else 'Traders in Financial Futures'}**")
+        for group in groups:
+            who, how = cot_guide.GROUP_INFO[group]
+            st.markdown(f"**{group}** · {who} {how}")
+
+    with st.expander("Come usare il COT", icon=":material/school:"):
+        st.markdown(
+            "- **È contesto, non timing.** Un mercato può restare affollato per mesi mentre il trend continua: "
+            "l'estremo dice dove sta il rischio, non quando arriva.\n"
+            "- **Guarda chi muove.** Hedge fund e managed money seguono il trend e sono i primi a chiudere; asset manager e "
+            "produttori si muovono piano e per motivi strutturali (coperture, mandati).\n"
+            "- **Cerca le divergenze.** Prezzo ai massimi con speculatori che riducono il long = rally meno sostenuto.\n"
+            "- **Ritardo di 3 giorni.** Il dato è del martedì e esce il venerdì: nelle settimane volatili è già vecchio.\n"
+            "- **Verificato qui.** Nel backtest delle valute (1999-2026) il COT non ha migliorato la previsione a 6-12 mesi."
+        )
+    st.caption("Fonte: CFTC (Legacy per gli speculatori, TFF e Disaggregated per le categorie). Solo informativo, non è consulenza.")
+
 
 def page_calendar() -> None:
     events = load_events()
@@ -536,6 +623,10 @@ def page_method() -> None:
             "- **Inflazione**: alta se la media di totale e core degli ultimi 3 mesi supera il 2,5% "
             "oppure se l'inflazione sale rispetto ai 3 mesi prima.\n\n"
             "Il PIL cambia una volta a trimestre: il regime può cambiare 3-4 volte l'anno.\n\n"
+            "**Probabilità**: quanto è probabile ogni regime per il trimestre in corso, a dati completi. Calibrate sul "
+            "passato (9 aree dal 2000): una probabilità del 70% si è avverata circa 7 volte su 10. L'inflazione si prevede "
+            "bene (88% dei mesi dal 2015), l'accelerazione del PIL del trimestre no (56%, quasi una moneta): neanche "
+            "la produzione industriale mensile la anticipa davvero.\n\n"
             "| | Inflazione sotto controllo | Inflazione alta |\n|---|---|---|\n"
             "| **Crescita in accelerazione** | Goldilocks | Reflazione |\n| **Crescita in rallentamento** | Deflazione | Stagflazione |"
         )
@@ -551,33 +642,47 @@ def page_method() -> None:
             "Gli **indicatori anticipatori** (curva, spread, sentiment) sono mostrati a parte e non cambiano la fase."
         )
     with st.container(border=True):
-        st.markdown("#### Affidabilità, dal 2000 (`scripts/evaluate_model.py`, 08/10/2026)")
+        st.markdown("#### Affidabilità, dal 2000 (`scripts/evaluate_model.py`, 09/10/2026)")
         st.table(pd.DataFrame([
             {"Area": "USA", "Regime: tempo reale = storico": "48%", "Cambi di regime/anno": "3,0", "Ciclo vs riferimento": "NBER: 100% dei mesi di recessione in Rallentamento o Recessione, Recessione fuori 1%"},
             {"Area": "Eurozona", "Regime: tempo reale = storico": "57%", "Cambi di regime/anno": "3,0", "Ciclo vs riferimento": "OCSE: 86% dentro, 19% fuori"},
             {"Area": "Italia", "Regime: tempo reale = storico": "52%", "Cambi di regime/anno": "2,9", "Ciclo vs riferimento": "OCSE: 80% dentro, 28% fuori"},
             {"Area": "UK", "Regime: tempo reale = storico": "58%", "Cambi di regime/anno": "2,3", "Ciclo vs riferimento": "OCSE: 51% dentro, 45% fuori (debole)"},
             {"Area": "Giappone", "Regime: tempo reale = storico": "46%", "Cambi di regime/anno": "3,4", "Ciclo vs riferimento": "OCSE: 66% dentro, 16% fuori"},
+            {"Area": "Canada", "Regime: tempo reale = storico": "45%", "Cambi di regime/anno": "3,5", "Ciclo vs riferimento": "OCSE: 74% dentro, 38% fuori"},
+            {"Area": "Cina", "Regime: tempo reale = storico": "44%", "Cambi di regime/anno": "3,6", "Ciclo vs riferimento": "OCSE: 72% dentro, 30% fuori (dati meno affidabili)"},
+            {"Area": "Australia", "Regime: tempo reale = storico": "49%", "Cambi di regime/anno": "2,9", "Ciclo vs riferimento": "OCSE: 48% dentro, 66% fuori (debole)"},
+            {"Area": "India", "Regime: tempo reale = storico": "52%", "Cambi di regime/anno": "2,1", "Ciclo vs riferimento": "OCSE: 92% dentro, 25% fuori"},
         ]).set_index("Area"))
         st.caption(
-            "Confronto con Quantaste: 13 letture note su 14 riprodotte (dashboard 10/2026, libro di Casario Q1 2024, "
-            "trimestri 2015-2022 dal blog). Il modello precedente (direzione del CLI) ne riproduceva 5. "
+            "Confronto con Quantaste: 14 letture note su 17 riprodotte (dashboard 10/2026, libro di Casario Q1 2024, "
+            "trimestri 2015-2022 dal blog). Le 3 di Canada, Cina e Australia non sono servite a scegliere la regola: "
+            "ne coincide 1 (Australia). Il modello precedente (direzione del CLI) ne riproduceva 5 su 14. "
             "Tempo reale = con i ritardi di pubblicazione veri (inflazione 1 mese, PIL 4): il PIL del trimestre si "
             "conosce tardi e viene rivisto, per questo la lettura del momento coincide con quella a posteriori circa "
             "1 mese su 2. Nel Regno Unito il ciclo è poco preciso; il regime non prevede i rendimenti futuri."
         )
 
 
-PAGES = [
-    st.Page(page_overview, title="Panoramica", icon=":material/public:", url_path="panoramica", default=True),
-    st.Page(page_area, title="Aree", icon=":material/location_on:", url_path="aree"),
-    st.Page(page_ranking, title="Classifica", icon=":material/leaderboard:", url_path="classifica"),
-    st.Page(page_portfolio, title="Portafoglio", icon=":material/donut_large:", url_path="portafoglio"),
-    st.Page(page_markets, title="Mercati", icon=":material/candlestick_chart:", url_path="mercati"),
-    st.Page(page_calendar, title="Calendario", icon=":material/calendar_month:", url_path="calendario"),
-    st.Page(page_currencies, title="Valute", icon=":material/currency_exchange:", url_path="valute"),
-    st.Page(page_method, title="Metodo", icon=":material/menu_book:", url_path="metodo"),
-]
+PAGES = {
+    "Macro": [
+        st.Page(page_overview, title="Panoramica", icon=":material/public:", url_path="panoramica", default=True),
+        st.Page(page_area, title="Aree", icon=":material/location_on:", url_path="aree"),
+        st.Page(page_method, title="Metodo", icon=":material/menu_book:", url_path="metodo"),
+    ],
+    "Mercati": [
+        st.Page(page_ranking, title="Classifica", icon=":material/leaderboard:", url_path="classifica"),
+        st.Page(page_markets, title="Mercati", icon=":material/candlestick_chart:", url_path="mercati"),
+        st.Page(page_cot, title="COT report", icon=":material/groups:", url_path="cot"),
+        st.Page(page_currencies, title="Valute", icon=":material/currency_exchange:", url_path="valute"),
+        st.Page(page_calendar, title="Calendario", icon=":material/calendar_month:", url_path="calendario"),
+    ],
+    "Strumenti": [
+        st.Page(page_portfolio, title="Portafoglio", icon=":material/donut_large:", url_path="portafoglio"),
+        st.Page(lambda: page_sizing(mode), title="Size Monte Carlo", icon=":material/casino:", url_path="size"),
+        st.Page(lambda: page_interest(mode), title="Interesse composto", icon=":material/savings:", url_path="interesse"),
+    ],
+}
 nav = st.navigation(PAGES, position="top")
 meta = cache.read_meta("updated_at")
 if meta:
