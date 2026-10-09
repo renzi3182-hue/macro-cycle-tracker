@@ -1,7 +1,7 @@
 """Backtest regime -> rendimenti degli asset (USA): l'asset allocation per regime regge sui dati?
 
-Per ogni mese t si prende il regime USA calcolato con i soli dati pubblicati entro t (CLI e CPI con
-1 mese di ritardo, vedi scripts/evaluate_model.py, dati in data/cache.db), poi si misura il rendimento del mese dopo.
+Per ogni mese t si prende il regime USA calcolato con i soli dati pubblicati entro t (PIL con 4 mesi
+di ritardo, CPI con 1, vedi scripts/evaluate_model.py, dati in data/cache.db), poi si misura il rendimento del mese dopo.
 
 Asset (serie gratuite, limiti dichiarati):
 - Azionario: S&P 500 prezzo (Yahoo ^GSPC, mensile dal 1985), SENZA dividendi (~2%/anno in meno, uguale in ogni regime)
@@ -101,7 +101,7 @@ def main() -> None:
     regime = regimes_point_in_time().reindex(rets.index).dropna()
     fwd = rets.shift(-1).loc[regime.index]  # regime noto a fine mese t -> rendimento del mese t+1
     df = fwd.assign(regime=regime.values).dropna(subset=["regime"])
-    print(f"Regime USA point-in-time (CLI e CPI con ritardo di pubblicazione), "
+    print(f"Regime USA point-in-time (PIL e CPI con ritardo di pubblicazione), "
           f"{df.index[0]} -> {df.index[-1]}\n")
     print("Mesi per regime:", df["regime"].value_counts().to_dict(), "\n")
 

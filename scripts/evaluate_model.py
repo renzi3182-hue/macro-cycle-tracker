@@ -8,6 +8,8 @@ CPI/CLI/disoccupazione +1) e ricalcolando una volta sola. Stampa, dal 2000:
 2. Ciclo: confronto con NBER (USA) e con i rallentamenti OCSE (EUROREC, ITAREC, GBRREC, JPNREC, fino al 2022).
 3. CLI OCSE: quante volte direzione e livello restano gli stessi dopo le revisioni (vintage ALFRED dal 2018).
 4. Quantaste: quante letture note di Quantaste/Casario il modello riproduce (riferimento dell'utente).
+5. Calibrazione: pesi delle probabilita' (src/classify/regime.py, PROB_*), stimati sul 2000-2014 e provati sul
+   2015-2026, poi ristimati su tutto: se cambiano molto, aggiornare le costanti.
 Uso, da root del monorepo: .venv/Scripts/python code/macro-cycle-tracker/scripts/evaluate_model.py (serve FRED_API_KEY in .env)
 """
 import sys
@@ -17,20 +19,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import os
 
+import numpy as np
 import pandas as pd
 import requests
 
 from src.classify.assess import assess
-from src.classify.regime import GROWTH_CHANGE_MONTHS
+from src.classify.regime import GROWTH_CHANGE_MONTHS, PROB_ACTIVITY_WEIGHT, PROB_INFLATION_WEIGHT, activity_z
 from src.data import cache, fetch_fred
 from src.scheduler.update_data import _load_dotenv
 
-AREAS = ["USA", "Eurozona", "Italia", "UK", "Giappone"]
-INPUTS = ["cli", "growth_yoy", "inflation_yoy", "core_inflation_yoy", "unemployment_rate", "recession_prob"]
-PUBLICATION_LAG_MONTHS = {"growth_yoy": 4}  # gli altri: 1 mese
+AREAS = ["USA", "Eurozona", "Italia", "UK", "Giappone", "Canada", "Cina", "Australia", "India"]
+INPUTS = ["cli", "growth_yoy", "inflation_yoy", "core_inflation_yoy", "unemployment_rate", "recession_prob", "industrial_production"]
+PUBLICATION_LAG_MONTHS = {"growth_yoy": 4, "industrial_production": 2}  # gli altri: 1 mese
 START = "2000-01-01"
 EPISODES = ["2001-09", "2008-12", "2009-09", "2020-05", "2021-06", "2022-09", "2023-12"]
-REFERENCE = {"USA": "USREC", "Eurozona": "EUROREC", "Italia": "ITAREC", "UK": "GBRREC", "Giappone": "JPNREC"}
+REFERENCE = {"USA": "USREC", "Eurozona": "EUROREC", "Italia": "ITAREC", "UK": "GBRREC", "Giappone": "JPNREC",
+             "Canada": "CANREC", "Cina": "CHNREC", "Australia": "AUSREC", "India": "INDREC"}
 # Letture note di Quantaste / Marco Casario (Espansione = Goldilocks). Trimestri 2015-2022: blog marcocasario.com
 # "il-gold-e-partito" (area non dichiarata, presunta USA; Q4 2022 escluso perche' etichettato due volte); Q1 2024:
 # libro di Casario; 2026Q3: dashboard Quantaste dell'08/10/2026, confrontata con la lettura in tempo reale.
@@ -38,9 +42,12 @@ QUANTASTE = [("USA", "2015Q1", "Goldilocks"), ("USA", "2016Q1", "Stagflazione"),
              ("USA", "2016Q4", "Reflazione"), ("USA", "2017Q2", "Goldilocks"), ("USA", "2018Q3", "Deflazione"),
              ("USA", "2019Q3", "Goldilocks"), ("USA", "2021Q1", "Reflazione"), ("USA", "2022Q2", "Reflazione"),
              ("USA", "2022Q3", "Stagflazione"), ("USA", "2024Q1", "Stagflazione"), ("Eurozona", "2024Q1", "Reflazione"),
-             ("USA", "2026Q3", "Stagflazione"), ("Eurozona", "2026Q3", "Reflazione")]
+             ("USA", "2026Q3", "Stagflazione"), ("Eurozona", "2026Q3", "Reflazione"),
+             # aree aggiunte il 09/10/2026: letture della dashboard dell'08/10, mai usate per scegliere la regola
+             ("Canada", "2026Q3", "Stagflazione"), ("Cina", "2026Q3", "Stagflazione"), ("Australia", "2026Q3", "Stagflazione")]
 CLI_FRED = {"USA": "USALOLITOAASTSAM", "Eurozona": "G4ELOLITOAASTSAM", "Italia": "ITALOLITOAASTSAM",
-            "UK": "GBRLOLITOAASTSAM", "Giappone": "JPNLOLITOAASTSAM"}
+            "UK": "GBRLOLITOAASTSAM", "Giappone": "JPNLOLITOAASTSAM", "Canada": "CANLOLITOAASTSAM",
+            "Cina": "CHNLOLITOAASTSAM", "Australia": "AUSLOLITOAASTSAM", "India": "INDLOLITOAASTSAM"}
 
 
 def lagged(s: pd.Series, name: str) -> pd.Series:
@@ -80,6 +87,31 @@ def quantaste_report(histories: dict) -> None:
     print(f"\n== Quantaste: {hits}/{len(QUANTASTE)} letture note riprodotte. " + "; ".join(misses))
 
 
+def _logit_fit(x: np.ndarray, y: np.ndarray) -> float:
+    """Peso di una logistica senza intercetta (Newton), cosi' la soglia della regola resta al 50%."""
+    w = 0.0
+    for _ in range(50):
+        p = 1 / (1 + np.exp(-w * x))
+        w -= ((p - y) @ x) / max((p * (1 - p)) @ (x * x), 1e-9)
+    return w
+
+
+def calibration_report(samples: list[pd.DataFrame]) -> None:
+    """samples: per area, tempo reale (attivita', punteggio inflazione) e stato a posteriori degli assi."""
+    d = pd.concat(samples).sort_index().loc[START:]
+    train, test = d.loc[:"2014"], d.loc["2015":]
+    print(f"\n== Calibrazione probabilita' ({len(d)} mesi-area dal 2000)")
+    for name, x, y, current in [("crescita (attivita' mensile)", "act", "g_up", PROB_ACTIVITY_WEIGHT),
+                                ("inflazione", "isc", "i_up", PROB_INFLATION_WEIGHT)]:
+        w = _logit_fit(train[x].values, train[y].values)
+        p = 1 / (1 + np.exp(-current * test[x].values))
+        bins = pd.cut(p, [0, .3, .45, .55, .7, 1])
+        rel = test.groupby(bins, observed=True)[y].agg(["mean", "count"])
+        print(f"   {name}: peso attuale {current}, stimato 2000-2014 {w:.2f}, su tutto {_logit_fit(d[x].values, d[y].values):.2f}; "
+              f"2015-2026 Brier {np.mean((p - test[y]) ** 2):.3f} (50% fisso: 0.250), azzeccato {np.mean((p > .5) == test[y]) * 100:.0f}%")
+        print("      prob. stimata -> quota vera: " + ", ".join(f"{i.left:.0%}-{i.right:.0%}: {r['mean'] * 100:.0f}% (n {r['count']:.0f})" for i, r in rel.iterrows()))
+
+
 def cycle_report(area: str, df: pd.DataFrame, key: str) -> None:
     ref = fetch_fred._fetch_series(REFERENCE[area], key, "lin").resample("MS").last()
     d = df.join(ref.rename("ref"), how="inner").dropna()
@@ -112,10 +144,17 @@ def cli_vintages(area: str, key: str) -> None:
 def main() -> None:
     _load_dotenv()
     key = os.environ["FRED_API_KEY"]
-    histories = {}
+    histories, samples = {}, []
     for area in AREAS:
         series = {n: s for n in INPUTS if not (s := cache.read_indicator_series(area, n)).empty}
-        histories[area] = (assess(area, {n: lagged(s, n) for n, s in series.items()})["history"], assess(area, series)["history"])
+        if not series:
+            print(f"\n== {area}: nessun dato in cache")
+            continue
+        late = {n: lagged(s, n) for n, s in series.items()}
+        histories[area] = (assess(area, late)["history"], assess(area, series)["history"])
+        rt, ex = histories[area]
+        samples.append(pd.DataFrame({"act": activity_z(late.get("industrial_production"), late.get("cli")), "isc": rt["inflation_score"],
+                                     "g_up": (ex["growth"] == "up").astype(float), "i_up": (ex["inflation"] == "up").astype(float)}).dropna())
         df = regime_report(area, series)
         for step in (cycle_report, cli_vintages):
             try:
@@ -123,6 +162,7 @@ def main() -> None:
             except (requests.RequestException, KeyError, IndexError) as e:
                 print(f"   {step.__name__}: non disponibile ({e})")
     quantaste_report(histories)
+    calibration_report(samples)
 
 
 if __name__ == "__main__":
