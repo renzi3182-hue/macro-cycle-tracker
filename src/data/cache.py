@@ -136,3 +136,10 @@ def read_meta(key: str, db_path: Path = DB_PATH) -> str | None:
     with get_connection(db_path) as conn:
         row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
     return row[0] if row else None
+
+
+def migrate_phase_names(old: str, new: str, db_path: Path = DB_PATH) -> None:
+    """Rinomina una fase nello storico `classifications`: senza, il primo run dopo una rinomina
+    registrerebbe un cambio di fase finto per ogni area ancora in quella fase. Idempotente."""
+    with get_connection(db_path) as conn:
+        conn.execute("UPDATE classifications SET phase = ? WHERE phase = ?", (new, old))

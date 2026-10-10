@@ -2,7 +2,8 @@ import io
 from functools import lru_cache
 
 import pandas as pd
-import requests
+
+from src.data.http import get_with_retry
 
 # OECD Composite Leading Indicator, amplitude adjusted (media di lungo periodo = 100).
 # Anticipa i punti di svolta del ciclo di 6-9 mesi. L'OCSE non pubblica il CLI per
@@ -26,13 +27,12 @@ CORE, HEADLINE = "_TXCP01_NRG", "_T"
 
 @lru_cache(maxsize=4)  # una sola chiamata per dataset e tutte le aree: l'API OCSE ha limiti di frequenza stretti
 def _fetch(url: str, start: str) -> pd.DataFrame:
-    resp = requests.get(
-        url,
+    resp = get_with_retry(
+        url, source="oecd",
         params={"startPeriod": start, "format": "csv"},
         headers={"User-Agent": "Mozilla/5.0 (compatible; macro-cycle-tracker/1.0)"},
         timeout=60,
     )
-    resp.raise_for_status()
     return pd.read_csv(io.StringIO(resp.text))
 
 

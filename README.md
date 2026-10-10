@@ -1,6 +1,6 @@
 # Macro Cycle Tracker
 
-Dashboard locale, uso personale: regime macro (Espansione/Deflazione/Reflazione/Stagflazione) e fase del ciclo economico (Espansione/Rallentamento/Recessione/Ripresa) per USA, Eurozona/Italia, UK, Giappone.
+Dashboard locale, uso personale: regime macro (Goldilocks/Deflazione/Reflazione/Stagflazione) e fase del ciclo economico (Espansione/Rallentamento/Recessione/Ripresa (sotto trend)) per USA, Eurozona/Italia, UK, Giappone.
 
 Vedi [intent](intent/001-macro-cycle-dashboard.md), [spec.md](spec.md), [plan.md](plan.md) per il processo che ha portato a questo codice.
 

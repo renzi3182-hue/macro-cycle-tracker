@@ -5,7 +5,8 @@
 import calendar
 
 import pandas as pd
-import requests
+
+from src.data.http import get_with_retry
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; macro-cycle-tracker/1.0)"}
 GDP_URL = "https://www.ons.gov.uk/economy/grossdomesticproductgdp/timeseries/ihyr/pn2/data"
@@ -17,8 +18,7 @@ UNEMPLOYMENT_URL = "https://www.ons.gov.uk/employmentandlabourmarket/peoplenotin
 
 
 def _fetch_ons_series(url: str) -> pd.Series:
-    resp = requests.get(url, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
+    resp = get_with_retry(url, source="boe", headers=HEADERS, timeout=30)
     payload = resp.json()
     # Mensile prima: CPI e disoccupazione hanno sia "months" sia "quarters" (medie), il PIL solo "quarters".
     entries = payload.get("months") or payload.get("quarters") or []

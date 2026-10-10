@@ -60,6 +60,22 @@ def test_write_indicator_series_drops_stale_dates(tmp_path):
     assert list(cache.read_indicator_series("UK", "cpi", db_path=db_path).values) == [2.0]
 
 
+def test_migrate_phase_names(tmp_path):
+    db_path = tmp_path / "test.db"
+    cache.write_classification("USA", "2026-01-01T00:00:00", "Goldilocks", "Ripresa", db_path=db_path)
+    cache.write_classification("USA", "2026-02-01T00:00:00", "Goldilocks", "Espansione", db_path=db_path)
+
+    cache.migrate_phase_names("Ripresa", "Ripresa (sotto trend)", db_path=db_path)
+    with cache.get_connection(db_path) as conn:
+        phases = [r[0] for r in conn.execute("SELECT phase FROM classifications ORDER BY computed_at")]
+    assert phases == ["Ripresa (sotto trend)", "Espansione"]
+
+    cache.migrate_phase_names("Ripresa", "Ripresa (sotto trend)", db_path=db_path)  # idempotente
+    with cache.get_connection(db_path) as conn:
+        phases = [r[0] for r in conn.execute("SELECT phase FROM classifications ORDER BY computed_at")]
+    assert phases == ["Ripresa (sotto trend)", "Espansione"]
+
+
 def test_meta_roundtrip(tmp_path):
     db = tmp_path / "t.db"
     assert cache.read_meta("updated_at", db_path=db) is None

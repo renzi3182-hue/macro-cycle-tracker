@@ -1,5 +1,6 @@
 import pandas as pd
-import requests
+
+from src.data.http import get_with_retry
 
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 SERIES_GROWTH = "GDPC1"  # Real GDP
@@ -40,8 +41,9 @@ calls = {"tried": 0, "ok": 0}
 
 def _fetch_series(series_id: str, api_key: str, units: str = "pc1") -> pd.Series:
     calls["tried"] += 1
-    resp = requests.get(
+    resp = get_with_retry(
         BASE_URL,
+        source="fred",
         params={
             "series_id": series_id,
             "api_key": api_key,
@@ -50,7 +52,6 @@ def _fetch_series(series_id: str, api_key: str, units: str = "pc1") -> pd.Series
         },
         timeout=30,
     )
-    resp.raise_for_status()
     observations = resp.json()["observations"]
     dates = [pd.Timestamp(o["date"]) for o in observations if o["value"] != "."]
     values = [float(o["value"]) for o in observations if o["value"] != "."]

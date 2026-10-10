@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import os
 import sys
@@ -6,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.classify import score
+from src.classify import cycle, score
 from src.classify.assess import assess
 from src.data import cache, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
@@ -17,6 +18,18 @@ MARKET_AREA = "Mercati"
 CALENDAR_AREA = "Calendario"
 FX_AREA = "Valute"
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+
+# Fetch falliti in questo run: mostrati in app (src/app.py), senza query string (puo' contenere api_key:
+# data/cache.db e' pubblicata come release pubblica).
+FETCH_FAILURES: list[dict] = []
+
+
+def _record_failure(area: str, indicator: str, exc: Exception) -> None:
+    FETCH_FAILURES.append({
+        "area": area, "indicator": indicator,
+        "time": datetime.datetime.now().isoformat(timespec="seconds"),
+        "message": str(exc).split("?", 1)[0][:200],
+    })
 
 
 def _load_dotenv(path: Path = ENV_PATH) -> None:
@@ -99,12 +112,19 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
     return areas
 
 
+def history_regime_key(result: dict) -> str:
+    """Valore di 'regime' da scrivere nello storico classifications: 'Incerto' conta come un valore unico,
+    cosi' entrare/uscire dall'incertezza e' un cambio ma scambiare la coppia di regimi restando incerti no."""
+    return "Incerto" if result["regime_label"].startswith("Incerto") else result["regime"]
+
+
 def update_area(area: str, indicator_fetchers: dict) -> None:
     for indicator, fetch_fn in indicator_fetchers.items():
         try:
             cache.write_indicator_series(area, indicator, fetch_fn())
-        except Exception:
+        except Exception as e:
             logger.exception("%s: fetch fallito per indicatore %s, tengo la serie in cache e continuo", area, indicator)
+            _record_failure(area, indicator, e)
 
     # Si classifica sulla cache, non sui soli fetch riusciti: un'API giu' per un giorno non cambia il regime.
     result = assess(area, {n: cache.read_indicator_series(area, n) for n in indicator_fetchers})
@@ -112,10 +132,11 @@ def update_area(area: str, indicator_fetchers: dict) -> None:
         logger.warning("%s: crescita o inflazione mancanti anche in cache, salto classificazione", area)
         return
     regime, phase = result["regime"], result["phase"] or "n/d"
+    history_regime = history_regime_key(result)
     last = cache.read_last_two_classifications(area)
     # Una riga solo quando regime o fase cambiano: con aggiornamenti ogni 30 minuti "cambiato dall'ultima volta" sparirebbe subito.
-    if not last or (last[0]["regime"], last[0]["phase"]) != (regime, phase):
-        cache.write_classification(area, datetime.datetime.now().isoformat(timespec="seconds"), regime, phase)
+    if not last or (last[0]["regime"], last[0]["phase"]) != (history_regime, phase):
+        cache.write_classification(area, datetime.datetime.now().isoformat(timespec="seconds"), history_regime, phase)
     if result["stale"]:
         logger.warning("%s: dati in ritardo anomalo: %s", area, ", ".join(result["stale"]))
     logger.info("%s: regime=%s phase=%s solidita=%s (dati a %s)", area, regime, phase, result["confidence"], f"{result['month']:%Y-%m}")
@@ -134,37 +155,42 @@ def update_market_context(fred_key: str) -> None:
     for indicator, fetch_fn in fetchers.items():
         try:
             cache.write_indicator_series(MARKET_AREA, indicator, fetch_fn())
-        except Exception:
+        except Exception as e:
             logger.exception("%s: fetch fallito, salto e continuo", indicator)
+            _record_failure(MARKET_AREA, indicator, e)
 
     for name in fetch_cot.CONTRACTS:
         try:
             for group, series in fetch_cot.fetch_net_by_group(name).items():
                 cache.write_indicator_series(MARKET_AREA, f"cotg_{name}_{group}", series)
-        except Exception:
+        except Exception as e:
             logger.exception("cot gruppi %s: fetch fallito, salto e continuo", name)
+            _record_failure(MARKET_AREA, f"cotg_{name}", e)
 
     fx_fetchers = {name: lambda name=name: fetch_fx.fetch_fx(name, fred_key) for name in fetch_fx.FX_SERIES}
     fx_fetchers.update({f"rate_{c}": lambda c=c: fetch_fx.fetch_short_rate(c, fred_key) for c in fetch_fx.RATE_SERIES})
     for indicator, fetch_fn in fx_fetchers.items():
         try:
             cache.write_indicator_series(FX_AREA, indicator, fetch_fn())
-        except Exception:
+        except Exception as e:
             logger.exception("valute %s: fetch fallito, salto e continuo", indicator)
+            _record_failure(FX_AREA, indicator, e)
 
     # Calendario eventi: le date future stanno come indicatori (valore 1.0) sotto CALENDAR_AREA.
     events = {"FOMC": fetch_calendar.fetch_fomc_dates}
     try:
         cache.write_events(fetch_calendar.fetch_economic_events())
-    except Exception:
+    except Exception as e:
         logger.exception("calendario economico: fetch fallito, salto e continuo")
+        _record_failure(CALENDAR_AREA, "economico", e)
     for name, release_id in fetch_calendar.FRED_RELEASES.items():
         events[name] = lambda release_id=release_id: fetch_calendar.fetch_release_dates(release_id, fred_key)
     for name, fetch_fn in events.items():
         try:
             cache.write_indicator_series(CALENDAR_AREA, name, fetch_fn())
-        except Exception:
+        except Exception as e:
             logger.exception("calendario %s: fetch fallito, salto e continuo", name)
+            _record_failure(CALENDAR_AREA, name, e)
 
 
 def update_asset_prices() -> None:
@@ -172,12 +198,15 @@ def update_asset_prices() -> None:
     for ticker in score.UNIVERSE:
         try:
             cache.write_indicator_series(score.ASSET_AREA, ticker, fetch_market.fetch_yahoo(ticker, "max", "1mo", adjusted=True))
-        except Exception:
+        except Exception as e:
             logger.exception("asset %s: fetch fallito, salto e continuo", ticker)
+            _record_failure(score.ASSET_AREA, ticker, e)
 
 
 def main() -> None:
     _load_dotenv()
+    cache.migrate_phase_names("Ripresa", cycle.RECOVERY_BELOW_TREND)
+    FETCH_FAILURES.clear()
     fred_key = os.environ.get("FRED_API_KEY", "")
     estat_app_id = os.environ.get("ESTAT_APP_ID", "")
     for area, indicator_fetchers in _areas(fred_key, estat_app_id).items():
@@ -188,6 +217,7 @@ def main() -> None:
     update_market_context(fred_key)
     update_asset_prices()
     cache.write_meta("updated_at", datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"))
+    cache.write_meta("fetch_failures", json.dumps(FETCH_FAILURES))
     if fetch_fred.calls["tried"] and not fetch_fred.calls["ok"]:
         # Exit code 1: il workflow fallisce e GitHub manda la mail. La cache con le altre fonti e' gia' scritta.
         logger.error("tutte le %d chiamate FRED sono fallite (API key o servizio giu')", fetch_fred.calls["tried"])

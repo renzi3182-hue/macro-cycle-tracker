@@ -74,14 +74,14 @@ def ribbon_html(values: pd.Series, color, months: int = RIBBON_MONTHS, thin: boo
 
 def area_tile_html(a: dict, href: str) -> str:
     """a: risultato di assess() + chiave 'label'."""
-    color = regime_color(a["regime"])
+    color = regime_color(a["regime_label"])
     phase = a["phase"] or "n/d"
     alert = f'<span class="chip tint" style="--c:var(--r-refl)">Dati in ritardo</span>' if a["stale"] else ""
     return (
         f'<a class="card tile" href="{escape(href)}" target="_self">'
         f'<div class="head"><span class="eyebrow">{escape(a["label"])}</span>'
         f'<span class="chip tint" style="--c:{phase_color(a["phase"])}">{escape(phase)}</span></div>'
-        f'<div class="regime">{_dot(color)}<span style="color:{color}">{escape(a["regime"])}</span></div>'
+        f'<div class="regime">{_dot(color)}<span style="color:{color}">{escape(a["regime_label"])}</span></div>'
         f'<div class="meta"><span>da <b>{month_it(a["regime_since"])}</b></span>{alert}</div>'
         f'{solidity_html(a["confidence"])}'
         f'{ribbon_html(a["history"]["regime"], regime_color)}</a>'
@@ -132,21 +132,24 @@ def quadrant_html(areas: list[dict], codes: dict[str, str]) -> str:
     for p in pts:
         a = p["a"]
         xg, xi = a["positions"]
-        tip = escape(f'{a["label"]}: {a["regime"]} (crescita {xg:+.1f}, inflazione {xi:+.1f}; 0 = soglia)')
+        tip = escape(f'{a["label"]}: {a["regime_label"]} (crescita {xg:+.1f}, inflazione {xi:+.1f}; 0 = soglia)')
         side = f'right:calc({100 - p["x"]:.1f}% + 12px)' if p["left"] else f'left:calc({p["x"]:.1f}% + 12px)'
-        out.append(f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:{regime_color(a["regime"])}"></div>'
+        out.append(f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:{regime_color(a["regime_label"])}"></div>'
                    f'<b class="pl" style="{side};top:{min(p["ly"], 96):.1f}%">{escape(codes.get(a["area"], a["area"]))}</b>')
     out.append("</div>")
     return "".join(out)
 
 
-def prob_html(p_inflation: float) -> str:
-    """Solo l'asse inflazione: la crescita del trimestre non si prevede (resta ~50%)."""
+def prob_html(p_inflation: float, estimate: str | None = None) -> str:
+    """Solo l'asse inflazione: la crescita del trimestre non si prevede (resta ~50%).
+    estimate: regime con probabilita' piu' alta, se le prime due sono abbastanza distanti (altrimenti None)."""
+    chip = f'<span class="chip tint" style="--c:{regime_color(estimate)}">{escape(estimate)}</span>' if estimate else ""
     return (
         f'<div class="prow"><span>{_dot("var(--r-stag)")} Inflazione alta</span>'
         f'<div class="track"><i style="width:{p_inflation * 100:.0f}%;background:var(--r-stag)"></i></div>'
         f'<span class="mono r">{p_inflation * 100:.0f}%</span></div>'
         f'<div class="prow"><span>{_dot("var(--muted)")} Crescita</span><span class="muted">incerta</span><span></span></div>'
+        f'{chip}'
     )
 
 
@@ -170,7 +173,7 @@ def axis_card_html(eyebrow: str, state: str, state_var: str, value: str, value_n
 
 
 def area_hero_html(a: dict, sentence: str) -> str:
-    color = regime_color(a["regime"])
+    color = regime_color(a["regime_label"])
     phase = a["phase"] or "n/d"
     end = a["month"]
     facts = [
@@ -183,8 +186,8 @@ def area_hero_html(a: dict, sentence: str) -> str:
                     f'<span style="font-size:17px;font-weight:600">{v}</span></div>' for k, v in facts)
     return (
         f'<div class="si card" style="padding:32px;border-radius:28px;background:linear-gradient(160deg,color-mix(in srgb,{color} 14%,var(--surface)),var(--surface) 55%)">'
-        f'<span class="eyebrow">Regime macro · {escape(a["label"])}</span>'
-        f'<h1 style="font-size:clamp(40px,6vw,68px);line-height:1;font-weight:800;letter-spacing:-0.04em;color:{color}">{escape(a["regime"])}</h1>'
+        f'<span class="eyebrow">Regime attuale · dati PIL a {month_it(a["month"])}</span>'
+        f'<h1 style="font-size:clamp(40px,6vw,68px);line-height:1;font-weight:800;letter-spacing:-0.04em;color:{color}">{escape(a["regime_label"])}</h1>'
         f'<p style="font-size:17px;line-height:26px;max-width:720px">{sentence}</p>'
         f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-top:8px">{cells}</div></div>'
     )

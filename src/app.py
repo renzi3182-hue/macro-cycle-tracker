@@ -1,3 +1,4 @@
+import json
 import sys
 from html import escape
 from pathlib import Path
@@ -50,7 +51,7 @@ PHASE_MEANING = {
     "Espansione": "crescita sopra il trend e in accelerazione",
     "Rallentamento": "lo slancio della crescita si sta esaurendo",
     "Recessione": "contrazione confermata da disoccupazione o PIL",
-    "Ripresa": "crescita sotto il trend ma in miglioramento",
+    "Ripresa (sotto trend)": "crescita sotto il trend ma in miglioramento",
 }
 CHANGES_MONTHS = 4
 TREND_NAMES = {"SPY": "Azionario", "TLT": "Treasury lunga durata", "IEF": "Treasury medio termine", "TIP": "Indicizzate inflazione",
@@ -245,7 +246,7 @@ assessments = {area: a for area in AREAS if (a := load_assessment(area))}
 
 
 def page_overview() -> None:
-    regimes = {area: a["regime"] for area, a in assessments.items()}
+    regimes = {area: a["regime_label"] for area, a in assessments.items()}
     top, n = prevailing_regime(regimes)
     last_month = max(a["month"] for a in assessments.values())
     title = (f'{n} aree su {len(regimes)} in <span style="color:{regime_color(top)}">{top}</span>' if n > 1
@@ -305,9 +306,10 @@ def page_area() -> None:
            f"{a['inflation_level']:.1f}%", f"soglia {INFLATION_HIGH_LEVEL:.1f}%",
            gauge_html(xi, "sotto controllo", "alta", "r-gold", "r-stag"),
            "Alta se la media degli ultimi 3 mesi supera la soglia oppure se sale rispetto ai 3 mesi prima.")
-       + f'<div class="card"><div class="head"><h3>Probabilità · trimestre in corso</h3><span class="note">calibrata dal 2000</span></div>'
-         f'{prob_html(a["inflation_prob"])}<p class="note">Probabilità che l\'inflazione del trimestre in corso risulti alta '
-         f'o in salita a dati completi. La crescita del trimestre non si prevede (resta vicina al 50%): crescita incerta.</p></div>'
+       + f'<div class="card"><div class="head"><h3>Stima a fine trimestre</h3><span class="note">produzione industriale e CLI, calibrata dal 2000</span></div>'
+         f'{prob_html(a["inflation_prob"], a["quarter_end_estimate"])}<p class="note">Stima, diversa dal regime attuale sopra: probabilità che '
+         f'l\'inflazione del trimestre in corso risulti alta o in salita a dati completi. La crescita del trimestre non si prevede '
+         f'(resta vicina al 50%): crescita incerta.</p></div>'
        + "</div>")
     st.space("small")
     ui(history_html(a["history"]))
@@ -633,7 +635,7 @@ def page_method() -> None:
             "#### Fase del ciclo\n"
             "Momentum = direzione a 3 mesi del leading indicator OCSE (CLI), con conferma di 2 mesi.\n\n"
             "- **Espansione**: CLI in salita e PIL annuo sopra la sua media di 10 anni.\n"
-            "- **Ripresa**: CLI in salita con PIL ancora sotto il trend, o dopo una recessione.\n"
+            "- **Ripresa (sotto trend)**: CLI in salita con PIL ancora sotto il trend, o dopo una recessione.\n"
             "- **Rallentamento**: CLI in calo, senza conferme di recessione.\n"
             "- **Recessione**: solo con conferma dai dati: regola di Sahm sulla disoccupazione "
             "(negli USA confermata dalla probabilità Chauvet-Piger) oppure PIL annuo negativo.\n\n"
@@ -691,6 +693,11 @@ late = stale_high_freq({k: (s.index[-1] if not (s := load_indicator(*k)).empty e
 if late:
     st.warning("Serie giornaliere/settimanali FRED ferme: " + ", ".join(f"{k[1]} ({k[0]})" for k in late)
                + ". Possibile problema di aggiornamento.", icon=":material/schedule:")
+failures = json.loads(cache.read_meta("fetch_failures") or "[]")
+if failures:
+    st.warning("Fetch falliti nell'ultimo aggiornamento: " + ", ".join(
+        f'{f["indicator"]} ({f["area"]}, {pd.Timestamp(f["time"]):%H:%M}) — {f["message"]}' for f in failures
+    ) + ". Tengo i dati in cache.", icon=":material/schedule:")
 if not assessments:
     st.info("Nessun dato in cache. Esegui `python -m src.scheduler.update_data` per popolare.", icon=":material/database:")
     st.stop()

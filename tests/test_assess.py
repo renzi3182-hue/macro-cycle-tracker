@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 import pytest
 
-from src.classify.assess import HIGH_FREQ_MAX_DAYS, assess, stale_high_freq
+from src.classify.assess import HIGH_FREQ_MAX_DAYS, assess, stale_high_freq, uncertain_pair
 from src.data import cache
 
 
@@ -50,6 +50,35 @@ def test_stale_high_freq_daily_5_weekly_14():
     dates[("USA", "claims")] = today - pd.Timedelta(days=13)
     del dates[("USA", "yield_curve")]
     assert stale_high_freq(dates, today) == [("USA", "yield_curve"), ("Mercati", "vix")]
+
+
+def test_uncertain_pair_none_when_both_axes_solid():
+    assert uncertain_pair("up", "up", xg=0.5, xi=2.0) is None
+
+
+def test_uncertain_pair_flips_weaker_growth_axis():
+    assert uncertain_pair("up", "up", xg=0.1, xi=2.0) == ("Reflazione", "Stagflazione")
+
+
+def test_uncertain_pair_flips_weaker_inflation_axis():
+    assert uncertain_pair("up", "down", xg=2.0, xi=0.05) == ("Goldilocks", "Reflazione")
+
+
+def test_regime_label_matches_regime_when_axes_solid():
+    inflation = _m([1.0] * (N - 6) + [1.5, 2.0, 2.8, 3.5, 4.2, 5.0])
+    a = assess("UK", {**SERIES, "inflation_yoy": inflation}, today=TODAY)
+    assert a["regime_label"] == a["regime"]
+
+
+def test_regime_label_is_uncertain_on_borderline_axis():
+    """SERIES ha inflazione piatta: punteggio esattamente sulla soglia, asse debole."""
+    a = assess("UK", SERIES, today=TODAY)
+    assert a["regime_label"] == f'Incerto: {a["regime"]} / {a["regime_label"].split(" / ")[1]}'
+
+
+def test_quarter_end_estimate_none_when_top_two_probabilities_are_close():
+    a = assess("UK", SERIES, today=TODAY)  # inflazione piatta: probabilita' vicine al 50%
+    assert a["quarter_end_estimate"] is None
 
 
 def test_cache_refuses_to_wipe_history(tmp_path):

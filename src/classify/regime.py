@@ -38,7 +38,6 @@ MIN_SCALE_MONTHS = 24  # sotto questi punti la deviazione standard usa tutto il 
 # lo stato a dati completi e' quello in tempo reale nell'88% dei mesi. Pesi senza intercetta (50% sulla soglia).
 PROB_ACTIVITY_WEIGHT = 0.24  # per unita' di z della variazione 3 mesi dell'attivita'
 PROB_INFLATION_WEIGHT = 5.9  # per punto % del punteggio d'inflazione
-ACTIVITY_INPUTS = ("industrial_production", "cli")  # il primo disponibile
 
 REGIMES = ["Goldilocks", "Reflazione", "Stagflazione", "Deflazione"]
 

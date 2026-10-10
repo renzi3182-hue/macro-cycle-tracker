@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 import pytest
 
-from src.classify.cycle import LEVEL_MIN_MONTHS, phase_history, phase_name
+from src.classify.cycle import LEVEL_MIN_MONTHS, RECOVERY_BELOW_TREND, phase_history, phase_name
 
 
 def _m(values):
@@ -22,9 +22,9 @@ N = LEVEL_MIN_MONTHS + 12
         ("up", True, False, "Espansione"),
         ("down", True, False, "Rallentamento"),
         ("down", False, False, "Rallentamento"),  # sotto potenziale ma senza conferma dura: niente Recessione
-        ("up", False, False, "Ripresa"),
+        ("up", False, False, RECOVERY_BELOW_TREND),
         ("down", False, True, "Recessione"),
-        ("up", False, True, "Ripresa"),  # CLI gia' in risalita durante la recessione: si esce dal fondo
+        ("up", False, True, RECOVERY_BELOW_TREND),  # CLI gia' in risalita durante la recessione: si esce dal fondo
     ],
 )
 def test_phase_name(growth, above, recession, expected):
@@ -35,7 +35,7 @@ def test_gdp_below_trend_is_recovery_even_with_low_unemployment():
     # Europa 2026: disoccupazione ai minimi storici ma PIL sotto il trend -> non e' Espansione
     states = _m(["up"] * N)
     low_u = _m([8.0] * (N - 6) + [6.0] * 6)
-    assert phase_history(states, low_u, _m([1.5] * (N - 6) + [1.0] * 6)).iloc[-1] == "Ripresa"
+    assert phase_history(states, low_u, _m([1.5] * (N - 6) + [1.0] * 6)).iloc[-1] == RECOVERY_BELOW_TREND
     assert phase_history(states, low_u, _m([1.5] * (N - 6) + [2.0] * 6)).iloc[-1] == "Espansione"
 
 
@@ -51,9 +51,19 @@ def test_negative_gdp_or_sahm_confirms_recession():
 def test_rising_unemployment_is_fallback_without_gdp():
     states = _m(["up"] * N)
     assert phase_history(states, _m([5.0] * (N - 6) + [4.0] * 6)).iloc[-1] == "Espansione"
-    assert phase_history(states, _m([5.0] * (N - 6) + [6.0] * 6)).iloc[-1] == "Ripresa"
+    assert phase_history(states, _m([5.0] * (N - 6) + [6.0] * 6)).iloc[-1] == RECOVERY_BELOW_TREND
 
 
 def test_needs_level_data():
     with pytest.raises(ValueError):
         phase_history(_m(["up"] * 5))
+
+
+def test_covid_shaped_crash_and_rebound_does_not_trap_phase_below_trend_forever():
+    """Crollo 2020 + rimbalzo 2021 dentro la finestra di 120 mesi: una crescita sostenuta sopra il trend
+    per anni dopo deve comunque arrivare a 'Espansione', non restare bloccata sotto trend per sempre."""
+    pre, post = 114, 36
+    values = [2.0] * pre + [-9.0, -9.0, -9.0, 12.0, 12.0, 12.0] + [3.0] * post
+    states = _m(["up"] * len(values))
+    gdp = _m(values)
+    assert phase_history(states, gdp=gdp).iloc[-1] == "Espansione"

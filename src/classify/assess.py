@@ -5,7 +5,7 @@ from src.classify.cycle import momentum_states, phase_history
 from src.classify.leading import leading_risk
 from src.classify.recession import recession_flags
 from src.classify.regime import (
-    ACTIVITY_INPUTS, GROWTH_FALLBACK, GROWTH_INPUT, activity_z, axis_positions, probabilities, regime_history,
+    GROWTH_FALLBACK, GROWTH_INPUT, activity_z, axis_positions, probabilities, regime_history, regime_name,
 )
 
 # Un dato e' in ritardo anomalo oltre questi giorni dalla data di riferimento (inizio del periodo):
@@ -27,11 +27,30 @@ USED_INPUTS = ("cli", "growth_yoy", "inflation_yoy", "core_inflation_yoy", "unem
 CONFIDENCE_HIGH = 1.0
 CONFIDENCE_MEDIUM = 0.3
 
+# Differenza minima fra le due probabilita' di regime piu' alte (stima a fine trimestre) per mostrarne una come
+# "piu' probabile": sotto questa soglia le due stime sono troppo vicine per scegliere.
+UNCERTAIN_PROB_MARGIN = 0.08
+
 
 def run_start(s: pd.Series) -> pd.Timestamp:
     """Primo mese del tratto finale di valori uguali all'ultimo."""
     changed = s != s.shift()
     return changed[changed].index[-1]
+
+
+def uncertain_pair(growth_state: str, inflation_state: str, xg: float, xi: float) -> tuple[str, str] | None:
+    """None se la regola e' solida su entrambi gli assi; altrimenti (regime attuale, regime se l'asse piu'
+    debole flippasse). Stessa soglia di margine di confidence() (CONFIDENCE_MEDIUM): e' lo stesso concetto di
+    solidita', applicato per decidere se mostrare un'etichetta secca o "Incerto"."""
+    g_margin, i_margin = abs(xg), abs(xi)
+    if min(g_margin, i_margin) >= CONFIDENCE_MEDIUM:
+        return None
+    current = regime_name(growth_state, inflation_state)
+    if g_margin <= i_margin:
+        alt = regime_name("down" if growth_state == "up" else "up", inflation_state)
+    else:
+        alt = regime_name(growth_state, "down" if inflation_state == "up" else "up")
+    return current, alt
 
 
 def confidence(growth_state: str, inflation_state: str, xg: float, xi: float, stale: list) -> str:
@@ -69,9 +88,14 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
     xg, xi = axis_positions(last["growth_z"], last["inflation_score"])
     act = activity_z(s.get("industrial_production"), s.get("cli"))
     phase = last["phase"] if isinstance(last["phase"], str) else None
+    pair = uncertain_pair(last["growth"], last["inflation"], xg, xi)
+    probs = probabilities(act.iloc[-1] if not act.empty else None, last["inflation_score"])
+    top2 = sorted(probs.items(), key=lambda kv: -kv[1])[:2]
     return {
         "area": area,
         "regime": last["regime"],
+        "regime_label": f"Incerto: {pair[0]} / {pair[1]}" if pair else last["regime"],
+        "quarter_end_estimate": top2[0][0] if top2[0][1] - top2[1][1] >= UNCERTAIN_PROB_MARGIN else None,
         "phase": phase,
         "month": hist.index[-1],
         "regime_since": run_start(hist["regime"]),
@@ -80,9 +104,8 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
         "inflation_state": last["inflation"],
         "inflation_level": last["inflation_level"],
         "positions": (xg, xi),
-        "probabilities": (probs := probabilities(act.iloc[-1] if not act.empty else None, last["inflation_score"])),
+        "probabilities": probs,
         "inflation_prob": probs["Reflazione"] + probs["Stagflazione"],  # unico asse prevedibile, la crescita e' ~50%
-        "activity": (next(n for n in ACTIVITY_INPUTS if n in s), act.iloc[-1]) if not act.empty else None,
         "confidence": confidence(last["growth"], last["inflation"], xg, xi, stale),
         "recession": bool(recession.iloc[-1]) if recession is not None and not recession.empty else False,
         "leading": leading_risk(area, s),

@@ -20,7 +20,7 @@ TOKENS = {
 }
 
 REGIME_VARS = {"Goldilocks": "r-gold", "Reflazione": "r-refl", "Stagflazione": "r-stag", "Deflazione": "r-defl"}
-PHASE_VARS = {"Espansione": "r-gold", "Ripresa": "accent", "Rallentamento": "r-refl", "Recessione": "r-stag"}
+PHASE_VARS = {"Espansione": "r-gold", "Ripresa (sotto trend)": "accent", "Rallentamento": "r-refl", "Recessione": "r-stag"}
 
 
 def regime_color(regime: str) -> str:

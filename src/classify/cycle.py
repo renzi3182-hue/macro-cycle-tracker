@@ -12,14 +12,20 @@ from src.classify.regime import axis_states, growth_z, monthly
 # - recessione: solo con conferma da dati "duri" (regola di Sahm, PIL annuo <= 0), mai dal solo CLI.
 # Verifica in scripts/evaluate_model.py con ritardi di pubblicazione veri (1990-2026): USA, mesi NBER in
 # Rallentamento/Recessione 94% (Recessione 69%), Recessione fuori NBER 2%; ~1 cambio di fase l'anno.
+# Media vs mediana vs media che esclude 2020-01/2021-12 dalla finestra (10/2026): sugli USA il riconoscimento
+# NBER e' identico (il PIL attuale e' sotto tutte le varianti di media, non solo quella col Covid dentro); su
+# Eurozona/Italia/UK/Giappone/Canada/Cina/India la quota di mesi 2022-oggi in "sotto trend" e' uguale o PEGGIORE
+# (piu' mesi, non meno) con mediana ed esclusione Covid che con la media semplice. La crescita debole di
+# Europa/UK dal 2022 e' reale, non un artefatto del crollo/rimbalzo Covid sulla media: tenuta la media semplice.
 LEVEL_WINDOW_MONTHS = 120
 LEVEL_MIN_MONTHS = 60
 UNEMPLOYMENT_CHANGE_MONTHS = 12  # solo senza PIL
 MOMENTUM_BAND = 0.4  # z della variazione 3 mesi del CLI: in mezzo resta lo stato precedente
 MOMENTUM_CONFIRM_MONTHS = 2
 RECESSION_GDP = 0.0  # PIL annuo <= 0 = recessione confermata
+RECOVERY_BELOW_TREND = "Ripresa (sotto trend)"  # crescita sotto il trend ma con momentum positivo (CLI in salita)
 
-PHASES = ["Espansione", "Rallentamento", "Recessione", "Ripresa"]
+PHASES = ["Espansione", "Rallentamento", "Recessione", RECOVERY_BELOW_TREND]
 
 
 def above_potential(unemployment: pd.Series | None, gdp: pd.Series | None) -> pd.Series:
@@ -41,10 +47,10 @@ def momentum_states(cli: pd.Series) -> pd.Series:
 
 def phase_name(growth_state: str, above: bool, recession: bool) -> str:
     if recession:
-        return "Ripresa" if growth_state == "up" else "Recessione"  # CLI gia' in risalita: si esce dal fondo
+        return RECOVERY_BELOW_TREND if growth_state == "up" else "Recessione"  # CLI gia' in risalita: si esce dal fondo
     if growth_state == "down":
         return "Rallentamento"
-    return "Espansione" if above else "Ripresa"
+    return "Espansione" if above else RECOVERY_BELOW_TREND
 
 
 def phase_history(growth_states: pd.Series, unemployment: pd.Series | None = None, gdp: pd.Series | None = None,

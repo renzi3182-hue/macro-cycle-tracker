@@ -1,7 +1,8 @@
 # Nome file per aderenza allo spec ("ECB Statistical Data Warehouse + Eurostat"),
 # ma implementato via Eurostat REST (dataset ufficiali Eurostat, no API key, stesso dato).
 import pandas as pd
-import requests
+
+from src.data.http import get_with_retry
 
 BASE_URL = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
 
@@ -35,12 +36,11 @@ def _parse_jsonstat(payload: dict) -> pd.Series:
 
 def fetch_growth_yoy(geo: str) -> pd.Series:
     """geo: 'EA21' per Eurozona (con la Bulgaria dal 2026; EA20 non e' piu' aggiornato per l'ESI), 'IT' per Italia."""
-    resp = requests.get(
-        f"{BASE_URL}/namq_10_gdp",
+    resp = get_with_retry(
+        f"{BASE_URL}/namq_10_gdp", source="ecb",
         params={"format": "JSON", "lang": "EN", "unit": "CLV_PCH_SM", "na_item": "B1GQ", "s_adj": "SCA", "geo": geo},
         timeout=30,
     )
-    resp.raise_for_status()
     return _parse_jsonstat(resp.json())
 
 
@@ -49,12 +49,11 @@ def fetch_inflation_yoy(geo: str, coicop18: str = "TOTAL") -> pd.Series:
 
     prc_hicp_manr e' congelato a dic 2025 (ultimo update feb 2026): Eurostat e' passata
     a ECOICOP v2 (prc_hicp_minr). Verificato con dati reali (29/09/2026)."""
-    resp = requests.get(
-        f"{BASE_URL}/prc_hicp_minr",
+    resp = get_with_retry(
+        f"{BASE_URL}/prc_hicp_minr", source="ecb",
         params={"format": "JSON", "lang": "EN", "coicop18": coicop18, "unit": "RCH_A", "geo": geo},
         timeout=30,
     )
-    resp.raise_for_status()
     return _parse_jsonstat(resp.json())
 
 
@@ -64,24 +63,22 @@ def fetch_core_inflation_yoy(geo: str) -> pd.Series:
 
 def fetch_sentiment(geo: str) -> pd.Series:
     """Economic Sentiment Indicator (Commissione UE), media di lungo periodo = 100. geo: 'EA21', 'IT' (EA20 fermo a dic 2025)."""
-    resp = requests.get(
-        f"{BASE_URL}/ei_bssi_m_r2",
+    resp = get_with_retry(
+        f"{BASE_URL}/ei_bssi_m_r2", source="ecb",
         params={"format": "JSON", "lang": "EN", "indic": "BS-ESI-I", "s_adj": "SA", "geo": geo},
         timeout=30,
     )
-    resp.raise_for_status()
     return _parse_jsonstat(resp.json())
 
 
 def fetch_unemployment_rate(geo: str) -> pd.Series:
     """geo: 'EA21' per Eurozona, 'IT' per Italia. Verificato con dati reali (29/09/2026)."""
-    resp = requests.get(
-        f"{BASE_URL}/une_rt_m",
+    resp = get_with_retry(
+        f"{BASE_URL}/une_rt_m", source="ecb",
         params={
             "format": "JSON", "lang": "EN",
             "s_adj": "SA", "age": "TOTAL", "sex": "T", "unit": "PC_ACT", "geo": geo,
         },
         timeout=30,
     )
-    resp.raise_for_status()
     return _parse_jsonstat(resp.json())
