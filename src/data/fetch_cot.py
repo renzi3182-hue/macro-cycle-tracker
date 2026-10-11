@@ -1,5 +1,6 @@
 import pandas as pd
-import requests
+
+from src.data.http import get_with_retry
 
 # CFTC Legacy Futures Only (Socrata, pubblico, senza chiave). Dato riferito al
 # martedi', pubblicato il venerdi'.
@@ -22,8 +23,9 @@ CONTRACTS = {  # nome -> cftc_contract_market_code
 
 def fetch_net_speculative(code: str) -> pd.Series:
     """Posizione netta dei non-commercial (speculatori) in % dell'open interest."""
-    resp = requests.get(
+    resp = get_with_retry(
         URL,
+        source="cftc",
         params={
             "cftc_contract_market_code": code,
             "$order": "report_date_as_yyyy_mm_dd desc",
@@ -31,7 +33,6 @@ def fetch_net_speculative(code: str) -> pd.Series:
         },
         timeout=30,
     )
-    resp.raise_for_status()
     rows = resp.json()
     dates = [pd.Timestamp(r["report_date_as_yyyy_mm_dd"]) for r in rows]
     values = [
@@ -67,12 +68,12 @@ def fetch_net_by_group(market: str, limit: int = WEEKS) -> dict[str, pd.Series]:
     """Posizione netta per categoria di trader, in % dell'open interest (ultime `limit` settimane)."""
     disagg = market in DISAGG_MARKETS
     groups = DISAGG_GROUPS if disagg else TFF_GROUPS
-    resp = requests.get(
+    resp = get_with_retry(
         DISAGG_URL if disagg else TFF_URL,
+        source="cftc",
         params={"cftc_contract_market_code": CONTRACTS[market], "$order": "report_date_as_yyyy_mm_dd desc", "$limit": limit},
         timeout=30,
     )
-    resp.raise_for_status()
     rows = resp.json()
     dates = [pd.Timestamp(r["report_date_as_yyyy_mm_dd"]) for r in rows]
     return {

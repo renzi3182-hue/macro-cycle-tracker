@@ -127,6 +127,12 @@ def fetch_gdpnow(api_key: str) -> pd.Series:
     return _fetch_series(SERIES_GDPNOW, api_key, units="lin")
 
 
+def fetch_daily(series_id: str, api_key: str, years: int) -> pd.Series:
+    """Serie giornaliera in livelli, solo gli ultimi `years` anni (pagina Intermarket)."""
+    s = _fetch_series(series_id, api_key, units="lin")
+    return s[s.index >= s.index[-1] - pd.DateOffset(years=years)]
+
+
 def fetch_spread(long_id: str, short_id: str, api_key: str) -> pd.Series:
     """Differenza fra due serie di tassi (punti %), solo date presenti in entrambe."""
     return (_fetch_series(long_id, api_key, units="lin") - _fetch_series(short_id, api_key, units="lin")).dropna()

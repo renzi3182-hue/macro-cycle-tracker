@@ -23,14 +23,13 @@ import numpy as np
 import pandas as pd
 import requests
 
-from src.classify.assess import assess
+from src.classify.assess import assess, lagged
 from src.classify.regime import GROWTH_CHANGE_MONTHS, PROB_ACTIVITY_WEIGHT, PROB_INFLATION_WEIGHT, activity_z
 from src.data import cache, fetch_fred
 from src.scheduler.update_data import _load_dotenv
 
 AREAS = ["USA", "Eurozona", "Italia", "UK", "Giappone", "Canada", "Cina", "Australia", "India"]
 INPUTS = ["cli", "growth_yoy", "inflation_yoy", "core_inflation_yoy", "unemployment_rate", "recession_prob", "industrial_production"]
-PUBLICATION_LAG_MONTHS = {"growth_yoy": 4, "industrial_production": 2}  # gli altri: 1 mese
 START = "2000-01-01"
 EPISODES = ["2001-09", "2008-12", "2009-09", "2020-05", "2021-06", "2022-09", "2023-12"]
 REFERENCE = {"USA": "USREC", "Eurozona": "EUROREC", "Italia": "ITAREC", "UK": "GBRREC", "Giappone": "JPNREC",
@@ -48,12 +47,6 @@ QUANTASTE = [("USA", "2015Q1", "Goldilocks"), ("USA", "2016Q1", "Stagflazione"),
 CLI_FRED = {"USA": "USALOLITOAASTSAM", "Eurozona": "G4ELOLITOAASTSAM", "Italia": "ITALOLITOAASTSAM",
             "UK": "GBRLOLITOAASTSAM", "Giappone": "JPNLOLITOAASTSAM", "Canada": "CANLOLITOAASTSAM",
             "Cina": "CHNLOLITOAASTSAM", "Australia": "AUSLOLITOAASTSAM", "India": "INDLOLITOAASTSAM"}
-
-
-def lagged(s: pd.Series, name: str) -> pd.Series:
-    out = s.copy()
-    out.index = out.index + pd.DateOffset(months=PUBLICATION_LAG_MONTHS.get(name, 1))
-    return out
 
 
 def per_year(s: pd.Series) -> float:

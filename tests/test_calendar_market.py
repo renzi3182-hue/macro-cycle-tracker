@@ -65,3 +65,12 @@ def test_calendar_html_groups_by_local_day_and_escapes():
     html = calendar_html(ev, today=pd.Timestamp("2026-10-14", tz="Europe/Rome"))
     assert "Mer 14/10" in html and "14:30" in html and "oggi" in html and "CPI &lt;m/m&gt;" in html
     assert "Nessun evento" in calendar_html([])
+
+
+def test_fetch_yahoo_retries_temporary_errors(requests_mock):
+    requests_mock.get(fetch_market.YAHOO_URL.format(symbol="SPY"), [
+        {"status_code": 503},
+        {"json": {"chart": {"result": [{"timestamp": [1700000000], "indicators": {"quote": [{"close": [450.0]}]}}]}}},
+    ])
+    assert list(fetch_market.fetch_yahoo("SPY").values) == [450.0]
+    assert requests_mock.call_count == 2

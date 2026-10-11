@@ -5,8 +5,12 @@ from src.classify.cycle import momentum_states, phase_history
 from src.classify.leading import leading_risk
 from src.classify.recession import recession_flags
 from src.classify.regime import (
-    GROWTH_FALLBACK, GROWTH_INPUT, activity_z, axis_positions, probabilities, regime_history, regime_name,
+    GROWTH_FALLBACK, GROWTH_INPUT, REGIMES, activity_z, axis_positions, probabilities, regime_history, regime_name,
 )
+
+# Ritardo di pubblicazione in mesi per la lettura point-in-time (scripts/evaluate_model.py, backtest, pagina
+# Intermarket): il PIL del trimestre esce ~1 mese dopo la fine (4 dall'inizio), la produzione industriale dopo 2.
+PUBLICATION_LAG_MONTHS = {"growth_yoy": 4, "industrial_production": 2}  # gli altri: 1 mese
 
 # Un dato e' in ritardo anomalo oltre questi giorni dalla data di riferimento (inizio del periodo):
 # il CPI di agosto (01/08) esce a meta' settembre, il PIL del 2o trimestre (01/04) a fine luglio,
@@ -31,6 +35,10 @@ CONFIDENCE_MEDIUM = 0.3
 # "piu' probabile": sotto questa soglia le due stime sono troppo vicine per scegliere.
 UNCERTAIN_PROB_MARGIN = 0.08
 
+# Etichetta di un'area vicina a una soglia: "Incerto: X / Y" (uncertain_pair). Letta anche da update_data e
+# asset_allocation tramite label_regimes, cosi' il formato sta in un posto solo.
+UNCERTAIN_PREFIX, UNCERTAIN_SEP = "Incerto: ", " / "
+
 
 def run_start(s: pd.Series) -> pd.Timestamp:
     """Primo mese del tratto finale di valori uguali all'ultimo."""
@@ -38,10 +46,25 @@ def run_start(s: pd.Series) -> pd.Timestamp:
     return changed[changed].index[-1]
 
 
+def lagged(s: pd.Series, name: str) -> pd.Series:
+    """Serie spostata alla data in cui il dato era pubblicato."""
+    out = s.copy()
+    out.index = out.index + pd.DateOffset(months=PUBLICATION_LAG_MONTHS.get(name, 1))
+    return out
+
+
+def point_in_time_history(area: str, series: dict[str, pd.Series]) -> pd.DataFrame | None:
+    """Regime e fase di ogni mese come si leggevano allora, con i soli dati gia' pubblicati (niente look-ahead)."""
+    a = assess(area, {n: lagged(s, n) for n, s in series.items() if s is not None and not s.empty})
+    return None if a is None else a["history"]
+
+
 def uncertain_pair(growth_state: str, inflation_state: str, xg: float, xi: float) -> tuple[str, str] | None:
-    """None se la regola e' solida su entrambi gli assi; altrimenti (regime attuale, regime se l'asse piu'
-    debole flippasse). Stessa soglia di margine di confidence() (CONFIDENCE_MEDIUM): e' lo stesso concetto di
-    solidita', applicato per decidere se mostrare un'etichetta secca o "Incerto"."""
+    """None se la regola e' solida su entrambi gli assi; altrimenti il regime attuale e quello che arriverebbe se
+    l'asse piu' debole flippasse, nell'ordine di REGIMES: la stessa coppia da' sempre la stessa etichetta (India
+    "Stagflazione / Reflazione" e Italia "Reflazione / Stagflazione" contavano come due regimi nel prevalente).
+    Stessa soglia di margine di confidence() (CONFIDENCE_MEDIUM): e' lo stesso concetto di solidita', applicato
+    per decidere se mostrare un'etichetta secca o "Incerto"."""
     g_margin, i_margin = abs(xg), abs(xi)
     if min(g_margin, i_margin) >= CONFIDENCE_MEDIUM:
         return None
@@ -50,7 +73,12 @@ def uncertain_pair(growth_state: str, inflation_state: str, xg: float, xi: float
         alt = regime_name("down" if growth_state == "up" else "up", inflation_state)
     else:
         alt = regime_name(growth_state, "down" if inflation_state == "up" else "up")
-    return current, alt
+    return tuple(sorted((current, alt), key=REGIMES.index))
+
+
+def label_regimes(label: str) -> list[str]:
+    """Regimi dietro un'etichetta: uno solo, oppure i due di \"Incerto: X / Y\"."""
+    return label.removeprefix(UNCERTAIN_PREFIX).split(UNCERTAIN_SEP)
 
 
 def confidence(growth_state: str, inflation_state: str, xg: float, xi: float, stale: list) -> str:
@@ -94,7 +122,7 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
     return {
         "area": area,
         "regime": last["regime"],
-        "regime_label": f"Incerto: {pair[0]} / {pair[1]}" if pair else last["regime"],
+        "regime_label": UNCERTAIN_PREFIX + UNCERTAIN_SEP.join(pair) if pair else last["regime"],
         "quarter_end_estimate": top2[0][0] if top2[0][1] - top2[1][1] >= UNCERTAIN_PROB_MARGIN else None,
         "phase": phase,
         "month": hist.index[-1],

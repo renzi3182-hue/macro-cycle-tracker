@@ -6,10 +6,11 @@ from math import cos, pi, sin
 
 import pandas as pd
 
+from src.classify.assess import run_start
 from src.classify.cycle import PHASES
 from src.classify.regime import REGIMES
 from src.classify.score import STRONG, WEAK
-from src.ui.theme import DONUT_SLOTS, phase_color, regime_color
+from src.ui.theme import DONUT_SLOTS, WAVE_AMPLITUDE, phase_color, regime_color
 
 MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
 WEIGHT_VARS = ["accent", "r-gold", "r-defl", "r-refl", "r-stag", "muted"]
@@ -88,8 +89,8 @@ def area_tile_html(a: dict, href: str) -> str:
     )
 
 
-def legend_html(phases: bool = False) -> str:
-    items = [(phase_color(p), p) for p in PHASES] if phases else [(regime_color(r), r) for r in REGIMES]
+def legend_html() -> str:
+    items = [(regime_color(r), r) for r in REGIMES]
     return '<div class="meta">' + "".join(f"<span>{_dot(c)} {n}</span>" for c, n in items) + "</div>"
 
 
@@ -193,16 +194,33 @@ def area_hero_html(a: dict, sentence: str) -> str:
     )
 
 
+def wave_html(phase: str | None) -> str:
+    """Onda del ciclo come nel logo: un periodo, un quarto per fase nell'ordine di PHASES (Espansione sale al picco,
+    Rallentamento scende, Recessione tocca il fondo, Ripresa risale verso il trend). Punto al centro del quarto."""
+    dot = ""
+    if phase in PHASES:
+        x = 12.5 + 25 * PHASES.index(phase)
+        dot = f'<b style="left:{x}%;top:{50 - WAVE_AMPLITUDE * sin(2 * pi * x / 100):.1f}%"></b>'
+    labels = "".join(f'<span class="{"on" if p == phase else ""}">{escape(p)}</span>' for p in PHASES)
+    return (f'<div class="wave" role="img" aria-label="Fase del ciclo: {escape(phase or "n/d")}">'
+            f'<div class="mid"><span>trend</span></div><i></i>{dot}</div><div class="wave-l">{labels}</div>')
+
+
 def history_html(hist: pd.DataFrame, months: int = 120) -> str:
+    """Regime: un quadratino per mese. Fase: solo dove siamo sull'onda del ciclo (i colori della fase si confondevano
+    con quelli del regime)."""
     h = hist.iloc[-months:]
     years = sorted({d.year for d in h.index})
     step = max(1, len(years) // 5)
     ticks = "".join(f"<span>{y}</span>" for y in years[::step])
+    p = hist["phase"].dropna()
+    phase = p.iloc[-1] if not p.empty else None
+    since = f" da {month_it(run_start(p))}" if phase else ""
     return (
         f'<div class="si card"><div class="head"><h3>Storico</h3><span class="note">ultimi {len(h) // 12} anni, un tratto per mese</span></div>'
-        f'<div><div class="rlabel">Regime (riga alta) e fase del ciclo (riga bassa)</div>{ribbon_html(h["regime"], regime_color, months, ticks=False)}'
-        f'<div style="height:4px"></div>{ribbon_html(h["phase"], phase_color, months, thin=True, ticks=False)}'
-        f'<div class="ticks">{ticks}</div></div><div>{legend_html()}<div style="height:6px"></div>{legend_html(phases=True)}</div></div>'
+        f'<div><div class="rlabel">Regime</div>{ribbon_html(h["regime"], regime_color, months, ticks=False)}'
+        f'<div class="ticks">{ticks}</div></div>{legend_html()}'
+        f'<div><div class="rlabel">Fase del ciclo: <b>{escape(phase or "n/d")}</b>{since}</div>{wave_html(phase)}</div></div>'
     )
 
 
@@ -469,3 +487,94 @@ def stress_html(rows: list[tuple[str, str, tuple | None, tuple | None]], mc: dic
             '<p class="note">Ogni classe usa il suo ETF (azionario = SPY, cash = SHY), ribilanciamento mensile, niente costi. '
             'n/d = qualche ETF non esisteva ancora. La banda ricampiona i mesi storici del portafoglio: '
             f'il passato non garantisce il futuro.{note}</p></div>')
+
+
+MURPHY_VARS = {"Fase 1": "r-defl", "Fase 2": "accent", "Fase 3": "r-gold", "Fase 4": "r-refl", "Fase 5": "r-stag", "Fase 6": "muted"}
+ALIGN_VARS = {"Allineati": "r-gold", "Parzialmente allineati": "r-refl", "Disallineati": "r-stag"}
+CHECK_VARS = {"allineata": "r-gold", "parziale": "r-refl", "disallineata": "r-stag", "coerente": "r-gold", "contrario": "r-stag"}
+RELATION_VARS = {"come da libro": "r-gold", "più debole del solito": "r-refl", "rotta": "r-stag"}
+
+
+def _num_it(x: float, digits: int = 2) -> str:
+    return "n/d" if pd.isna(x) else f"{x:+.{digits}f}".replace(".", ",").replace("-", "−")
+
+
+def murphy_color(label: str) -> str:
+    return f"var(--{MURPHY_VARS.get(label, 'line')})"
+
+
+def _big_state(text: str, color: str) -> str:
+    return f'<h3 style="font-size:28px;line-height:32px;font-weight:800;letter-spacing:-0.02em;color:{color}">{escape(text)}</h3>'
+
+
+def murphy_html(label: str, text: str, trends: list[tuple[str, float]], hist: pd.Series, month: pd.Timestamp) -> str:
+    """label: 'Fase 1'..'Fase 6' o fase non definita. trends: (nome, distanza dalla media a 10 mesi). hist: etichette per mese."""
+    chips = "".join(f'<span class="chip tint" style="--c:var(--{"r-gold" if d > 0 else "r-stag"})">{escape(n)} '
+                    f'{"sopra" if d > 0 else "sotto"} la media <span class="mono">{_pct_it(d, 1)}</span></span>' for n, d in trends)
+    legend = ('<div class="meta">' + "".join(f"<span>{_dot(murphy_color(k))} {k}</span>" for k in MURPHY_VARS)
+              + f'<span>{_dot(murphy_color(""))} non definita</span></div>')
+    color = murphy_color(label) if label in MURPHY_VARS else "var(--muted)"
+    return (f'<div class="si card"><span class="eyebrow">Fase di Murphy · fine {month_it(month)}</span>'
+            f'{_big_state(label, color)}<p>{escape(text)}</p><div style="display:flex;flex-wrap:wrap;gap:8px">{chips}</div>'
+            f'<div><div class="rlabel">Ultimi 24 mesi</div>{ribbon_html(hist, murphy_color, 24)}</div>{legend}'
+            '<p class="note">Obbligazioni (TLT), azioni (SPY) e materie prime (DBC) sopra o sotto la media a 10 mesi, a mese chiuso. '
+            'Obbligazioni e materie prime nella stessa direzione, con le azioni contro, non sono una fase del ciclo.</p></div>')
+
+
+def alignment_html(state: str | None, macro_phase: str | None, checks: list[tuple[str, str, str]], mapping: list[str],
+                   message: str | None) -> str:
+    """checks: (voce, valore, esito in CHECK_VARS). state None = fase del ciclo USA non disponibile."""
+    rows = (f'<div class="row"><span class="grow">Fase del ciclo USA</span>'
+            f'<b style="color:{phase_color(macro_phase)}">{escape(macro_phase or "n/d")}</b></div>'
+            + "".join(f'<div class="row"><span class="grow">{escape(k)}</span><span>{escape(v)}</span>'
+                      f'<span class="chip tint" style="--c:var(--{CHECK_VARS[c]})">{escape(c)}</span></div>' for k, v, c in checks))
+    msg = f'<p style="color:var(--r-stag);font-weight:500">{escape(message)}</p>' if message else ""
+    color = f"var(--{ALIGN_VARS.get(state, 'muted')})"
+    return (f'<div class="si card"><span class="eyebrow">Allineamento macro / mercati</span>'
+            f'{_big_state(state or "n/d", color)}<div class="list">{rows}</div>{msg}'
+            f'<p class="note">Fasi di Murphy attese: {escape(" · ".join(mapping))}. Allineati = fase di Murphy e rame/oro '
+            'confermano la fase del ciclo; disallineati = nessuno dei due; parzialmente = uno solo.</p></div>')
+
+
+def relation_html(name: str, current: float, usual: float, state: str, book: str, divergence: str | None = None) -> str:
+    chips = f'<span class="chip tint" style="--c:var(--{RELATION_VARS.get(state, "muted")})">{escape(state)}</span>'
+    if divergence:
+        chips += f'<span class="chip tint" style="--c:var(--r-stag)">{escape(divergence)}</span>'
+    return (f'<div class="head"><h3 style="font-size:17px;font-weight:600">{escape(name)}</h3>'
+            f'<span style="display:flex;gap:6px;flex-wrap:wrap">{chips}</span></div>'
+            f'<div style="margin-top:8px"><span class="big">{_num_it(current)}</span> <span class="muted" style="font-size:13px">'
+            f'correlazione a 120 giorni · norma {_num_it(usual)}</span></div><p class="note" style="margin-top:6px">{escape(book)}</p>')
+
+
+def matrix_html(m: pd.DataFrame, breaks: pd.DataFrame, names: dict[str, str], refs: dict[str, str]) -> str:
+    """m: intermarket.matrix(), colonne (riferimento, finestra o 'norma'); breaks: intermarket.matrix_breaks()."""
+    groups = {ref: [c for c in m.columns if c[0] == ref] for ref in refs}
+    head = ("<tr><th></th>" + "".join(f'<th class="sep" colspan="{len(cols)}">contro {escape(refs[ref])}</th>' for ref, cols in groups.items())
+            + "</tr><tr><th></th>" + "".join(f'<th class="{"sep" if i == 0 else ""}">{"norma" if w == "norma" else f"{w} g"}</th>'
+                                            for cols in groups.values() for i, (_, w) in enumerate(cols)) + "</tr>")
+
+    def cell(t, c, first):
+        v = m[c][t]
+        cls = ["sep"] if first else []
+        if c[1] == "norma":
+            cls.append("n")
+        elif bool(breaks[c][t]):
+            cls.append("brk")
+        return f'<td class="{" ".join(cls)}">{"·" if pd.isna(v) else _num_it(v)}</td>'
+
+    rows = "".join(f'<tr><td>{escape(names.get(t, t))}</td>'
+                   + "".join(cell(t, c, i == 0) for cols in groups.values() for i, c in enumerate(cols)) + "</tr>" for t in m.index)
+    return (f'<div class="si card"><div class="head"><h3>Correlazioni</h3><span class="note">rendimenti giornalieri, finestre in giorni di borsa</span></div>'
+            f'<div class="tbl"><table class="mtx">{head}{rows}</table></div>'
+            '<p class="note">Norma = mediana della correlazione a 120 giorni negli ultimi 5 anni. In rosso = fuori dalla norma: '
+            'segno opposto (se la norma è almeno ±0,2) o distanza oltre 0,5. Per i tassi conta la variazione giornaliera in punti.</p></div>')
+
+
+def edge_html(title: str, table: pd.DataFrame, names: dict[str, str], top: list[str]) -> str:
+    """table: intermarket.edge_table() di un gruppo di ticker; top: quelli in evidenza (intermarket.highlighted)."""
+    head = "<tr><th></th><th>casi</th><th>media</th><th>mediana</th><th>sopra</th><th>t</th></tr>"
+    rows = "".join(
+        f'<tr class="{"top" if t in top else ""}"><td><b>{escape(t)}</b> <span class="muted">{escape(names.get(t, ""))}</span></td>'
+        f'<td>{r.casi:.0f}</td><td>{_num_it(r.media)}%</td><td>{_num_it(r.mediana)}%</td><td>{r.sopra:.0f}%</td><td>{_num_it(r.t, 1)}</td></tr>'
+        for t, r in table.iterrows())
+    return f'<div class="si card"><h3>{escape(title)}</h3><div class="tbl"><table class="mtx">{head}{rows}</table></div></div>'

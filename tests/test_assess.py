@@ -64,6 +64,11 @@ def test_uncertain_pair_flips_weaker_inflation_axis():
     assert uncertain_pair("up", "down", xg=2.0, xi=0.05) == ("Goldilocks", "Reflazione")
 
 
+def test_uncertain_pair_same_order_from_both_sides():
+    # Reflazione vicina alla Stagflazione e Stagflazione vicina alla Reflazione: stessa etichetta
+    assert uncertain_pair("up", "up", xg=0.1, xi=2.0) == uncertain_pair("down", "up", xg=-0.1, xi=2.0)
+
+
 def test_regime_label_matches_regime_when_axes_solid():
     inflation = _m([1.0] * (N - 6) + [1.5, 2.0, 2.8, 3.5, 4.2, 5.0])
     a = assess("UK", {**SERIES, "inflation_yoy": inflation}, today=TODAY)

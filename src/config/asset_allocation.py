@@ -23,6 +23,8 @@
 # ma resta utile come diversificatore (bassa corr. con azionario/obbligazionario)
 # e hedge in crisi/geopolitica (2008, 2020) - per questo compare in Stagflazione.
 
+from src.classify.assess import label_regimes
+
 ASSET_ALLOCATION = {
     "Goldilocks": ["Azionario growth", "Materie prime", "Credito corporate"],
     "Reflazione": ["Azionario", "Oro", "Materie prime", "Obbligazioni indicizzate all'inflazione"],
@@ -60,12 +62,15 @@ def portfolio_weights(regime: str, risk_profile: str) -> dict:
 
 
 def combined_portfolio_weights(regimes_by_area: dict, risk_profile: str) -> dict:
-    """Media equipesata dei portafogli-per-regime di ogni nazione/area."""
+    """Media equipesata dei portafogli-per-regime di ogni nazione/area. Valori = etichette di regime: un'area
+    "Incerto: X / Y" (src/classify/assess.py) pesa meta' il portafoglio di X e meta' quello di Y."""
     n = len(regimes_by_area) or 1
     combined: dict = {}
-    for regime in regimes_by_area.values():
-        for asset, weight in portfolio_weights(regime, risk_profile).items():
-            combined[asset] = combined.get(asset, 0.0) + weight / n
+    for label in regimes_by_area.values():
+        regimes = label_regimes(label)
+        for regime in regimes:
+            for asset, weight in portfolio_weights(regime, risk_profile).items():
+                combined[asset] = combined.get(asset, 0.0) + weight / n / len(regimes)
     return combined
 
 

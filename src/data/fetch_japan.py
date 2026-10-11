@@ -1,5 +1,6 @@
 import pandas as pd
-import requests
+
+from src.data.http import get_with_retry
 
 BASE_URL = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData"
 
@@ -48,8 +49,7 @@ def _fetch_series(stats_data_id: str, app_id: str, extra_params: dict | None = N
     params = {"appId": app_id, "statsDataId": stats_data_id}
     if extra_params:
         params.update(extra_params)
-    resp = requests.get(BASE_URL, params=params, timeout=30)
-    resp.raise_for_status()
+    resp = get_with_retry(BASE_URL, source="estat", params=params, timeout=30)
     values = resp.json()["GET_STATS_DATA"]["STATISTICAL_DATA"]["DATA_INF"]["VALUE"]
     dates = [_parse_estat_time(v["@time"]) for v in values]
     vals = [float(v["$"]) for v in values]
@@ -80,12 +80,12 @@ def _find_class_code(class_objs: list, class_id: str, name_contains: str) -> str
 
 
 def fetch_unemployment_rate(app_id: str) -> pd.Series:
-    resp = requests.get(
+    resp = get_with_retry(
         BASE_URL,
+        source="estat",
         params={"appId": app_id, "statsDataId": STATS_DATA_ID_UNEMPLOYMENT},
         timeout=30,
     )
-    resp.raise_for_status()
     statistical_data = resp.json()["GET_STATS_DATA"]["STATISTICAL_DATA"]
     class_objs = statistical_data["CLASS_INF"]["CLASS_OBJ"]
     cat02_code = _find_class_code(class_objs, "cat02", UNEMPLOYED_CAT02_NAME)

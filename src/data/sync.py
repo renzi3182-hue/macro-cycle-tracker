@@ -11,11 +11,15 @@ from pathlib import Path
 
 import requests
 
+from src.data.http import get_with_retry
+
 DATA_URL = "https://github.com/renzi3182-hue/macro-cycle-tracker/releases/download/data-latest/cache.db"
 DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "cache.db"
 # Il workflow scrive updated_at e poi carica il file: Last-Modified arriva qualche secondo/minuto dopo.
 # Senza margine il DB appena scaricato sembrerebbe sempre piu' vecchio e si riscaricherebbe a ogni avvio.
 UPLOAD_SLACK_SECONDS = 15 * 60
+# Gira all'apertura della pagina: 2 tentativi brevi, cosi' una rete lenta non blocca la dashboard (caso peggiore ~11 s).
+ATTEMPTS, BACKOFF, HEAD_TIMEOUT = 2, (1,), 5
 
 
 def local_updated_at(db_path: Path) -> float:
@@ -35,14 +39,13 @@ def local_updated_at(db_path: Path) -> float:
 def sync_cache(url: str = DATA_URL, db_path: Path = DB_PATH) -> bool:
     """True se ha sostituito il file locale. Qualsiasi errore di rete lascia la cache com'e'."""
     try:
-        head = requests.head(url, allow_redirects=True, timeout=15)
-        if head.status_code != 200 or "Last-Modified" not in head.headers:
+        head = get_with_retry(url, "github", ATTEMPTS, BACKOFF, method="HEAD", allow_redirects=True, timeout=HEAD_TIMEOUT)
+        if "Last-Modified" not in head.headers:
             return False
         remote = parsedate_to_datetime(head.headers["Last-Modified"]).timestamp()
         if db_path.exists() and local_updated_at(db_path) + UPLOAD_SLACK_SECONDS >= remote:
             return False
-        resp = requests.get(url, timeout=120)
-        resp.raise_for_status()
+        resp = get_with_retry(url, "github", ATTEMPTS, BACKOFF, timeout=120)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(dir=db_path.parent, delete=False) as tmp:
             tmp.write(resp.content)

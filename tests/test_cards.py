@@ -8,6 +8,13 @@ def test_prevailing_regime_counts_areas():
     assert prevailing_regime({"USA": "Goldilocks", "EZ": "Reflazione", "IT": "Reflazione"}) == ("Reflazione", 2)
 
 
+def test_prevailing_regime_counts_uncertain_pair_once():
+    from src.classify.assess import uncertain_pair
+    labels = {area: "Incerto: {} / {}".format(*uncertain_pair(g, "up", xg=0.1 if g == "up" else -0.1, xi=2.0))
+              for area, g in {"India": "down", "Italia": "up", "UK": "up"}.items()}
+    assert prevailing_regime({**labels, "USA": "Stagflazione"}) == ("Incerto: Reflazione / Stagflazione", 3)
+
+
 def test_weight_deltas_in_whole_points():
     assert weight_deltas({"Oro": 10.4, "Cash": 5.0}, {"Oro": 7.6}) == {"Oro": 2, "Cash": 5}
 
@@ -33,3 +40,17 @@ def test_ribbon_has_one_cell_per_month_and_uses_theme_variables():
 def test_both_themes_define_the_same_tokens():
     assert TOKENS["dark"].keys() == TOKENS["light"].keys()
     assert "--r-gold: #177A4D" in page_css("light") and "--r-gold: #7BE0A4" in page_css("dark")
+
+
+def test_wave_dot_sits_on_the_quarter_of_the_phase():
+    import re
+    from src.ui.cards import wave_html
+
+    def dot(phase):
+        m = re.search(r"left:([\d.]+)%;top:([\d.]+)%", wave_html(phase))
+        return float(m[1]), float(m[2])
+
+    assert dot("Espansione")[0] < dot("Rallentamento")[0] < dot("Recessione")[0] < dot("Ripresa (sotto trend)")[0]
+    assert dot("Espansione")[1] < 50 and dot("Rallentamento")[1] < 50  # sopra il trend
+    assert dot("Recessione")[1] > 50 and dot("Ripresa (sotto trend)")[1] > 50  # sotto il trend
+    assert "<b" not in wave_html(None) and "<svg" not in wave_html("Espansione")

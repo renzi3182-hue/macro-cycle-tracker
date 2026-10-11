@@ -32,9 +32,8 @@ import os
 import numpy as np
 import pandas as pd
 
-from scripts.evaluate_model import INPUTS, lagged
-from src.classify.assess import assess
-from src.classify.score import TREND_MONTHS
+from src.classify.assess import USED_INPUTS, point_in_time_history
+from src.classify.score import TREND_MONTHS, complete_months
 from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, portfolio_weights
 from src.data import cache, fetch_fred, fetch_market
 from src.scheduler.update_data import _load_dotenv
@@ -77,12 +76,12 @@ def asset_returns(key: str) -> pd.DataFrame:
         rets[k] = p.pct_change(fill_method=None)
     rets["Treasury 10Y"] = bond_returns(fetch_fred._fetch_series("DGS10", key, "lin"))
     rets["Cash"] = _monthly_close(fetch_fred._fetch_series("TB3MS", key, "lin")) / 100 / 12
-    return pd.DataFrame(rets)[["Azionario", "Treasury 10Y", "Oro", "Materie prime", "Cash"]]
+    # Yahoo e FRED giornalieri danno anche il mese in corso: non e' un mese chiuso
+    return complete_months(pd.DataFrame(rets)[["Azionario", "Treasury 10Y", "Oro", "Materie prime", "Cash"]])
 
 
 def regimes_point_in_time() -> pd.Series:
-    series = {n: lagged(x, n) for n in INPUTS if not (x := cache.read_indicator_series("USA", n)).empty}
-    regime = assess("USA", series)["history"]["regime"]
+    regime = point_in_time_history("USA", {n: cache.read_indicator_series("USA", n) for n in USED_INPUTS})["regime"]
     regime.index = regime.index.to_period("M")
     return regime
 

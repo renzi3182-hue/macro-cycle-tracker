@@ -3,6 +3,8 @@
 I componenti in cards.py usano solo variabili CSS (var(--fg), var(--r-gold)...): il tema chiaro o scuro
 si sceglie qui una volta, in base a st.context.theme.type, e i colori dei widget nativi vengono da
 .streamlit/config.toml con gli stessi valori."""
+from math import pi, sin
+from urllib.parse import quote
 
 TOKENS = {
     "dark": {
@@ -80,6 +82,18 @@ _CSS = """
 .si .ribbon i { display: block; height: 100%; }
 .si .ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 6px; }
 .si .rlabel { font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
+.si .rlabel b { color: var(--fg); font-weight: 600; }
+
+/* onda del ciclo, come nel logo: linea = maschera dell'onda, colore dal tema */
+.si .wave { position: relative; height: 120px; }
+.si .wave i { position: absolute; inset: 0; background: var(--muted); opacity: .6;
+  -webkit-mask: __WAVE__ 0 0 / 100% 100% no-repeat; mask: __WAVE__ 0 0 / 100% 100% no-repeat; }
+.si .wave .mid { position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed color-mix(in srgb, var(--muted) 45%, transparent); }
+.si .wave .mid span { position: absolute; right: 0; bottom: 3px; font-size: 11px; color: var(--muted); }
+.si .wave b { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent); }
+.si .wave-l { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; text-align: center; font-size: 12px; color: var(--muted); }
+.si .wave-l .on { color: var(--accent); font-weight: 700; }
 
 /* barre */
 .si .track { height: 8px; border-radius: 4px; background: var(--raised); overflow: hidden; }
@@ -145,6 +159,17 @@ __DONUT_TIPS__
 .si .scale i { position: absolute; top: -4px; width: 3px; height: 14px; border-radius: 2px; background: var(--fg); }
 .si .arow { display: grid; grid-template-columns: 22px minmax(0, 1.8fr) minmax(70px, 1fr) 62px 62px 52px 32px; gap: 12px; align-items: center; min-height: 44px; font-size: 14px; border-bottom: 1px solid var(--line); }
 .si .arow:last-child { border-bottom: 0; }
+
+/* tabelle numeriche (matrice delle correlazioni, cosa ha funzionato) */
+.si .tbl { overflow-x: auto; }
+.si table.mtx { width: 100%; border-collapse: collapse; font-size: 13px; }
+.si .mtx th { font-size: 11px; font-weight: 600; color: var(--muted); text-align: right; padding: 6px 8px; white-space: nowrap; }
+.si .mtx td { padding: 7px 8px; text-align: right; border-top: 1px solid var(--line); font-family: 'DM Mono', monospace; white-space: nowrap; }
+.si .mtx td:first-child { text-align: left; font-family: inherit; }
+.si .mtx .sep { border-left: 1px solid var(--line); }
+.si .mtx td.n { color: var(--muted); }
+.si .mtx td.brk { background: color-mix(in srgb, var(--r-stag) 16%, transparent); color: var(--r-stag); font-weight: 500; }
+.si .mtx tr.top td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .si .arow.th { min-height: 28px; font-size: 12px; color: var(--muted); }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -164,10 +189,17 @@ __DONUT_TIPS__
 """
 
 DONUT_SLOTS = 12
+WAVE_AMPLITUDE = 38  # % dell'altezza: un periodo di sinusoide centrata, il punto di cards.wave_html sta sulla stessa curva
+_WAVE_PATH = "M" + " L".join(f"{x} {50 - WAVE_AMPLITUDE * sin(2 * pi * x / 100):.2f}" for x in range(101))
+# SVG solo come immagine di maschera nel CSS (st.html toglie gli <svg> dal DOM, non le url() dei fogli di stile)
+_WAVE_MASK = 'url("data:image/svg+xml,' + quote(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'>"
+    f"<path d='{_WAVE_PATH}' fill='none' stroke='black' stroke-width='3' stroke-linejoin='round' "
+    "vector-effect='non-scaling-stroke'/></svg>") + '")'
 
 
 def page_css(mode: str) -> str:
     t = TOKENS.get(mode, TOKENS["dark"])
     root = ":root { " + " ".join(f"--{k}: {v};" for k, v in t.items()) + " }"
     tips = "\n".join(f".si .donut:has(.s{i}:hover) .c.t{i} {{ display: flex; }}" for i in range(DONUT_SLOTS))
-    return f"<style>{root}{_CSS.replace('__DONUT_TIPS__', tips)}</style>"
+    return f"<style>{root}{_CSS.replace('__DONUT_TIPS__', tips).replace('__WAVE__', _WAVE_MASK)}</style>"

@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.classify import cycle, score
-from src.classify.assess import assess
+from src.classify import cycle, intermarket, score
+from src.classify.assess import UNCERTAIN_PREFIX, assess
 from src.data import cache, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
 logging.basicConfig(level=logging.INFO)
@@ -115,7 +115,7 @@ def _areas(fred_key: str, estat_app_id: str) -> dict:
 def history_regime_key(result: dict) -> str:
     """Valore di 'regime' da scrivere nello storico classifications: 'Incerto' conta come un valore unico,
     cosi' entrare/uscire dall'incertezza e' un cambio ma scambiare la coppia di regimi restando incerti no."""
-    return "Incerto" if result["regime_label"].startswith("Incerto") else result["regime"]
+    return "Incerto" if result["regime_label"].startswith(UNCERTAIN_PREFIX) else result["regime"]
 
 
 def update_area(area: str, indicator_fetchers: dict) -> None:
@@ -203,6 +203,19 @@ def update_asset_prices() -> None:
             _record_failure(score.ASSET_AREA, ticker, e)
 
 
+def update_intermarket(fred_key: str) -> None:
+    """Chiusure giornaliere degli ultimi anni per la pagina Intermarket (src/classify/intermarket.py): FRED dove
+    esiste, Yahoo (rettificati) per ETF e rame. Una serie che fallisce non blocca le altre."""
+    fetchers = {t: lambda t=t: fetch_market.fetch_yahoo(t, f"{intermarket.YEARS}y", "1d", adjusted=True) for t in intermarket.YAHOO}
+    fetchers.update({s: lambda s=s: fetch_fred.fetch_daily(s, fred_key, intermarket.YEARS) for s in intermarket.FRED_SERIES})
+    for name, fetch_fn in fetchers.items():
+        try:
+            cache.write_indicator_series(intermarket.AREA, name, fetch_fn())
+        except Exception as e:
+            logger.exception("intermarket %s: fetch fallito, salto e continuo", name)
+            _record_failure(intermarket.AREA, name, e)
+
+
 def main() -> None:
     _load_dotenv()
     cache.migrate_phase_names("Ripresa", cycle.RECOVERY_BELOW_TREND)
@@ -216,6 +229,7 @@ def main() -> None:
             logger.exception("update fallito per area %s, salto e continuo", area)
     update_market_context(fred_key)
     update_asset_prices()
+    update_intermarket(fred_key)
     cache.write_meta("updated_at", datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"))
     cache.write_meta("fetch_failures", json.dumps(FETCH_FAILURES))
     if fetch_fred.calls["tried"] and not fetch_fred.calls["ok"]:

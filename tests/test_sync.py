@@ -55,3 +55,12 @@ def test_skips_download_of_the_same_upload(tmp_path, requests_mock):
     write_meta("updated_at", "2026-10-01T09:57:00+00:00", db)
     requests_mock.head(URL, headers={"Last-Modified": NEWER})
     assert sync_cache(URL, db) is False
+
+
+def test_two_short_attempts_then_keeps_cache(tmp_path, requests_mock):
+    # all'apertura della pagina: 2 tentativi, poi la cache locale resta com'e'
+    db = tmp_path / "cache.db"
+    db.write_bytes(b"local")
+    requests_mock.head(URL, status_code=503)
+    assert sync_cache(URL, db) is False and db.read_bytes() == b"local"
+    assert requests_mock.call_count == 2

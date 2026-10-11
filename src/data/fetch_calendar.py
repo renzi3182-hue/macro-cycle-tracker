@@ -4,6 +4,8 @@ from datetime import date
 import pandas as pd
 import requests
 
+from src.data.http import get_with_retry
+
 FRED_RELEASE_DATES_URL = "https://api.stlouisfed.org/fred/release/dates"
 FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
 FRED_RELEASES = {"CPI": 10, "Occupazione (NFP)": 50, "PIL": 53}  # nome -> release_id FRED
@@ -17,8 +19,9 @@ MONTHS = ["January", "February", "March", "April", "May", "June", "July",
 def fetch_release_dates(release_id: int, api_key: str, today: date | None = None) -> pd.Series:
     """Prossime date di pubblicazione di una release FRED, come Series (indice = data, valore 1.0)."""
     today = today or date.today()
-    resp = requests.get(
+    resp = get_with_retry(
         FRED_RELEASE_DATES_URL,
+        source="fred",  # stesso host di fetch_fred: stesso interruttore
         params={
             "release_id": release_id,
             "api_key": api_key,
@@ -30,7 +33,6 @@ def fetch_release_dates(release_id: int, api_key: str, today: date | None = None
         },
         timeout=30,
     )
-    resp.raise_for_status()
     dates = [pd.Timestamp(d["date"]) for d in resp.json()["release_dates"]]
     return pd.Series(1.0, index=dates)
 
@@ -38,8 +40,7 @@ def fetch_release_dates(release_id: int, api_key: str, today: date | None = None
 def fetch_fomc_dates(years: tuple[int, ...] | None = None) -> pd.Series:
     """Giorno di decisione (ultimo giorno) di ogni riunione FOMC dal calendario Fed."""
     years = years or (date.today().year, date.today().year + 1)
-    resp = requests.get(FOMC_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
-    resp.raise_for_status()
+    resp = get_with_retry(FOMC_URL, source="fed", headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", resp.text))
     found = []
     for year in years:
@@ -59,10 +60,12 @@ def fetch_economic_events() -> list[dict]:
     """Eventi del calendario economico: date in UTC ISO, valuta, titolo, impatto, previsto, precedente."""
     events = []
     for i, url in enumerate(FF_URLS):
-        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
-        if resp.status_code == 404 and i > 0:  # la settimana dopo non e' ancora pubblicata
-            continue
-        resp.raise_for_status()
+        try:
+            resp = get_with_retry(url, source="forexfactory", headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+        except requests.HTTPError as e:
+            if i > 0 and e.response is not None and e.response.status_code == 404:  # settimana dopo non ancora pubblicata
+                continue
+            raise
         events += [
             {
                 "date": pd.Timestamp(e["date"]).tz_convert("UTC").isoformat(),

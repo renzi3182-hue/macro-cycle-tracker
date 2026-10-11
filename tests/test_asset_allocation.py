@@ -31,3 +31,10 @@ def test_apply_trend_moves_assets_below_average_to_cash():
     from src.config.asset_allocation import apply_trend
     out = apply_trend({"Azionario": 50.0, "Oro": 30.0, "Cash": 10.0, "Credito corporate": 10.0}, {"SPY": False, "GLD": True})
     assert out == {"Cash": 60.0, "Oro": 30.0, "Credito corporate": 10.0}
+
+
+def test_uncertain_area_takes_half_of_each_regime():
+    half = combined_portfolio_weights({"India": "Incerto: Reflazione / Stagflazione"}, "Medio")
+    both = combined_portfolio_weights({"A": "Reflazione", "B": "Stagflazione"}, "Medio")
+    assert half == pytest.approx(both)
+    assert sum(half.values()) == pytest.approx(100.0)

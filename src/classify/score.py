@@ -14,6 +14,11 @@ import pandas as pd
 # obbligazioni e cash: la scelta e' fatta dopo aver visto i dati, provate solo 3 varianti.
 # Niente pilastro macro: la tabella regime -> asset non batte i portafogli statici (scripts/backtest_assets.py).
 # Niente stagionalita': con 20-30 anni di storia per asset e' rumore.
+# 11/10/2026, 28 ETF (aggiunti XLC, XLRE, QQQ, IWM, IWF, IWD, SMH per i settori del libro di Casario, una sola
+# variante provata): IC +0.076 (t 2.2), <2014 +0.049 (t 1.0, prima +0.067), >=2014 +0.107 (t 2.2); fascia 81-100
+# +0.64% mediano, 1-20 -0.92%; migliori 5 14.6%/anno, drawdown -19% (piu' ETF azionari USA forti, es. QQQ e SMH).
+# Tenuti: il totale non peggiora, il sottoperiodo prima del 2014 si'. Storici corti (XLRE 2015, XLC 2018): un ETF
+# entra in classifica solo con 12 mesi di prezzi, fino ad allora e' NaN e non conta per MIN_ASSETS.
 # Verifica point-in-time in scripts/evaluate_score.py.
 TREND_MONTHS = 10
 MOMENTUM_MONTHS = 12
@@ -32,6 +37,9 @@ UNIVERSE = {
     "XLK": ("Tecnologia", "Settori USA"), "XLF": ("Finanziari", "Settori USA"), "XLV": ("Salute", "Settori USA"),
     "XLE": ("Energia", "Settori USA"), "XLI": ("Industriali", "Settori USA"), "XLY": ("Consumi discrezionali", "Settori USA"),
     "XLP": ("Consumi di base", "Settori USA"), "XLU": ("Utility", "Settori USA"), "XLB": ("Materiali", "Settori USA"),
+    "XLC": ("Comunicazioni", "Settori USA"), "XLRE": ("Immobiliare", "Settori USA"),
+    "QQQ": ("Nasdaq 100", "Indici USA"), "IWM": ("Russell 2000", "Indici USA"), "IWF": ("Growth", "Indici USA"),
+    "IWD": ("Value", "Indici USA"), "SMH": ("Semiconduttori", "Indici USA"),
     "TLT": ("Treasury 20+ anni", "Obbligazioni"), "IEF": ("Treasury 7-10 anni", "Obbligazioni"),
     "TIP": ("Indicizzate inflazione", "Obbligazioni"), "SHY": ("Treasury 1-3 anni", "Obbligazioni"),
     "GLD": ("Oro", "Materie prime"), "DBC": ("Materie prime", "Materie prime"),
@@ -44,9 +52,11 @@ def monthly_prices(prices: dict[str, pd.Series]) -> pd.DataFrame:
 
 
 def complete_months(px: pd.DataFrame, today: pd.Timestamp | None = None) -> pd.DataFrame:
-    """Toglie il mese in corso: il punteggio vale a chiusura di mese, come nella verifica."""
+    """Toglie il mese in corso: il punteggio vale a chiusura di mese, come nella verifica. Indice di date (inizio
+    mese) o di periodi mensili (scripts/backtest_assets.py)."""
     today = pd.Timestamp.today() if today is None else today
-    return px[px.index < today.normalize().replace(day=1)]
+    months = px.index.to_timestamp() if isinstance(px.index, pd.PeriodIndex) else px.index
+    return px[months < today.normalize().replace(day=1)]
 
 
 def pillars(px: pd.DataFrame) -> dict[str, pd.DataFrame]:

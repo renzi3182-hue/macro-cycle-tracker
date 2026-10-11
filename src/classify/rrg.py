@@ -7,9 +7,10 @@ from src.classify.score import TREND_MONTHS, UNIVERSE
 # - RS-Ratio = 100 * rs / media di rs a TREND_MONTHS mesi (sopra 100: il settore fa meglio dell'S&P 500 in tendenza);
 # - RS-Momentum = 100 * RS-Ratio / RS-Ratio di MOMENTUM_MONTHS mesi prima (sopra 100: il vantaggio sta crescendo).
 # Il settore gira in senso orario: Migliora -> Guida -> Indebolisce -> Arretra.
-# Verifica 1999-2026 (scripts/evaluate_rrg.py, 9 settori, 2871 casi): il quadrante NON prevede l'extra-rendimento
-# sull'S&P 500. A 3 mesi Guida +0.20%, Arretra +0.16% (differenza t 0.1), segno opposto dal 2014; solo i settori
-# in Guida 8,6%/anno contro 8,7% dei 9 a pesi uguali. Va mostrato come mappa descrittiva, non come segnale.
+# Verifica 1999-2026 (scripts/evaluate_rrg.py, 11 settori con XLC e XLRE dall'11/10/2026, 3073 casi): il quadrante
+# NON prevede l'extra-rendimento sull'S&P 500. A 3 mesi Guida +0.14%, Arretra 0.00% (differenza t 0.5), segno opposto
+# dal 2014; solo i settori in Guida 8,3%/anno contro 8,5% dei settori a pesi uguali. Va mostrato come mappa
+# descrittiva, non come segnale.
 BENCHMARK = "SPY"
 MOMENTUM_MONTHS = 3
 SECTORS = [t for t, (_, g) in UNIVERSE.items() if g == "Settori USA"]

@@ -1,5 +1,6 @@
-"""GET condiviso con retry per tutti i fetcher (FRED, ECB/Eurostat, BoE/ONS, OECD): stesso comportamento
-su errori temporanei (5xx, 429, timeout, connessione) invece di duplicarlo in ogni modulo.
+"""Richiesta HTTP condivisa con retry per tutte le fonti (FRED, ECB/Eurostat, BoE/ONS, OCSE, Yahoo, CFTC, e-Stat,
+BoJ, Fed, Forex Factory, download della cache da GitHub): stesso comportamento su errori temporanei (5xx, 429,
+timeout, connessione) invece di duplicarlo in ogni modulo.
 
 Interruttore per fonte: se una fonte esaurisce le retry su CIRCUIT_THRESHOLD fetch consecutivi, le chiamate
 successive alla stessa fonte nello stesso processo fanno un solo tentativo con timeout ridotto, cosi' una
@@ -18,15 +19,16 @@ CIRCUIT_TIMEOUT = 5  # secondi, per il tentativo singolo a circuito aperto
 _consecutive_failures: dict[str, int] = {}
 
 
-def get_with_retry(url: str, source: str, max_attempts: int = 4, backoff: tuple = (2, 4, 8), **kwargs) -> requests.Response:
-    """GET con retry su errori temporanei. 4xx (eccetto 429) fallisce subito, senza ritentare."""
+def get_with_retry(url: str, source: str, max_attempts: int = 4, backoff: tuple = (2, 4, 8), method: str = "GET",
+                   **kwargs) -> requests.Response:
+    """Richiesta (GET di default) con retry su errori temporanei. 4xx (eccetto 429) fallisce subito, senza ritentare."""
     circuit_open = _consecutive_failures.get(source, 0) >= CIRCUIT_THRESHOLD
     attempts = 1 if circuit_open else max_attempts
     call_kwargs = {**kwargs, "timeout": CIRCUIT_TIMEOUT} if circuit_open else kwargs
     last_exc: Exception | None = None
     for attempt in range(attempts):
         try:
-            resp = requests.get(url, **call_kwargs)
+            resp = requests.request(method, url, **call_kwargs)
             resp.raise_for_status()
             _consecutive_failures[source] = 0
             return resp

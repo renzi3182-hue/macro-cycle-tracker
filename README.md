@@ -1,6 +1,6 @@
 # Macro Cycle Tracker
 
-Dashboard locale, uso personale: regime macro (Goldilocks/Deflazione/Reflazione/Stagflazione) e fase del ciclo economico (Espansione/Rallentamento/Recessione/Ripresa (sotto trend)) per USA, Eurozona/Italia, UK, Giappone.
+Dashboard per uso personale: regime macro (Goldilocks/Deflazione/Reflazione/Stagflazione) e fase del ciclo economico (Espansione/Rallentamento/Recessione/Ripresa (sotto trend)) per nove aree: USA, Eurozona, Italia, UK, Giappone, Canada, Cina, Australia, India. Pubblicata su https://macrocycletracker.streamlit.app/, con dati aggiornati da GitHub Actions.
 
 Vedi [intent](intent/001-macro-cycle-dashboard.md), [spec.md](spec.md), [plan.md](plan.md) per il processo che ha portato a questo codice.
 
@@ -35,16 +35,18 @@ Se un'area fallisce, l'update la salta e continua con le altre (vedi `src/schedu
 .venv\Scripts\streamlit run src/app.py               # apre la dashboard
 ```
 
-## Aggiornamento automatico (Windows Task Scheduler)
+## Aggiornamento automatico
 
-Da fare manualmente (è una modifica di sistema, non automatizzata da questo repo):
+In produzione: il workflow `.github/workflows/update-data.yml` gira ogni 30 minuti nei giorni feriali (una volta nel weekend), aggiorna `data/cache.db` e la pubblica come asset della release `data-latest`; l'app la scarica all'avvio se è più recente di quella locale (`src/data/sync.py`).
+
+In locale, facoltativo, con Windows Task Scheduler (modifica di sistema, da fare a mano):
 
 1. Apri **Utilità di pianificazione** (Task Scheduler).
 2. Crea attività di base → trigger giornaliero, orario a scelta.
 3. Azione: avvia programma.
-   - Programma: `C:\Users\renzi\OneDrive\Desktop\soft-works\.venv\Scripts\python.exe`
+   - Programma: `C:\Users\renzi\OneDrive\Desktop\soft-investing\.venv\Scripts\python.exe`
    - Argomenti: `-m src.scheduler.update_data`
-   - Cartella di lavoro (importante): `C:\Users\renzi\OneDrive\Desktop\soft-works`
+   - Cartella di lavoro (importante): `C:\Users\renzi\OneDrive\Desktop\soft-investing`
 
 ## Test
 
@@ -52,7 +54,7 @@ Da fare manualmente (è una modifica di sistema, non automatizzata da questo rep
 .venv\Scripts\pytest tests/ -v
 ```
 
-63 test, tutti con HTTP mockato (nessuna chiamata di rete reale, nessuna API key richiesta per il build).
+163 test, tutti con HTTP mockato (nessuna chiamata di rete reale, nessuna API key richiesta per il build).
 
 ## Backtest (script, scaricano dalle fonti, non usano l'app)
 
@@ -62,8 +64,13 @@ Da fare manualmente (è una modifica di sistema, non automatizzata da questo rep
 .venv\Scripts\python scripts/backtest_leading_intl.py    # anticipatori fuori USA vs rallentamenti OCSE
 .venv\Scripts\python scripts/backtest_assets.py [--alfred]  # regime -> rendimenti asset
 .venv\Scripts\python scripts/backtest_currency.py        # punteggio valute (legge la cache)
+.venv\Scripts\python scripts/evaluate_intermarket.py    # fase di Murphy e allineamento macro/mercati dal 2000
 ```
+
+## Pagine
+
+Macro: Panoramica, Aree (regime mese per mese e fase del ciclo come punto sull'onda), Metodo. Mercati: Classifica, Mercati, Intermarket (fase di Murphy, allineamento con la fase del ciclo USA, le quattro relazioni del libro, matrice delle correlazioni, cosa ha funzionato storicamente nella stessa situazione), COT report, Valute, Calendario. Strumenti: Portafoglio, Size Monte Carlo, Interesse composto.
 
 ## Stato deploy
 
-Non è previsto un deploy pubblico (uso personale, gira in locale). Repo pronto per commit; niente da pubblicare online.
+Live su https://macrocycletracker.streamlit.app/ (Streamlit Community Cloud), da un repo pubblico separato e piatto. I dati arrivano dal workflow GitHub Actions descritto sopra.

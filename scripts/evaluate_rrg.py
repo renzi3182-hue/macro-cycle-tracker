@@ -52,12 +52,12 @@ def main() -> None:
     nxt = r.shift(-1)
     lead = pd.DataFrame({t: [quadrant(x, y) == "Guida" if pd.notna(x) and pd.notna(y) else False
                              for x, y in zip(ratio[t], mom[t])] for t in ratio}, index=ratio.index)
-    valid = ratio.notna().all(axis=1) & mom.notna().all(axis=1)
-    idx = ratio.index[valid][:-1]
+    ok = ratio.notna() & mom.notna()  # i settori nascono in anni diversi (XLRE 2015, XLC 2018): pesi uguali fra i disponibili
+    idx = ratio.index[ok.any(axis=1)][:-1]
     held = nxt[ratio.columns].where(lead).loc[idx].mean(axis=1).fillna(nxt[BENCHMARK].loc[idx])
     print(f"Strategie, {idx[0]:%Y-%m} -> {idx[-1]:%Y-%m}, mese dopo il segnale, niente costi:")
     print(f"  SPY:                   {perf(nxt[BENCHMARK].loc[idx])}")
-    print(f"  9 settori pesi uguali: {perf(nxt[ratio.columns].loc[idx].mean(axis=1))}")
+    print(f"  settori pesi uguali:   {perf(nxt[ratio.columns].where(ok).loc[idx].mean(axis=1))}")
     print(f"  settori in Guida:      {perf(held)}  (in media {lead.loc[idx].sum(axis=1).mean():.1f} settori)")
 
 

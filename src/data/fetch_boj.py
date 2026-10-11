@@ -1,5 +1,6 @@
 import pandas as pd
-import requests
+
+from src.data.http import get_with_retry
 
 # API Bank of Japan (Time-Series Data Search), pubblica, senza chiave.
 # Tankan, DI condizioni di business, grandi imprese manifatturiere, dato effettivo.
@@ -9,12 +10,12 @@ TANKAN_LARGE_MANUFACTURERS = "TK99F1000601GCQ01000"
 
 
 def fetch_tankan() -> pd.Series:
-    resp = requests.get(
+    resp = get_with_retry(
         URL,
+        source="boj",
         params={"format": "json", "lang": "en", "db": "CO", "code": TANKAN_LARGE_MANUFACTURERS, "startDate": "197401"},
         timeout=30,
     )
-    resp.raise_for_status()
     values = resp.json()["RESULTSET"][0]["VALUES"]
     # SURVEY_DATES = AAAAQQ (es. 202602 = 2o trimestre 2026) -> primo giorno del trimestre, come gli altri dati trimestrali
     pairs = [(pd.Timestamp(year=d // 100, month=(d % 100 - 1) * 3 + 1, day=1), float(v))

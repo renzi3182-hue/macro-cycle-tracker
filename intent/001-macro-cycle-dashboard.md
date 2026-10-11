@@ -27,9 +27,11 @@ Aggiornamento dati automatico e schedulato (no refresh manuale ogni volta).
 - Nessun vincolo di budget dichiarato; preferire API gratuite (FRED è gratis con API key; ECB/Eurostat gratis).
 
 ## Open questions
-- Quali paesi/aree oltre USA ed Eurozona rientrano in "globale" (UK? Giappone? Cina?) — impatta quali API integrare.
-- Quale framework esatto per classificare il regime macro (soglie su inflazione/crescita, quali indicatori pesano e come)?
-- Quale framework per la fase del ciclo economico (stile NBER, o euristica su PIL/occupazione/PMI)?
-- L'asset allocation suggerita si basa su un framework storico noto (es. All Weather di Bridgewater) o va costruita da zero?
-- Come deve arrivare l'alert (notifica desktop, email, solo badge nella dashboard)?
-- Ogni quanto gira l'aggiornamento automatico (giornaliero è comunque più che sufficiente, dato che i dati macro escono mensile/trimestrale)?
+- Quali paesi/aree oltre USA ed Eurozona rientrano in "globale" (UK? Giappone? Cina?) — impatta quali API integrare. Risposta: [[spec#Aree geografiche v1]].
+- Quale framework esatto per classificare il regime macro (soglie su inflazione/crescita, quali indicatori pesano e come)? Risposta: [[spec#Logica di classificazione]].
+- Quale framework per la fase del ciclo economico (stile NBER, o euristica su PIL/occupazione/PMI)? Risposta: [[spec#Logica di classificazione]].
+- L'asset allocation suggerita si basa su un framework storico noto (es. All Weather di Bridgewater) o va costruita da zero? Risposta: [[spec#Asset allocation]].
+- Come deve arrivare l'alert (notifica desktop, email, solo badge nella dashboard)? Risposta: badge, [[spec#Output della dashboard]].
+- Ogni quanto gira l'aggiornamento automatico (giornaliero è comunque più che sufficiente, dato che i dati macro escono mensile/trimestrale)? Risposta: [[spec#Aggiornamento dati]].
+
+Seguito: [[spec]] (requisiti e design), poi [[plan]] (piano di build).

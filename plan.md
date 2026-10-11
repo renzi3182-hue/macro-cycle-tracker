@@ -1,4 +1,4 @@
-# Plan: Dashboard cicli economici e regimi macro (from spec.md, 2026-09-27)
+# Plan: Dashboard cicli economici e regimi macro (from [[spec]], 2026-09-27)
 
 ## Files that change
 Tutto nuovo, nessun codice esistente da toccare.
@@ -56,7 +56,7 @@ macro-cycle-tracker/
    - `fetch_japan.py`: PIL reale YoY e CPI YoY via e-Stat, legge `ESTAT_APP_ID` da env. Se l'API si rivela troppo fragile, isolare il fallimento (loggare e skippare l'area) invece di far crashare l'intero update.
    Ogni fetcher testato con `requests-mock` (nessuna chiamata di rete reale nei test).
 
-4. **Classificazione** (`src/classify/regime.py`, `src/classify/cycle.py`): funzioni pure, input = serie pandas di crescita e inflazione, output = stringa regime/fase secondo le tabelle in spec.md. Direzione = confronto valore corrente vs media mobile a 3 periodi precedenti. Soglie iniziali semplici (>0 = su, <0 = giù), da poter aggiustare come costanti in cima al file.
+4. **Classificazione** (`src/classify/regime.py`, `src/classify/cycle.py`): funzioni pure, input = serie pandas di crescita e inflazione, output = stringa regime/fase secondo le tabelle in [[spec#Logica di classificazione|spec]]. Direzione = confronto valore corrente vs media mobile a 3 periodi precedenti. Soglie iniziali semplici (>0 = su, <0 = giù), da poter aggiustare come costanti in cima al file.
 
 5. **Asset allocation** (`src/config/asset_allocation.py`): dict statico `regime -> {asset_class: peso/etichetta}`.
 
@@ -64,9 +64,9 @@ macro-cycle-tracker/
 
 7. **Dashboard** (`src/app.py`, Streamlit): per ogni area mostra regime attuale, fase attuale, badge "cambiato dall'ultimo aggiornamento" (confronto ultime due righe di `classifications`), grafico storico crescita/inflazione (`st.line_chart`), tabella asset allocation per il regime attivo.
 
-8. **README**: come ottenere le API key (FRED, e-Stat), come lanciare l'app (`streamlit run src/app.py`), come creare il task schedulato in Windows Task Scheduler (istruzioni manuali per l'utente — non è una modifica che lo script deve fare da solo, è una modifica di sistema).
+8. **[[README]]**: come ottenere le API key (FRED, e-Stat), come lanciare l'app (`streamlit run src/app.py`), come creare il task schedulato in Windows Task Scheduler (istruzioni manuali per l'utente — non è una modifica che lo script deve fare da solo, è una modifica di sistema).
 
-Non chiedere conferma ad ogni passo. Fermarsi solo se un'API esterna cambia radicalmente lo scope (es. e-Stat non praticabile → derubricare Giappone, come da spec).
+Non chiedere conferma ad ogni passo. Fermarsi solo se un'API esterna cambia radicalmente lo scope (es. e-Stat non praticabile → derubricare Giappone, come da [[spec#Areas of concern|spec]]).
 
 ## Risks
 
