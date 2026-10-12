@@ -30,10 +30,11 @@ from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.data.sync import sync_cache
 from src.ui.cards import (
-    ALIGN_VARS, alignment_html, area_hero_html, area_tile_html, axis_card_html, bands_html, calendar_html, changes_html, chips_html,
-    cot_groups_html, edge_html, events_html, freshness_html, gauge_html, hero_html, history_html, matrix_html, month_it, murphy_html,
-    pairs_html, portfolio_html, prevailing_regime, prob_html, quadrant_html, ranking_html, relation_html, risk_html, rrg_html,
-    strength_html, stress_html, trend_html, weight_deltas,
+    ALIGN_VARS, alignment_html, area_hero_html, area_tile_html, axis_card_html, bands_html, bar_rows_html, calendar_html, changes_html,
+    chips_html, cot_groups_html, edge_html, events_html, freshness_html, gauge_html, group_rows_html, group_summary, hero_html,
+    history_html, matrix_html, month_it, murphy_html, pairs_html, portfolio_html, prevailing_regime, prob_html, quadrant_html,
+    ranking_html, regime_groups_html, relation_html, risk_html, rrg_html, story_card_html, strength_html, stress_html, trend_html,
+    weight_deltas,
 )
 from src.ui.theme import REGIME_VARS, hex_color, page_css, phase_color, regime_color
 from src.ui.tool_pages import page_interest, page_sizing
@@ -125,33 +126,50 @@ def load_risk() -> pd.DataFrame:
 
 
 RISK_VARS = {"Risk Off estremo": "r-stag", "Risk Off": "r-stag", "Neutrale": "r-refl", "Risk On": "r-gold", "Risk On estremo": "r-gold"}
+RISK_SAY = {
+    "Risk Off estremo": "Mercati in forte tensione: gli investitori scappano dal rischio.",
+    "Risk Off": "Mercati nervosi: gli investitori riducono il rischio.",
+    "Neutrale": "Mercati né calmi né nervosi.",
+    "Risk On": "Mercati tranquilli: gli investitori accettano rischio.",
+    "Risk On estremo": "Mercati molto tranquilli: gli investitori cercano rischio.",
+}
+RISK_PARTS = [("VIX", "Calma in borsa", "volatilità (VIX) rispetto alla sua storia"),
+              ("Credito", "Calma sul credito", "stress sulle obbligazioni societarie"),
+              ("Ampiezza", "Asset in salita", "quota sopra la media a 10 mesi")]
+GROUP_NAMES = {"Paesi": "Azioni per paese"}
 
 
 def key_numbers(regimes: dict) -> str:
-    """Le 3 cifre in cima alla Panoramica: regime prevalente, Risk On/Off, quota di asset in tendenza positiva."""
+    """Le 3 card in cima alla Panoramica: regime prevalente, Risk On/Off, asset in tendenza positiva. Ognuna dice chi
+    sta dove (aree, componenti, gruppi di asset) invece di una posizione su una scala."""
     top, n = prevailing_regime(regimes)
-    share = n / len(regimes) * 100
-    cards = [axis_card_html(
-        "Regime prevalente", top if n > 1 else "Quadro misto", REGIME_VARS.get(top, "muted") if n > 1 else "muted",
-        f"{share:.0f}%", f"delle aree ({n} su {len(regimes)})", gauge_html((share - 50) / 20, "aree divise", "tutte concordi", "line", "accent", ""),
-        "Quante aree condividono lo stesso regime macro.")]
+    say = (f"Tutte le aree sono in {top}." if n == len(regimes) else f"La maggioranza delle aree è in {top}."
+           if n > len(regimes) / 2 else "Le economie sono divise: nessun regime ha la maggioranza.")
+    cards = [story_card_html(
+        "Regime prevalente", f"{top} · {n} aree su {len(regimes)}" if n > 1 else "Quadro misto",
+        REGIME_VARS.get(top, "muted") if n > 1 else "muted", say, f'<div>{regime_groups_html(regimes)}</div>')]
     risk = load_risk()
     if not risk.empty:
         r = risk.iloc[-1]
         state = risk_label(r["Punteggio"])
-        cards.append(axis_card_html(
-            f"Risk On/Off · fine {month_it(risk.index[-1])}", state, RISK_VARS[state], f'{r["Punteggio"]:.0f}',
-            f'/100 · VIX {r["VIX"]:.0f}, credito {r["Credito"]:.0f}, ampiezza {r["Ampiezza"]:.0f}',
-            gauge_html((r["Punteggio"] - 50) / 20, "Risk Off", "Risk On", "r-stag", "r-gold", "neutrale"),
-            "Anticipa la volatilità, non il rendimento: dal 1999, dopo un mese Risk Off estremo l'S&P 500 si è mosso "
-            "in media del 5,8% il mese dopo, dopo Risk On estremo del 2,3%."))
+        cards.append(story_card_html(
+            f"Risk On/Off · fine {month_it(risk.index[-1])}", state, RISK_VARS[state], RISK_SAY[state],
+            f'<div>{bar_rows_html([(name, desc, r[col]) for col, name, desc in RISK_PARTS])}</div>'
+            f'<div class="total"><span class="big">{r["Punteggio"]:.0f}</span>'
+            '<span class="muted" style="font-size:13px">/100, media dei tre: sotto 40 Risk Off, da 60 Risk On</span></div>',
+            "Dice quanto sono nervosi i mercati, non se saliranno: dal 1999, dopo un mese Risk Off estremo l'S&P 500 "
+            "si è mosso in media del 5,8% il mese dopo, dopo Risk On estremo del 2,3%."))
+        trend = pillars(load_scores()[0])["Tendenza"].loc[risk.index[-1]].dropna()
+        groups: dict[str, list[tuple[str, bool]]] = {}
+        for t, v in trend.items():
+            name, group = UNIVERSE[t]
+            groups.setdefault(GROUP_NAMES.get(group, group), []).append((f"{t} · {name}", v > 0))
         b = r["Ampiezza"]
-        b_state, b_var = ("Tendenza ampia", "r-gold") if b >= 60 else ("Tendenza debole", "r-stag") if b <= 40 else ("Tendenza mista", "r-refl")
-        cards.append(axis_card_html(
-            "Asset in tendenza positiva", b_state, b_var, f"{b:.0f}%", f"dei {len(UNIVERSE)} ETF della Classifica",
-            gauge_html((b - 50) / 20, "pochi", "quasi tutti", "r-stag", "r-gold", ""),
-            "Quota sopra la media a 10 mesi, la regola del filtro di tendenza."))
-    return '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">' + "".join(cards) + "</div>"
+        cards.append(story_card_html(
+            "Asset in tendenza positiva", f"{(trend > 0).sum()} su {len(trend)} in salita",
+            "r-gold" if b >= 60 else "r-stag" if b <= 40 else "r-refl", group_summary(groups),
+            f'<div>{group_rows_html(groups)}</div>', "In salita = prezzo sopra la media degli ultimi 10 mesi."))
+    return '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">' + "".join(cards) + "</div>"
 
 
 def recent_changes(assessments: dict) -> list[tuple[str, str, str]]:

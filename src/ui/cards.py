@@ -6,7 +6,7 @@ from math import cos, pi, sin
 
 import pandas as pd
 
-from src.classify.assess import run_start
+from src.classify.assess import label_regimes, run_start
 from src.classify.cycle import PHASES
 from src.classify.regime import REGIMES
 from src.classify.score import STRONG, WEAK
@@ -171,6 +171,78 @@ def axis_card_html(eyebrow: str, state: str, state_var: str, value: str, value_n
         f'<div><span class="big">{escape(value)}</span> <span class="muted" style="font-size:13px">{escape(value_note)}</span></div>'
         f'{gauge}<p class="note">{note}</p></div>'
     )
+
+
+REGIME_MEANING = {"Goldilocks": "cresce, prezzi in calo", "Reflazione": "cresce, prezzi in salita",
+                  "Stagflazione": "rallenta, prezzi in salita", "Deflazione": "rallenta, prezzi in calo"}
+
+
+def level_var(v: float) -> str:
+    """Colore di un valore 0-100 dove alto = bene: sotto 40 rosso, da 60 verde (come le fasce del Risk On/Off)."""
+    return "r-gold" if v >= 60 else "r-stag" if v < 40 else "r-refl"
+
+
+def _regime_paint(label: str, alpha: int = 100, angle: int = 90) -> str:
+    """Colore di un'etichetta di regime; un'area incerta e' meta' e meta' dei suoi due regimi."""
+    cs = [f"color-mix(in srgb, {regime_color(r)} {alpha}%, transparent)" for r in label_regimes(label)]
+    return cs[0] if len(cs) == 1 else f"linear-gradient({angle}deg, {cs[0]} 50%, {cs[1]} 50%)"
+
+
+def story_card_html(eyebrow: str, title: str, title_var: str, say: str, body: str, note: str = "") -> str:
+    """Card della Panoramica: lo stato, una frase semplice e il dettaglio che la spiega."""
+    return (
+        f'<div class="si card"><span class="eyebrow">{escape(eyebrow)}</span>{_big_state(title, f"var(--{title_var})")}'
+        f'<p class="say">{escape(say)}</p>{body}' + (f'<p class="note">{escape(note)}</p>' if note else "") + "</div>"
+    )
+
+
+def regime_groups_html(regimes: dict[str, str]) -> str:
+    """Una riga per regime con le sue aree, dal piu' diffuso (a parita' l'ordine delle aree, come prevailing_regime);
+    le incerte per coppia di regimi, i regimi senza aree in fondo."""
+    groups: dict[str, list[str]] = {}
+    for area, label in regimes.items():
+        groups.setdefault(label, []).append(area)
+    rows = sorted(groups.items(), key=lambda g: -len(g[1])) + [(r, []) for r in REGIMES if r not in groups]
+    out = []
+    for label, areas in rows:
+        pair = label_regimes(label)
+        name, meaning = ("Incerte", f"fra {pair[0]} e {pair[1]}") if len(pair) > 1 else (label, REGIME_MEANING[label])
+        ink = "var(--fg)" if len(pair) > 1 else regime_color(label)
+        chips = "".join(f'<span class="chip" style="background:{_regime_paint(label, 22, 135)};color:{ink}">{escape(a)}</span>' for a in areas)
+        out.append(
+            f'<div class="grp"><div class="top"><i class="dot" style="background:{_regime_paint(label)}"></i><b>{escape(name)}</b>'
+            f'<small>{escape(meaning)}</small><span class="mono">{len(areas)}</span></div>'
+            f'<div class="chips">{chips or "<span class=muted>nessuna area</span>"}</div></div>'
+        )
+    return "".join(out)
+
+
+def bar_rows_html(rows: list[tuple[str, str, float]]) -> str:
+    """(etichetta, spiegazione, valore 0-100): una barra per riga, colorata con level_var."""
+    return "".join(
+        f'<div class="brow"><span>{escape(label)}</span><span class="mono">{v:.0f}</span><small>{escape(note)}</small>'
+        f'<div class="track"><i style="width:{v:.0f}%;background:var(--{level_var(v)})"></i></div></div>'
+        for label, note, v in rows
+    )
+
+
+def group_rows_html(groups: dict[str, list[tuple[str, bool]]]) -> str:
+    """Per gruppo, (nome, in salita?) di ogni elemento: quanti in salita su quanti e un segmento per elemento."""
+    out = []
+    for group, items in groups.items():
+        segs = "".join(f'<i title="{escape(n)}" style="background:{"var(--r-gold)" if up else "color-mix(in srgb, var(--r-stag) 30%, transparent)"}"></i>'
+                       for n, up in items)
+        out.append(f'<div class="brow"><span>{escape(group)}</span><span class="mono">{sum(up for _, up in items)} su {len(items)}</span>'
+                   f'<div class="seg">{segs}</div></div>')
+    return "".join(out)
+
+
+def group_summary(groups: dict[str, list[tuple[str, bool]]]) -> str:
+    """Frase sui gruppi tutti in salita o tutti in calo."""
+    full = [g for g, items in groups.items() if all(up for _, up in items)]
+    none = [g for g, items in groups.items() if not any(up for _, up in items)]
+    parts = ([f"Tutti in salita: {', '.join(full)}."] if full else []) + ([f"Tutti in calo: {', '.join(none)}."] if none else [])
+    return " ".join(parts) or "Nessun gruppo tutto in salita o tutto in calo."
 
 
 def area_hero_html(a: dict, sentence: str) -> str:

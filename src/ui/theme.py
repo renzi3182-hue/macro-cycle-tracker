@@ -109,6 +109,21 @@ _CSS = """
 .si .gauge-l { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
 .si .big { font-family: 'DM Mono', monospace; font-size: 30px; line-height: 34px; font-weight: 500; letter-spacing: -0.02em; }
 
+/* card della Panoramica: frase semplice, gruppi di regime, righe con barra */
+.si .say { font-size: 15px; line-height: 22px; }
+.si .grp { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.si .grp:last-child { border-bottom: 0; }
+.si .grp .top { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
+.si .grp .top small { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+.si .grp .muted { font-size: 13px; }
+.si .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.si .brow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: baseline; font-size: 14px; padding: 5px 0; }
+.si .brow small { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: -4px; }
+.si .brow .track, .si .brow .seg { grid-column: 1 / -1; }
+.si .seg { display: flex; gap: 3px; }
+.si .seg i { flex: 1; height: 10px; border-radius: 3px; }
+.si .total { display: flex; align-items: baseline; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+
 /* elenco righe (stile lista raggruppata) */
 .si .list { display: flex; flex-direction: column; }
 .si .list .row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 14px; }

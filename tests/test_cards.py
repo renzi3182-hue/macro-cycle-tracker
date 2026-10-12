@@ -1,6 +1,8 @@
 import pandas as pd
 
-from src.ui.cards import duration_it, month_it, portfolio_html, prevailing_regime, ribbon_html, weight_deltas
+from src.ui.cards import (
+    duration_it, group_summary, month_it, portfolio_html, prevailing_regime, regime_groups_html, ribbon_html, weight_deltas,
+)
 from src.ui.theme import TOKENS, page_css
 
 
@@ -54,3 +56,18 @@ def test_wave_dot_sits_on_the_quarter_of_the_phase():
     assert dot("Espansione")[1] < 50 and dot("Rallentamento")[1] < 50  # sopra il trend
     assert dot("Recessione")[1] > 50 and dot("Ripresa (sotto trend)")[1] > 50  # sotto il trend
     assert "<b" not in wave_html(None) and "<svg" not in wave_html("Espansione")
+
+
+def test_regime_groups_most_common_first_uncertain_split_and_empty_regimes_last():
+    html = regime_groups_html({"USA": "Stagflazione", "EZ": "Reflazione", "IT": "Incerto: Reflazione / Stagflazione",
+                               "JP": "Reflazione", "UK": "Incerto: Reflazione / Stagflazione"})
+    order = [html.index(f"<b>{n}</b>") for n in ("Reflazione", "Incerte", "Stagflazione", "Goldilocks", "Deflazione")]
+    assert order == sorted(order)
+    assert "fra Reflazione e Stagflazione" in html and html.count("nessuna area") == 2
+    assert "<svg" not in html and "#" not in html  # st.html rimuove gli svg; colori solo da variabili CSS
+
+
+def test_group_summary_names_groups_all_up_or_all_down():
+    groups = {"Paesi": [("SPY", True), ("EWJ", True)], "Settori": [("XLK", True), ("XLU", False)], "Bond": [("TLT", False)]}
+    assert group_summary(groups) == "Tutti in salita: Paesi. Tutti in calo: Bond."
+    assert group_summary({"Settori": groups["Settori"]}) == "Nessun gruppo tutto in salita o tutto in calo."
