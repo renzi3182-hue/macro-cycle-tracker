@@ -196,6 +196,19 @@ def story_card_html(eyebrow: str, title: str, title_var: str, say: str, body: st
     )
 
 
+def answer_card_html(href: str, question: str, score: float, state: str, say: str, body: str, note: str) -> str:
+    """Card della pagina Oggi: una domanda, un punteggio 1-100 (alto = favorevole) e il dettaglio; tutta la card
+    porta alla pagina di approfondimento."""
+    s = max(1, round(score))
+    return (
+        f'<a class="card tile" href="{escape(href)}" target="_self"><span class="eyebrow">{escape(question)}</span>'
+        f'<div class="total" style="border-top:0;padding-top:0"><span class="big" style="font-size:56px;line-height:60px;'
+        f'color:var(--{level_var(s)})">{s}</span><span class="muted" style="font-size:13px">/100</span></div>'
+        f'<div class="track"><i style="width:{s}%;background:var(--{level_var(s)})"></i></div>'
+        f'{_big_state(state, "var(--fg)")}<p class="say">{escape(say)}</p>{body}<p class="note">{escape(note)}</p></a>'
+    )
+
+
 def regime_groups_html(regimes: dict[str, str]) -> str:
     """Una riga per regime con le sue aree, dal piu' diffuso (a parita' l'ordine delle aree, come prevailing_regime);
     le incerte per coppia di regimi, i regimi senza aree in fondo."""

@@ -85,3 +85,9 @@ def test_rrg_html_lists_assets_entering_and_cooling():
     html = rrg_html(rows, "Rotazione · Paesi", "settimanale")
     assert "<b>In ingresso</b>: Giappone (EWJ)" in html and "<b>In raffreddamento</b>: Italia (EWI)" in html
     assert "<svg" not in html
+
+
+def test_answer_card_clips_score_and_links():
+    from src.ui.cards import answer_card_html
+    html = answer_card_html("aree", "In che fase siamo", 0.2, "Espansione", "frase", "", "nota")
+    assert 'href="aree"' in html and ">1</span>" in html and "width:1%" in html

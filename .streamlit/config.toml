@@ -68,3 +68,7 @@ backgroundColor = "#F3F8F8"
 secondaryBackgroundColor = "#FFFFFF"
 textColor = "#0F1720"
 borderColor = "#D3E2E6"
+
+# Niente statistiche d'uso inviate a Streamlit dal browser dei visitatori.
+[browser]
+gatherUsageStats = false

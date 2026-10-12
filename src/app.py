@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 import math
 import sys
 from html import escape
@@ -12,7 +13,7 @@ import streamlit as st
 from streamlit_lightweight_charts import renderLightweightCharts
 
 from src.classify import intermarket as im
-from src.classify.assess import HIGH_FREQ_MAX_DAYS, USED_INPUTS, assess, label_regimes, point_in_time_history, stale_high_freq
+from src.classify.assess import HIGH_FREQ_MAX_DAYS, USED_INPUTS, assess, global_axis, label_regimes, point_in_time_history, stale_high_freq
 from src.classify.currency import CURRENCIES, PAIRS, cot_component, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.leading import SIGNALS
 from src.classify.positioning import percentile_rank, zscore
@@ -32,8 +33,8 @@ from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.data.sync import sync_cache
 from src.ui.cards import (
-    ALIGN_VARS, alignment_html, area_hero_html, area_tile_html, axis_card_html, bands_html, bar_rows_html, calendar_html, changes_html,
-    cot_groups_html, edge_html, events_html, freshness_html, gauge_html, group_rows_html, group_summary, hero_html,
+    ALIGN_VARS, alignment_html, answer_card_html, area_hero_html, area_tile_html, axis_card_html, bands_html, bar_rows_html, calendar_html, changes_html,
+    chips_html, cot_groups_html, edge_html, events_html, freshness_html, gauge_html, group_rows_html, group_summary, hero_html,
     history_html, matrix_html, month_it, murphy_html, pairs_html, portfolio_html, prevailing_regime, prob_html, quadrant_html,
     ranking_html, regime_groups_html, relation_html, risk_html, rrg_html, story_card_html, strength_html, stress_html, trend_chips_html,
     trend_html, weight_deltas, why_text,
@@ -287,6 +288,45 @@ st.html(page_css(mode))
 
 _sync_cache()
 assessments = {area: a for area in AREAS if (a := load_assessment(area))}
+
+
+def page_today() -> None:
+    """Tre domande, tre punteggi 1-100 (alto = favorevole), ognuno porta alla pagina che lo spiega."""
+    cards = []
+    growth = global_axis(assessments, "growth_z")
+    phases = Counter(a["phase"] for a in assessments.values() if a["phase"])
+    phase, n = phases.most_common(1)[0]
+    by_phase = " · ".join(f"{p}: {', '.join(x for x, a in assessments.items() if a['phase'] == p)}" for p, _ in phases.most_common())
+    infl = percentile_rank(global_axis(assessments, "inflation_score"))
+    cards.append(answer_card_html(
+        "aree", "In che fase siamo", percentile_rank(growth), f"{phase} · {n} aree su {len(assessments)}",
+        f"La crescita delle {len(assessments)} aree accelera più che nel {percentile_rank(growth):.0f}% dei mesi dal {growth.index[0]:%Y}. "
+        f"Pressione dei prezzi {max(1, round(infl))}/100 (alto = inflazione alta o in salita).",
+        f'<p class="note">{escape(by_phase)}</p>',
+        "Punteggio = percentile della velocità media del PIL rispetto alla sua storia: descrive il momento, non prevede."))
+    risk = load_risk()
+    if not risk.empty:
+        r = risk.iloc[-1]
+        state = risk_label(r["Punteggio"])
+        cards.append(answer_card_html(
+            "panoramica", f"Quanto sono nervosi i mercati · al {risk.index[-1]:%d/%m}", r["Punteggio"], state, RISK_SAY[state],
+            f'<p class="note">Canarino {CANARY} {"in allarme" if r["Canarino"] < 0 else "tranquillo"}.</p>',
+            "100 = mercati calmi. Media di VIX, credito, ampiezza, struttura del VIX e consumi. Prevede la volatilità del mese "
+            "dopo (sotto 20: 30% annuo, sopra 80: 11%), non i rendimenti."))
+    px, s = load_scores()
+    if not px.empty and not s.empty:
+        trend = pillars(px)["Tendenza"].iloc[-1].dropna()
+        top = s.iloc[-1].dropna().sort_values(ascending=False).head(5)
+        cards.append(answer_card_html(
+            "classifica", f"Cosa è in tendenza · fine {month_it(px.index[-1])}", (trend > 0).mean() * 100,
+            f"{(trend > 0).sum()} asset su {len(trend)} in salita", "I più forti per tendenza e momentum (punteggio 1-100):",
+            chips_html([f"{UNIVERSE[t][0]} {v:.0f}" for t, v in top.items()]),
+            "Punteggio = quota di asset sopra la media a 10 mesi. Il filtro di tendenza taglia le perdite più che "
+            "aumentare il rendimento."))
+    ui(hero_html(f"Oggi · {pd.Timestamp.today():%d/%m/%Y}", "Il quadro in tre numeri",
+                 "Ogni punteggio va da 1 a 100: più è alto, più il quadro è favorevole. Tocca una card per il dettaglio."))
+    ui('<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">' + "".join(cards) + "</div>")
+    st.caption("Solo informativo, non è consulenza finanziaria. Metodo e affidabilità nella sezione **Metodo**.")
 
 
 def page_overview() -> None:
@@ -863,8 +903,9 @@ def page_method() -> None:
 
 SIZE_PAGE = st.Page(lambda: page_sizing(mode), title="Size Monte Carlo", icon=":material/casino:", url_path="size")
 PAGES = {
+    "": [st.Page(page_today, title="Oggi", icon=":material/today:", url_path="oggi", default=True)],
     "Macro": [
-        st.Page(page_overview, title="Panoramica", icon=":material/public:", url_path="panoramica", default=True),
+        st.Page(page_overview, title="Panoramica", icon=":material/public:", url_path="panoramica"),
         st.Page(page_area, title="Aree", icon=":material/location_on:", url_path="aree"),
         st.Page(page_method, title="Metodo", icon=":material/menu_book:", url_path="metodo"),
     ],
