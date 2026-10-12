@@ -173,8 +173,8 @@ def axis_card_html(eyebrow: str, state: str, state_var: str, value: str, value_n
     )
 
 
-REGIME_MEANING = {"Goldilocks": "cresce, prezzi in calo", "Reflazione": "cresce, prezzi in salita",
-                  "Stagflazione": "rallenta, prezzi in salita", "Deflazione": "rallenta, prezzi in calo"}
+REGIME_MEANING = {"Goldilocks": "crescita accelera, inflazione bassa", "Reflazione": "crescita accelera, inflazione alta",
+                  "Stagflazione": "crescita rallenta, inflazione alta", "Deflazione": "crescita rallenta, inflazione bassa"}
 
 
 def level_var(v: float) -> str:
