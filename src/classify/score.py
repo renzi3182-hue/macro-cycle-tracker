@@ -19,6 +19,9 @@ import pandas as pd
 # +0.64% mediano, 1-20 -0.92%; migliori 5 14.6%/anno, drawdown -19% (piu' ETF azionari USA forti, es. QQQ e SMH).
 # Tenuti: il totale non peggiora, il sottoperiodo prima del 2014 si'. Storici corti (XLRE 2015, XLC 2018): un ETF
 # entra in classifica solo con 12 mesi di prezzi, fino ad allora e' NaN e non conta per MIN_ASSETS.
+# 12/10/2026, soglie di Quantaste (entra sopra 80, esce solo sotto 60) contro tutti gli asset sopra 80, 2002-2026
+# senza costi: cambi di posizione da 25% a 15% al mese, ma 12,7%/anno contro 13,8%, drawdown uguale (-19%). Con costi
+# da ETF il risparmio non copre la differenza: niente isteresi, la classifica resta mensile.
 # Verifica point-in-time in scripts/evaluate_score.py.
 TREND_MONTHS = 10
 MOMENTUM_MONTHS = 12

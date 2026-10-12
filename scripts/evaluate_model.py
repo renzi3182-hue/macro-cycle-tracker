@@ -8,7 +8,8 @@ CPI/CLI/disoccupazione +1) e ricalcolando una volta sola. Stampa, dal 2000:
 2. Ciclo: confronto con NBER (USA) e con i rallentamenti OCSE (EUROREC, ITAREC, GBRREC, JPNREC, fino al 2022).
 3. CLI OCSE: quante volte direzione e livello restano gli stessi dopo le revisioni (vintage ALFRED dal 2018).
 4. Quantaste: quante letture note di Quantaste/Casario il modello riproduce (riferimento dell'utente).
-5. Calibrazione: pesi delle probabilita' (src/classify/regime.py, PROB_*), stimati sul 2000-2014 e provati sul
+5. Conferma dei mercati: quanti asset tipici del regime sono in salita, contro la bonta' della lettura in tempo reale.
+6. Calibrazione: pesi delle probabilita' (src/classify/regime.py, PROB_*), stimati sul 2000-2014 e provati sul
    2015-2026, poi ristimati su tutto: se cambiano molto, aggiornare le costanti.
 Uso, da root del monorepo: .venv/Scripts/python code/macro-cycle-tracker/scripts/evaluate_model.py (serve FRED_API_KEY in .env)
 """
@@ -25,6 +26,8 @@ import requests
 
 from src.classify.assess import assess, lagged
 from src.classify.regime import GROWTH_CHANGE_MONTHS, PROB_ACTIVITY_WEIGHT, PROB_INFLATION_WEIGHT, activity_z
+from src.classify.score import ASSET_AREA, UNIVERSE, complete_months, monthly_prices, pillars
+from src.config.asset_allocation import AREA_EQUITY, confirmation
 from src.data import cache, fetch_fred
 from src.scheduler.update_data import _load_dotenv
 
@@ -44,6 +47,13 @@ QUANTASTE = [("USA", "2015Q1", "Goldilocks"), ("USA", "2016Q1", "Stagflazione"),
              ("USA", "2026Q3", "Stagflazione"), ("Eurozona", "2026Q3", "Reflazione"),
              # aree aggiunte il 09/10/2026: letture della dashboard dell'08/10, mai usate per scegliere la regola
              ("Canada", "2026Q3", "Stagflazione"), ("Cina", "2026Q3", "Stagflazione"), ("Australia", "2026Q3", "Stagflazione")]
+# Canada e Cina sbagliate, indagate il 12/10/2026 (nessuna modifica alla regola: adattarla a 2 letture e' sovradattamento).
+# Dati non in ritardo (PIL al 2o trimestre 2026, CPI ad agosto). Canada, crescita: tutte le misure del PIL accelerano
+# nel 2o trimestre, l'annuo OCSE (0,1% -> 1,1%), il PIL mensile di Statistics Canada (media 0,5% -> 1,6%, anche a
+# 3 mesi fino a luglio) e la variazione sul trimestre prima; rallenta solo l'ultimo mese (giugno 2,1% -> luglio 1,4%) e
+# la salita del CLI (da +0,20 a +0,09 al mese). Cina, inflazione: il CPI totale scende sui 3 mesi (1,1% -> 0,8%) per
+# il cibo (-1,6% annuo); l'ultimo mese sale (0,5% -> 0,8%). Il core cinese non c'e' all'OCSE e i prezzi alla
+# produzione su FRED si fermano al 2022: non verificabile. Quantaste usa quindi un dato che qui manca.
 CLI_FRED = {"USA": "USALOLITOAASTSAM", "Eurozona": "G4ELOLITOAASTSAM", "Italia": "ITALOLITOAASTSAM",
             "UK": "GBRLOLITOAASTSAM", "Giappone": "JPNLOLITOAASTSAM", "Canada": "CANLOLITOAASTSAM",
             "Cina": "CHNLOLITOAASTSAM", "Australia": "AUSLOLITOAASTSAM", "India": "INDLOLITOAASTSAM"}
@@ -78,6 +88,29 @@ def quantaste_report(histories: dict) -> None:
         if got != label:
             misses.append(f"{area} {q}: {got} invece di {label}")
     print(f"\n== Quantaste: {hits}/{len(QUANTASTE)} letture note riprodotte. " + "; ".join(misses))
+
+
+def confirmation_report(histories: dict) -> None:
+    """Conferma dei mercati (src/config/asset_allocation.confirmation) contro la bonta' della lettura in tempo reale:
+    con piu' asset tipici in salita il regime del momento e' piu' spesso quello a dati completi, o dura di piu'?"""
+    px = complete_months(monthly_prices({t: cache.read_indicator_series(ASSET_AREA, t) for t in UNIVERSE}))
+    trend = pillars(px)["Tendenza"]
+    rows = []
+    for area, (real, hind) in histories.items():
+        df = pd.DataFrame({"rt": real["regime"], "ex": hind["regime"]}).dropna().loc["2004":]
+        df["rt3"] = df["rt"].shift(-3)
+        for d, r in df.iterrows():
+            if d not in trend.index:
+                continue
+            c = confirmation(r["rt"], (trend.loc[d].dropna() > 0).to_dict(), AREA_EQUITY.get(area))
+            if c:
+                rows.append({"d": d, "ok": r["rt"] == r["ex"], "keep": float(r["rt"] == r["rt3"]) if pd.notna(r["rt3"]) else np.nan,
+                             "share": sum(up for *_, up in c) / len(c)})
+    d = pd.DataFrame(rows)
+    d["conferma"] = pd.cut(d["share"], [-.01, .34, .66, 1], labels=["bassa (<=1/3)", "media", "alta (>=2/3)"])
+    t = d.groupby("conferma", observed=True).agg(casi=("ok", "size"), giusto=("ok", "mean"), dura_3m=("keep", "mean")) * [1, 100, 100]
+    print(f"\n== Conferma dei mercati ({len(d)} mesi-area dal {d['d'].min():%Y}): % regime in tempo reale = a dati completi, "
+          f"% uguale 3 mesi dopo\n{t.round(0).to_string()}")
 
 
 def _logit_fit(x: np.ndarray, y: np.ndarray) -> float:
@@ -155,6 +188,7 @@ def main() -> None:
             except (requests.RequestException, KeyError, IndexError) as e:
                 print(f"   {step.__name__}: non disponibile ({e})")
     quantaste_report(histories)
+    confirmation_report(histories)
     calibration_report(samples)
 
 

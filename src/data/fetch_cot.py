@@ -21,8 +21,9 @@ CONTRACTS = {  # nome -> cftc_contract_market_code
 }
 
 
-def fetch_net_speculative(code: str) -> pd.Series:
-    """Posizione netta dei non-commercial (speculatori) in % dell'open interest."""
+def fetch_net_legacy(code: str) -> tuple[pd.Series, pd.Series]:
+    """Posizione netta in % dell'open interest di speculatori (non-commercial) e commercial (chi copre un'attivita'
+    reale: produttori, utilizzatori, banche), dalla stessa richiesta."""
     resp = get_with_retry(
         URL,
         source="cftc",
@@ -35,12 +36,12 @@ def fetch_net_speculative(code: str) -> pd.Series:
     )
     rows = resp.json()
     dates = [pd.Timestamp(r["report_date_as_yyyy_mm_dd"]) for r in rows]
-    values = [
-        (float(r["noncomm_positions_long_all"]) - float(r["noncomm_positions_short_all"]))
-        / float(r["open_interest_all"]) * 100
-        for r in rows
-    ]
-    return pd.Series(values, index=dates).sort_index()
+
+    def net(side: str) -> pd.Series:
+        return pd.Series([(float(r[f"{side}_positions_long_all"]) - float(r[f"{side}_positions_short_all"]))
+                          / float(r["open_interest_all"]) * 100 for r in rows], index=dates).sort_index()
+
+    return net("noncomm"), net("comm")
 
 
 # Report per categoria di trader: TFF per i finanziari, Disaggregated per le materie prime.

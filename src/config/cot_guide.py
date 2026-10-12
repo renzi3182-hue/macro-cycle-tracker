@@ -3,6 +3,9 @@
 # mercato "affollato", vulnerabile a una ricopertura nella direzione opposta. E' un segnale di contesto, non di
 # timing: un mercato può restare affollato per mesi. Nel backtest valute (scripts/backtest_currency.py) il COT
 # non ha migliorato la previsione a 6-12 mesi: per questo ha peso 0 nel punteggio delle valute.
+# Lato commercial e z-score (12/10/2026, come Quantaste): negli ultimi 5 anni il netto dei commercial ha correlazione
+# da -0,99 a -1,00 con quello degli speculatori su oro, petrolio e valute, -0,91 S&P 500, -0,87 Nasdaq, -0,75 Treasury:
+# quasi ovunque e' lo specchio degli speculatori. La pagina mostra la correlazione accanto al dato.
 from src.classify.positioning import CROWDED_PERCENTILE, WASHED_OUT_PERCENTILE
 
 GROUP_INFO = {

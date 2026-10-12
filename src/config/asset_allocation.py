@@ -99,6 +99,26 @@ TREND_PROXY = {
 CASH = "Cash"
 
 
+# Conferma dei mercati (12/10/2026), la versione dichiarata della % di Quantaste: quanti asset tipici del regime
+# dell'area sono in tendenza positiva. Azionario con l'ETF del paese dove c'e' (Canada e Australia non ne hanno,
+# l'azionario resta fuori), il resto con TREND_PROXY (ETF quotati in USA). Verifica 2004-2026 su 9 aree
+# (scripts/evaluate_model.py, sezione Conferma dei mercati): NON dice se la lettura macro e' giusta. Con conferma
+# alta (almeno 2/3 degli asset in salita) il regime del momento coincide con quello a dati completi nel 49% dei
+# mesi, con conferma bassa (al massimo 1/3) nel 51%; resta uguale 3 mesi dopo nel 42% contro il 39%.
+# Si mostra come descrizione, non come affidabilita'.
+AREA_EQUITY = {"USA": "SPY", "Eurozona": "EZU", "Italia": "EWI", "UK": "EWU", "Giappone": "EWJ", "Cina": "EEM", "India": "EEM"}
+
+
+def confirmation(regime: str, above: dict[str, bool], equity: str | None) -> list[tuple[str, str, bool]]:
+    """(asset, ticker, in salita) per gli asset tipici del regime con un ETF e un dato di tendenza."""
+    out = []
+    for asset in ASSET_ALLOCATION.get(regime, []):
+        ticker = equity if "Azionario" in asset else TREND_PROXY.get(asset)
+        if ticker in above:
+            out.append((asset, ticker, above[ticker]))
+    return out
+
+
 def apply_trend(weights: dict, above: dict[str, bool]) -> dict:
     """Sposta in cash il peso degli asset il cui ETF e' sotto la media (above[ticker] False). Ticker senza dato: invariato."""
     out = {}

@@ -24,6 +24,16 @@ from src.scheduler.update_data import update_asset_prices
 
 SPLIT = "2014-01-01"  # due sottoperiodi di ~12 anni
 TOP_N = 5
+ENTER, EXIT = 80, 60  # soglie dello Smart Quant di Quantaste
+
+
+def hysteresis(s: pd.DataFrame, enter: float, exit_: float) -> pd.DataFrame:
+    """True da quando il punteggio supera enter finche' non scende sotto exit_ (o sparisce)."""
+    out, held = [], pd.Series(False, index=s.columns)
+    for _, row in s.iterrows():
+        held = (row > enter) | (held & (row >= exit_))
+        out.append(held)
+    return pd.DataFrame(out, index=s.index)
 
 
 def load_prices() -> pd.DataFrame:
@@ -80,6 +90,18 @@ def main() -> None:
     print(f"\nPortafogli ribilanciati ogni mese, {d.index[0]:%Y-%m} -> {d.index[-1]:%Y-%m}, senza costi "
           f"(Migliori {TOP_N}: cambia in media il {turnover:.0f}% delle posizioni al mese):")
     print(pd.DataFrame({k: perf(v) for k, v in d.items()}).T.round(1).to_string())
+
+    # Soglie di Quantaste: entra sopra ENTER, esce sotto EXIT (isteresi) contro entra/esce sopra/sotto ENTER.
+    # Pesi uguali fra gli asset tenuti, SHY quando non ce n'e' nessuno.
+    print(f"\nTutti gli asset sopra {ENTER} (pesi uguali, SHY se nessuno), con e senza uscita sotto {EXIT}:")
+    held = {f"sopra {ENTER}": s > ENTER, f"entra {ENTER} esce {EXIT}": hysteresis(s, ENTER, EXIT)}
+    rows = {}
+    for name, h in held.items():
+        w = h.astype(float).div(h.sum(axis=1), axis=0).fillna(0)
+        r = (w * ret1.fillna(0)).sum(axis=1).where(h.any(axis=1), ret1["SHY"]).reindex(d.index)  # stesso periodo dei portafogli sopra
+        rows[name] = {**perf(r), "asset medi": h.reindex(d.index).sum(axis=1).mean(),
+                      "turnover %/mese": (w.diff().abs().sum(axis=1) / 2).reindex(d.index).mean() * 100}
+    print(pd.DataFrame(rows).T.round(1).to_string())
     print(f"\nPunteggi attuali ({s.index[-1]:%Y-%m}):")
     print(s.iloc[-1].dropna().sort_values(ascending=False).astype(int).rename(lambda t: f"{t} {UNIVERSE[t][0]}").to_string())
 

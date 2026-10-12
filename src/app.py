@@ -15,26 +15,28 @@ from src.classify import intermarket as im
 from src.classify.assess import HIGH_FREQ_MAX_DAYS, USED_INPUTS, assess, label_regimes, point_in_time_history, stale_high_freq
 from src.classify.currency import CURRENCIES, PAIRS, cot_component, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.leading import SIGNALS
-from src.classify.positioning import percentile_rank
+from src.classify.positioning import percentile_rank, zscore
 from src.classify.recession import sahm_gap
 from src.classify.regime import INFLATION_HIGH_LEVEL, monthly
-from src.classify.rrg import quadrant, rrg
+from src.classify.rrg import GROUPS, MOMENTUM_WEEKS, TREND_WEEKS, quadrant, rrg, weekly_prices
 from src.classify.stress import MC_YEARS, PROXY, SCENARIOS, monte_carlo, portfolio_returns, scenario, ticker_weights
-from src.classify.risk import components as risk_components, label as risk_label, risk_score
+from src.classify.risk import CANARY, FILL_DAYS, canary, components as risk_components, label as risk_label, risk_score
 from src.classify.score import (
     ASSET_AREA, HORIZON_MONTHS, STRONG, UNIVERSE, WEAK, band_table, complete_months, forward_excess, monthly_prices, pillars, scores,
 )
 from src.config import cot_guide
-from src.config.asset_allocation import ALL_WEATHER_WEIGHTS, ASSET_ALLOCATION, apply_trend, combined_portfolio_weights
+from src.config.asset_allocation import (
+    ALL_WEATHER_WEIGHTS, AREA_EQUITY, ASSET_ALLOCATION, apply_trend, combined_portfolio_weights, confirmation,
+)
 from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.data.sync import sync_cache
 from src.ui.cards import (
     ALIGN_VARS, alignment_html, area_hero_html, area_tile_html, axis_card_html, bands_html, bar_rows_html, calendar_html, changes_html,
-    chips_html, cot_groups_html, edge_html, events_html, freshness_html, gauge_html, group_rows_html, group_summary, hero_html,
+    cot_groups_html, edge_html, events_html, freshness_html, gauge_html, group_rows_html, group_summary, hero_html,
     history_html, matrix_html, month_it, murphy_html, pairs_html, portfolio_html, prevailing_regime, prob_html, quadrant_html,
-    ranking_html, regime_groups_html, relation_html, risk_html, rrg_html, story_card_html, strength_html, stress_html, trend_html,
-    weight_deltas,
+    ranking_html, regime_groups_html, relation_html, risk_html, rrg_html, story_card_html, strength_html, stress_html, trend_chips_html,
+    trend_html, weight_deltas, why_text,
 )
 from src.ui.theme import REGIME_VARS, hex_color, page_css, phase_color, regime_color
 from src.ui.tool_pages import page_interest, page_sizing
@@ -117,12 +119,20 @@ def load_scores() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 @st.cache_data(ttl=300)
 def load_risk() -> pd.DataFrame:
-    """Componenti del Risk On/Off (src/classify/risk.py) a mese chiuso, piu' la colonna Punteggio."""
-    px, _ = load_scores()
+    """Componenti del Risk On/Off (src/classify/risk.py) giornaliere, piu' le colonne Punteggio e Canarino."""
+    m = lambda k: load_indicator("Mercati", k)
+    px = pd.DataFrame({t: load_indicator(im.AREA, t) for t in UNIVERSE})
     if px.empty:
         return px
-    comp = risk_components(load_indicator("Mercati", "vix"), load_indicator("USA", "credit_spread"), px).loc[:px.index[-1]]
-    return comp.assign(Punteggio=risk_score(comp)).dropna()
+    comp = risk_components(m("vix"), m("vix3m"), load_indicator("USA", "credit_spread"), m("xly"), m("xlp"), px)
+    return comp.assign(Punteggio=risk_score(comp), Canarino=canary(px[CANARY]).reindex(comp.index).ffill(limit=FILL_DAYS)).dropna()
+
+
+@st.cache_data(ttl=300)
+def load_weekly() -> tuple[pd.DataFrame, pd.Timestamp | None]:
+    """Chiusure settimanali degli ETF (rotazione, src/classify/rrg.py) e data dell'ultima chiusura giornaliera."""
+    daily = pd.DataFrame({t: load_indicator(im.AREA, t) for t in UNIVERSE})
+    return (daily, None) if daily.empty else (weekly_prices(daily), daily.index[-1])
 
 
 RISK_VARS = {"Risk Off estremo": "r-stag", "Risk Off": "r-stag", "Neutrale": "r-refl", "Risk On": "r-gold", "Risk On estremo": "r-gold"}
@@ -135,7 +145,9 @@ RISK_SAY = {
 }
 RISK_PARTS = [("VIX", "Calma in borsa", "volatilità (VIX) rispetto alla sua storia"),
               ("Credito", "Calma sul credito", "stress sulle obbligazioni societarie"),
-              ("Ampiezza", "Asset in salita", "quota sopra la media a 10 mesi")]
+              ("Ampiezza", "Asset in salita", "quota sopra la media a 200 sedute"),
+              ("Struttura", "Paura sul breve assente", "VIX a 1 mese contro VIX a 3 mesi"),
+              ("Consumi", "Voglia di spendere", "consumi discrezionali contro beni di base (XLY/XLP)")]
 GROUP_NAMES = {"Paesi": "Azioni per paese"}
 
 
@@ -152,21 +164,28 @@ def key_numbers(regimes: dict) -> str:
     if not risk.empty:
         r = risk.iloc[-1]
         state = risk_label(r["Punteggio"])
+        alarm = r["Canarino"] < 0
         cards.append(story_card_html(
-            f"Risk On/Off · fine {month_it(risk.index[-1])}", state, RISK_VARS[state], RISK_SAY[state],
+            f"Risk On/Off · al {risk.index[-1]:%d/%m/%Y}", state, RISK_VARS[state], RISK_SAY[state],
             f'<div>{bar_rows_html([(name, desc, r[col]) for col, name, desc in RISK_PARTS])}</div>'
             f'<div class="total"><span class="big">{r["Punteggio"]:.0f}</span>'
-            '<span class="muted" style="font-size:13px">/100, media dei tre: sotto 40 Risk Off, da 60 Risk On</span></div>',
-            "Dice quanto sono nervosi i mercati, non se saliranno: dal 1999, dopo un mese Risk Off estremo l'S&P 500 "
-            "si è mosso in media del 5,8% il mese dopo, dopo Risk On estremo del 2,3%."))
-        trend = pillars(load_scores()[0])["Tendenza"].loc[risk.index[-1]].dropna()
+            '<span class="muted" style="font-size:13px">/100, media delle cinque: sotto 40 Risk Off, da 60 Risk On</span></div>'
+            f'<div class="brow"><span>Canarino {CANARY}</span><span class="mono" style="color:var(--{"r-stag" if alarm else "r-gold"})">'
+            f'{"in allarme" if alarm else "tranquillo"}</span><small>momentum 1-12 mesi delle obbligazioni indicizzate '
+            f'all\'inflazione {"sotto" if alarm else "sopra"} zero: fuori dal punteggio</small></div>',
+            "Dice quanto sono nervosi i mercati, non se saliranno: dal 2012, nelle sedute Risk Off estremo l'S&P 500 ha avuto "
+            "una volatilità del 30% annuo nel mese dopo, in Risk On estremo dell'11%. Con il canarino in allarme (dal 2004) "
+            "un calo oltre il 10% nei 3 mesi dopo è arrivato nel 20% delle sedute, contro l'11%."))
+    px = load_scores()[0]
+    if not px.empty:
+        trend = pillars(px)["Tendenza"].iloc[-1].dropna()
         groups: dict[str, list[tuple[str, bool]]] = {}
         for t, v in trend.items():
             name, group = UNIVERSE[t]
             groups.setdefault(GROUP_NAMES.get(group, group), []).append((f"{t} · {name}", v > 0))
-        b = r["Ampiezza"]
+        b = (trend > 0).mean() * 100
         cards.append(story_card_html(
-            "Asset in tendenza positiva", f"{(trend > 0).sum()} su {len(trend)} in salita",
+            f"Asset in tendenza positiva · fine {month_it(px.index[-1])}", f"{(trend > 0).sum()} su {len(trend)} in salita",
             "r-gold" if b >= 60 else "r-stag" if b <= 40 else "r-refl", group_summary(groups),
             f'<div>{group_rows_html(groups)}</div>', "In salita = prezzo sopra la media degli ultimi 10 mesi."))
     return '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">' + "".join(cards) + "</div>"
@@ -307,7 +326,10 @@ def page_area() -> None:
     if a["stale"]:
         st.warning("Dati in ritardo anomalo: " + ", ".join(INPUT_LABELS.get(n, n) for n in a["stale"])
                    + ". La fonte potrebbe aver cambiato dataset: la lettura è meno affidabile.", icon=":material/schedule:")
-    ui(area_hero_html(a, describe(a)))
+    px = load_scores()[0]
+    above = {} if px.empty else (pillars(px)["Tendenza"].iloc[-1].dropna() > 0).to_dict()
+    conf = confirmation(a["regime"], above, AREA_EQUITY.get(area))
+    ui(area_hero_html(a, describe(a), (sum(up for *_, up in conf), len(conf))))
 
     xg, xi = a["positions"]
     growth_src = a["growth_source"]
@@ -382,9 +404,14 @@ def page_area() -> None:
     with col_data:
         ui(freshness_html([(INPUT_LABELS[n], d, n in a["stale"]) for n, d in a["as_of"].items()]))
     with col_assets:
-        allocation = ASSET_ALLOCATION.get(a["regime"], [])
-        ui(f'<div class="card"><h3>Asset tipici in {escape(a["regime"])}</h3>{chips_html(allocation)}'
-           '<p class="note">Tabella statica di letteratura, non un vantaggio dimostrato: vedi la sezione Metodo.</p></div>')
+        trend = {asset: (t, up) for asset, t, up in conf}
+        items = [(f"{asset} · {trend[asset][0]}" if asset in trend else asset, trend[asset][1] if asset in trend else None)
+                 for asset in ASSET_ALLOCATION.get(a["regime"], [])]
+        ui(f'<div class="card"><h3>Asset tipici in {escape(a["regime"])}</h3>{trend_chips_html(items)}'
+           '<p class="note">Verde = ETF sopra la media a 10 mesi (fine mese), rosso = sotto, grigio = senza ETF. Dice se i mercati '
+           'si muovono come il regime, non se il regime è giusto: dal 2004, con almeno 2 asset su 3 in salita la lettura del '
+           'momento è stata confermata a dati completi nel 49% dei mesi, con al massimo 1 su 3 nel 51%. La tabella è di '
+           'letteratura, non un vantaggio dimostrato: vedi la sezione Metodo.</p></div>')
 
 def page_portfolio() -> None:
     regimes = {area: a["regime_label"] for area, a in assessments.items()}
@@ -466,22 +493,29 @@ def page_ranking() -> None:
                  f"(rendimento 12 mesi escluso l'ultimo). Sopra {STRONG}: <b>{', '.join(strong) or 'nessuno'}</b>."))
     groups = ["Tutti", *dict.fromkeys(g for _, g in UNIVERSE.values())]
     group = st.segmented_control("Gruppo", groups, default="Tutti", required=True, key="group", label_visibility="collapsed")
+    ranks = {k: v[now.index].rank(ascending=False, method="min").astype(int) for k, v in p.items()}
     rows = [{"ticker": t, "nome": UNIVERSE[t][0], "gruppo": UNIVERSE[t][1], "punteggio": sc,
-             "delta": sc - prev[t] if pd.notna(prev.get(t)) else None, **{k: v[t] for k, v in p.items()}, "storico": s[t]}
+             "delta": sc - prev[t] if pd.notna(prev.get(t)) else None, **{k: v[t] for k, v in p.items()}, "storico": s[t],
+             "perche": why_text({k: r[t] for k, r in ranks.items()}, len(now))}
             for t, sc in now.items() if group == "Tutti" or UNIVERSE[t][1] == group]
     col_r, col_e = st.columns([8, 4])
     with col_r:
         ui(ranking_html(rows, month))
     with col_e:
         ui(bands_html(band_table(s, forward_excess(px, s)), HORIZON_MONTHS, s.index[0]))
-        ratio, mom = (x.iloc[-1].dropna() for x in rrg(px))
-        sectors = [{"ticker": t, "nome": UNIVERSE[t][0], "ratio": ratio[t], "momentum": mom[t], "quadrante": quadrant(ratio[t], mom[t])}
-                   for t in ratio.index.intersection(mom.index)]
-        if sectors:
-            ui(rrg_html(sectors, px.index[-1]))
+        wk, last_day = load_weekly()
+        if not wk.empty:
+            rot = st.segmented_control("Rotazione", list(GROUPS), default="Settori USA", required=True, key="rot",
+                                       label_visibility="collapsed")
+            ratio, mom = (x.iloc[-1].dropna() for x in rrg(wk, GROUPS[rot], TREND_WEEKS, MOMENTUM_WEEKS))
+            items = [{"ticker": t, "nome": UNIVERSE[t][0], "ratio": ratio[t], "momentum": mom[t], "quadrante": quadrant(ratio[t], mom[t])}
+                     for t in ratio.index.intersection(mom.index)]
+            if items:
+                ui(rrg_html(items, f"Rotazione · {rot}", f"settimanale, al {last_day:%d/%m/%Y}"))
     st.caption(f"Solo informativo, non è consulenza. Si aggiorna a fine mese. Verde sopra {STRONG}, rosso fino a {WEAK}. "
                "Backtest 2002-2026 senza costi (scripts/evaluate_score.py, 06/10/2026): i 5 migliori ribilanciati ogni mese "
-               "14,6% l'anno con drawdown massimo −19%, S&P 500 11,2% e −51%. Il vantaggio è piccolo e sta più nel ridurre le perdite che nel rendimento.")
+               "14,6% l'anno con drawdown massimo −19%, S&P 500 11,2% e −51%. Il vantaggio è piccolo e sta più nel ridurre le perdite che nel rendimento. "
+               "Entrare sopra 80 e uscire solo sotto 60, come fa Quantaste, riduce i cambi di posizione del 40% ma rende 1,1 punti l'anno in meno.")
 
 
 def page_markets() -> None:
@@ -683,6 +717,21 @@ def page_cot() -> None:
                       help="Long meno short dei non-commercial, in % dell'open interest.")
             st.metric("Percentile 5 anni", f"{pct:.0f}°", border=True,
                       help="Quota di settimane degli ultimi 5 anni con un netto più basso di oggi.")
+            st.metric("Z-score 5 anni", f"{zscore(window):+.1f}", border=True,
+                      help="Distanza dalla media degli ultimi 5 anni in deviazioni standard: oltre ±2 è raro.")
+        comm = load_indicator("Mercati", f"cotc_{market}")
+        if len(comm) > 1:
+            cw = comm.tail(COT_WEEKS)
+            corr = window.corr(cw)
+            with st.container(horizontal=True):
+                st.metric("Netto commercial", f"{comm.iloc[-1]:+.1f}%", f"{comm.iloc[-1] - comm.iloc[-2]:+.1f} pt", delta_color="off",
+                          border=True, help="Long meno short di chi copre un'attività reale (produttori, utilizzatori, banche), "
+                                            "in % dell'open interest.")
+                st.metric("Commercial: percentile", f"{percentile_rank(cw):.0f}°", f"z {zscore(cw):+.1f}", delta_color="off",
+                          delta_arrow="off", border=True, help="Percentile e z-score sugli ultimi 5 anni.")
+            st.caption(f"Correlazione fra speculatori e commercial negli ultimi 5 anni: {corr:+.2f}. "
+                       + ("I commercial sono quasi lo specchio degli speculatori: dicono la stessa cosa dall'altro lato."
+                          if corr <= -0.9 else "Qui i commercial non sono solo lo specchio degli speculatori: guardali a parte."))
 
     groups = DISAGG_GROUPS if market in DISAGG_MARKETS else TFF_GROUPS
     rows, gdate = [], None

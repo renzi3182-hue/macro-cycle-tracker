@@ -146,18 +146,27 @@ def update_market_context(fred_key: str) -> None:
     """COT, VIX e aspettative di mercato (recessione, inflazione attesa): solo informativi, non entrano nella classificazione. Un fallimento non blocca gli altri."""
     fetchers = {
         "vix": lambda: fetch_fred.fetch_vix(fred_key),
+        "vix3m": lambda: fetch_fred.fetch_vix3m(fred_key),
         "move": fetch_market.fetch_move,
+        # Risk On/Off (src/classify/risk.py): tutto lo storico giornaliero, il percentile parte dal 1999 come nella verifica
+        **{t.lower(): lambda t=t: fetch_market.fetch_yahoo(t, "max", "1d", adjusted=True) for t in ("XLY", "XLP")},
         "breakeven_5y": lambda: fetch_fred.fetch_breakeven_5y(fred_key),
         "breakeven_5y5y": lambda: fetch_fred.fetch_breakeven_5y5y(fred_key),
     }
-    for name, code in fetch_cot.CONTRACTS.items():
-        fetchers[f"cot_{name}"] = lambda code=code: fetch_cot.fetch_net_speculative(code)
     for indicator, fetch_fn in fetchers.items():
         try:
             cache.write_indicator_series(MARKET_AREA, indicator, fetch_fn())
         except Exception as e:
             logger.exception("%s: fetch fallito, salto e continuo", indicator)
             _record_failure(MARKET_AREA, indicator, e)
+
+    for name, code in fetch_cot.CONTRACTS.items():  # speculatori in cot_, commercial in cotc_
+        try:
+            for prefix, series in zip(("cot", "cotc"), fetch_cot.fetch_net_legacy(code)):
+                cache.write_indicator_series(MARKET_AREA, f"{prefix}_{name}", series)
+        except Exception as e:
+            logger.exception("cot %s: fetch fallito, salto e continuo", name)
+            _record_failure(MARKET_AREA, f"cot_{name}", e)
 
     for name in fetch_cot.CONTRACTS:
         try:

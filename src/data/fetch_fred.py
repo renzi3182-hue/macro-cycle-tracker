@@ -14,6 +14,7 @@ SERIES_YIELD_CURVE = "T10Y3M"  # 10Y - 3M Treasury spread, punti %
 # inutili per tarare le soglie. BAA10Y parte dal 1986.
 SERIES_CREDIT_SPREAD = "BAA10Y"
 SERIES_VIX = "VIXCLS"  # CBOE VIX, chiusura giornaliera
+SERIES_VIX3M = "VXVCLS"  # CBOE VIX a 3 mesi, chiusura giornaliera dal 12/2007
 SERIES_RECESSION_PROB = "RECPROUSM156N"  # Chauvet-Piger: prob. che gli USA SIANO in recessione ora (coincidente, non previsionale), %
 SERIES_BREAKEVEN_5Y = "T5YIE"  # inflazione attesa a 5 anni (breakeven), %
 SERIES_BREAKEVEN_5Y5Y = "T5YIFR"  # inflazione attesa 5 anni fra 5 anni (forward), %
@@ -89,6 +90,10 @@ def fetch_financial_conditions(api_key: str) -> pd.Series:
 
 def fetch_vix(api_key: str) -> pd.Series:
     return _fetch_series(SERIES_VIX, api_key, units="lin")
+
+
+def fetch_vix3m(api_key: str) -> pd.Series:
+    return _fetch_series(SERIES_VIX3M, api_key, units="lin")
 
 
 def fetch_recession_probability(api_key: str) -> pd.Series:

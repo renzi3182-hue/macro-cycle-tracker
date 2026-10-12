@@ -245,14 +245,17 @@ def group_summary(groups: dict[str, list[tuple[str, bool]]]) -> str:
     return " ".join(parts) or "Nessun gruppo tutto in salita o tutto in calo."
 
 
-def area_hero_html(a: dict, sentence: str) -> str:
+def area_hero_html(a: dict, sentence: str, markets: tuple[int, int] | None = None) -> str:
+    """markets: (asset tipici del regime in salita, asset con un ETF), da asset_allocation.confirmation."""
     color = regime_color(a["regime_label"])
     phase = a["phase"] or "n/d"
     end = a["month"]
     facts = [
         ("Fase del ciclo", f'<span style="color:{phase_color(a["phase"])}">{escape(phase)}</span>'),
         ("Regime da", f'{month_it(a["regime_since"])}<br><span class="muted" style="font-size:13px;font-weight:400">{duration_it(a["regime_since"], end)}</span>'),
-        ("Solidità", escape(a["confidence"])),
+        ("Solidità macro", escape(a["confidence"])),
+        *([("Conferma mercati", f'{markets[0]} su {markets[1]}<br><span class="muted" style="font-size:13px;font-weight:400">asset tipici in salita</span>')]
+          if markets and markets[1] else []),
         ("Dati fino a", month_it(end)),
     ]
     cells = "".join(f'<div style="display:flex;flex-direction:column;gap:4px"><span class="eyebrow">{k}</span>'
@@ -431,14 +434,24 @@ def score_color(s: float) -> str:
     return f"var(--{'r-gold' if s > STRONG else 'r-stag' if s <= WEAK else 'muted'})"
 
 
+def why_text(ranks: dict[str, int], n: int) -> str:
+    """Perche' del punteggio: posizione fra gli n asset nel pilastro migliore e in quello peggiore."""
+    (best, rb), (worst, rw) = sorted(ranks.items(), key=lambda kv: kv[1])[::len(ranks) - 1]
+    if rb == rw:
+        return f"{' e '.join(ranks).lower()} entrambi {rb}° su {n}"
+    return f"meglio in {best.lower()} ({rb}° su {n}) che in {worst.lower()} ({rw}°)"
+
+
 def ranking_html(rows: list[dict], month: pd.Timestamp) -> str:
-    """rows: ticker, nome, gruppo, punteggio, delta (vs mese prima o None), Tendenza e Momentum (frazioni), storico (serie mensile)."""
+    """rows: ticker, nome, gruppo, punteggio, delta (vs mese prima o None), Tendenza e Momentum (frazioni), storico (serie
+    mensile), perche' (testo di why_text)."""
     head = ('<div class="arow th"><span>#</span><span>Asset</span><span class="opt">Ultimi 12 mesi</span>'
             '<span class="r opt">Tendenza</span><span class="r opt">Mom. 12-1</span><span class="r">Punt.</span><span class="r">Var.</span></div>')
     body = "".join(
         f'<div class="arow"><span class="mono muted">{i}</span>'
         f'<span style="min-width:0"><b style="font-weight:600">{escape(r["nome"])}</b> '
-        f'<span class="mono muted" style="font-size:12px">{escape(r["ticker"])}<span class="opt"> · {escape(r["gruppo"])}</span></span></span>'
+        f'<span class="mono muted" style="font-size:12px">{escape(r["ticker"])}<span class="opt"> · {escape(r["gruppo"])}</span></span>'
+        f'<small class="muted" style="display:block;font-size:12px;line-height:16px">{escape(r["perche"])}</small></span>'
         f'<span class="opt">{ribbon_html(r["storico"], score_color, 12, thin=True, ticks=False)}</span>'
         f'<span class="mono r opt">{r["Tendenza"] * 100:+.1f}%</span><span class="mono r opt">{r["Momentum"] * 100:+.1f}%</span>'
         f'<span class="r"><span class="chip tint mono" style="--c:{score_color(r["punteggio"])};font-weight:700">{r["punteggio"]:.0f}</span></span>'
@@ -474,6 +487,13 @@ def chips_html(items: list[str]) -> str:
     return '<div class="si" style="display:flex;flex-wrap:wrap;gap:8px">' + "".join(f'<span class="chip">{escape(i)}</span>' for i in items) + "</div>"
 
 
+def trend_chips_html(items: list[tuple[str, bool | None]]) -> str:
+    """(nome, in salita): verde sopra la media, rosso sotto, neutro senza dato."""
+    return '<div class="si" style="display:flex;flex-wrap:wrap;gap:8px">' + "".join(
+        f'<span class="chip tint" style="--c:var(--{"muted" if up is None else "r-gold" if up else "r-stag"})">{escape(n)}</span>'
+        for n, up in items) + "</div>"
+
+
 IMPACT_VARS = {"High": "r-stag", "Medium": "r-refl", "Low": "muted", "Holiday": "line"}
 IMPACT_LABELS = {"High": "Alto", "Medium": "Medio", "Low": "Basso", "Holiday": "Festivo"}
 WEEKDAYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
@@ -503,9 +523,15 @@ def calendar_html(events: list[dict], tz: str = "Europe/Rome", today: pd.Timesta
 
 
 RRG_VARS = {"Guida": "r-gold", "Indebolisce": "r-refl", "Arretra": "r-stag", "Migliora": "r-defl"}
+RRG_TEXT = {  # in ordine di rotazione (senso orario)
+    "Migliora": ("In ingresso", "ancora peggio dell'S&P 500, ma recupera"),
+    "Guida": ("In testa", "meglio dell'S&P 500 e il vantaggio cresce"),
+    "Indebolisce": ("In raffreddamento", "ancora meglio dell'S&P 500, ma il vantaggio cala"),
+    "Arretra": ("In coda", "peggio dell'S&P 500 e lo svantaggio cresce"),
+}
 
 
-def rrg_html(rows: list[dict], month: pd.Timestamp) -> str:
+def rrg_html(rows: list[dict], title: str, when: str) -> str:
     """rows: ticker, nome, ratio, momentum, quadrante. x = RS-Ratio, y = RS-Momentum, centro 100. Div in %, niente svg."""
     span = max(2.0, *(abs(r[k] - 100) for r in rows for k in ("ratio", "momentum"))) * 1.1
 
@@ -515,26 +541,31 @@ def rrg_html(rows: list[dict], month: pd.Timestamp) -> str:
     quads = [("Migliora", "top:0;left:0"), ("Guida", "top:0;left:50%"), ("Indebolisce", "top:50%;left:50%"), ("Arretra", "top:50%;left:0")]
     labels = [("Migliora", "top:10px;left:12px"), ("Guida", "top:10px;right:12px"),
               ("Indebolisce", "bottom:10px;right:12px"), ("Arretra", "bottom:10px;left:12px")]
-    out = [f'<div class="card"><div class="head"><h3>Rotazione settori USA</h3><span class="note">fine {month_it(month)}</span></div>'
-           '<div class="quad" role="img" aria-label="Forza relativa dei settori USA contro lo S&amp;P 500">']
+    out = [f'<div class="card"><div class="head"><h3>{escape(title)}</h3><span class="note">{escape(when)}</span></div>'
+           f'<div class="quad" role="img" aria-label="{escape(title)}: forza relativa contro lo S&amp;P 500">']
     out += [f'<div class="q" style="{pos};background:color-mix(in srgb,var(--{RRG_VARS[q]}) 13%,transparent)"></div>' for q, pos in quads]
     out.append('<div class="ax-v"></div><div class="ax-h"></div>')
-    out += [f'<span class="ql" style="{pos};color:var(--{RRG_VARS[q]})">{q}</span>' for q, pos in labels]
+    out += [f'<span class="ql" style="{pos};color:var(--{RRG_VARS[q]})">{RRG_TEXT[q][0]}</span>' for q, pos in labels]
     out.append('<span class="ql" style="bottom:32px;right:12px;font-weight:500">forza relativa →</span>')
     out.append('<span class="ql" style="top:34px;left:calc(50% + 8px);font-weight:500">↑ slancio</span>')
     pts = [{"r": r, "x": pct(r["ratio"]), "y": 100 - pct(r["momentum"]), "left": pct(r["ratio"]) > 60} for r in rows]
     _place_labels(pts)
     for p in pts:
         r = p["r"]
-        tip = escape(f'{r["nome"]}: {r["quadrante"]} (RS-Ratio {r["ratio"]:.1f}, RS-Momentum {r["momentum"]:.1f})')
+        tip = escape(f'{r["nome"]}: {RRG_TEXT[r["quadrante"]][0].lower()} (RS-Ratio {r["ratio"]:.1f}, RS-Momentum {r["momentum"]:.1f})')
         side = f'right:calc({100 - p["x"]:.1f}% + 12px)' if p["left"] else f'left:calc({p["x"]:.1f}% + 12px)'
         out.append(f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:var(--{RRG_VARS[r["quadrante"]]})"></div>'
                    f'<b class="pl" style="{side};top:{min(p["ly"], 96):.1f}%">{escape(r["ticker"])}</b>')
-    out.append("</div>")
-    out.append(chips_html([f'{r["ticker"]} {r["nome"]}: {r["quadrante"]}' for r in sorted(rows, key=lambda r: -r["ratio"])]))
-    out.append('<p class="note">Forza relativa = settore contro lo S&amp;P 500 rispetto alla sua media a 10 mesi; slancio = '
-               'variazione della forza relativa in 3 mesi. Mappa descrittiva: dal 1999 i settori in Guida non hanno '
-               'fatto meglio di quelli che Arretrano nei 3 mesi dopo.</p></div>')
+    out.append('</div><div class="list">')
+    for q, (name, meaning) in RRG_TEXT.items():
+        names = ", ".join(f'{r["nome"]} ({r["ticker"]})' for r in sorted(rows, key=lambda r: -r["ratio"]) if r["quadrante"] == q)
+        if names:
+            out.append(f'<div class="row">{_dot(f"var(--{RRG_VARS[q]})")}<span class="grow"><b>{name}</b>: {escape(names)}'
+                       f'<small class="muted" style="display:block;font-size:12px">{meaning}</small></span></div>')
+    out.append('</div><p class="note">Forza relativa = asset contro lo S&amp;P 500 rispetto alla sua media a 10 settimane; '
+               'slancio = variazione della forza relativa in 3 settimane. Gira in senso orario: in ingresso, in testa, in '
+               'raffreddamento, in coda. Mappa descrittiva: dal 1996, su 27 ETF, chi era in testa o in ingresso non ha fatto '
+               'meglio degli altri nelle 4 e 13 settimane dopo.</p></div>')
     return "".join(out)
 
 

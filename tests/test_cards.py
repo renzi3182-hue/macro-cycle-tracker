@@ -1,7 +1,8 @@
 import pandas as pd
 
 from src.ui.cards import (
-    duration_it, group_summary, month_it, portfolio_html, prevailing_regime, regime_groups_html, ribbon_html, weight_deltas,
+    duration_it, group_summary, month_it, portfolio_html, prevailing_regime, regime_groups_html, ribbon_html, rrg_html, weight_deltas,
+    why_text,
 )
 from src.ui.theme import TOKENS, page_css
 
@@ -71,3 +72,16 @@ def test_group_summary_names_groups_all_up_or_all_down():
     groups = {"Paesi": [("SPY", True), ("EWJ", True)], "Settori": [("XLK", True), ("XLU", False)], "Bond": [("TLT", False)]}
     assert group_summary(groups) == "Tutti in salita: Paesi. Tutti in calo: Bond."
     assert group_summary({"Settori": groups["Settori"]}) == "Nessun gruppo tutto in salita o tutto in calo."
+
+
+def test_why_text_names_best_and_worst_pillar():
+    assert why_text({"Tendenza": 3, "Momentum": 15}, 28) == "meglio in tendenza (3° su 28) che in momentum (15°)"
+    assert why_text({"Tendenza": 4, "Momentum": 4}, 28) == "tendenza e momentum entrambi 4° su 28"
+
+
+def test_rrg_html_lists_assets_entering_and_cooling():
+    rows = [{"ticker": "EWJ", "nome": "Giappone", "ratio": 98.0, "momentum": 102.0, "quadrante": "Migliora"},
+            {"ticker": "EWI", "nome": "Italia", "ratio": 103.0, "momentum": 99.0, "quadrante": "Indebolisce"}]
+    html = rrg_html(rows, "Rotazione · Paesi", "settimanale")
+    assert "<b>In ingresso</b>: Giappone (EWJ)" in html and "<b>In raffreddamento</b>: Italia (EWI)" in html
+    assert "<svg" not in html

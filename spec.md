@@ -10,7 +10,7 @@ USA, Eurozona (aggregato + Italia), UK, Giappone. Dal 09/10/2026 anche Canada, C
 ### Output della dashboard
 1. **Regime macro** per ogni area: Espansione, Deflazione, Reflazione, Stagflazione.
 2. **Fase ciclo economico** per ogni area: Espansione, Rallentamento, Recessione, Ripresa (sotto trend).
-3. **Asset allocation suggerita** per il regime macro attivo (tabella statica).
+3. **Asset allocation suggerita** per il regime macro attivo (tabella statica). Dal 12/10/2026 la pagina Aree mostra quali asset tipici sono in tendenza positiva ("Conferma mercati", `asset_allocation.confirmation`, azionario con l'ETF del paese): descrittiva, perché non dice se il regime è giusto (verifica in `scripts/evaluate_model.py`, numeri nel commento accanto a `AREA_EQUITY`).
 4. **Grafici storici** degli indicatori usati per la classificazione (crescita, inflazione).
 5. **Badge/banner di cambio regime**: evidenzia se l'ultimo aggiornamento ha fatto cambiare regime o fase rispetto al giro precedente.
 
@@ -18,6 +18,7 @@ USA, Eurozona (aggregato + Italia), UK, Giappone. Dal 09/10/2026 anche Canada, C
 6. **Smart Quant Sentiment**: score 0-100 (Sell/Hold/Buy) su sentiment di mercato quantitativo.
 7. **Risk On/Off**: score 0-100 (propensione al rischio: Ext. Risk Off → Neutral → Ext. Risk On), con split suggerito Risk assets/Difensivo/Cash.
    **Implementato 06/10/2026** (`src/classify/risk.py`, Panoramica): VIX, spread Baa-10Y e quota di ETF sopra la media a 10 mesi, a pesi uguali. Verificato (`scripts/evaluate_risk.py`): anticipa la volatilità, non il rendimento, quindi niente split suggerito Risk assets/Difensivo/Cash.
+   **Giornaliero dal 12/10/2026**: aggiunte struttura del VIX (VIX / VIX a 3 mesi) e consumi (XLY/XLP), prese dal Risk On/Off di Quantaste; il canarino TIP (momentum 13612W) è mostrato a parte, fuori dal punteggio. Numeri della verifica nel commento in cima a `risk.py`.
 
 Metodologia esatta (indicatori di input, pesi, soglie) da definire dopo aver ricevuto dal libro i capitoli su sentiment quant e risk on/off — non a tavolino. Finché non definita, questi due punti restano requisiti aperti, non implementati.
 
@@ -26,6 +27,7 @@ Metodologia esatta (indicatori di input, pesi, soglie) da definire dopo aver ric
 ### Idea aperta v3 — rotazione settoriale per fase ciclo
 Fidelity ("Business Cycle Approach to Equity Sector Investing") mappa 4 fasi cicliche a settori azionari favoriti (early-cycle: consumer discretionary/industrials/tech; late-cycle: difensivi come health care/consumer staples/utilities). Ricerca solo parziale (mid-cycle e recessione non ancora verificati con fonte primaria) — non implementato, da approfondire se si vuole granularità settoriale oltre le 4 classi di asset attuali.
 **06/10/2026**: aggiunta la rotazione settori USA (RRG mensile, `src/classify/rrg.py`, pagina Classifica) come mappa descrittiva: verificata con `scripts/evaluate_rrg.py`, il quadrante non prevede l'extra-rendimento. Mappa fase → settori Fidelity ancora non implementata.
+**12/10/2026**: rotazione settimanale su tutti i gruppi della Classifica (paesi, settori, indici, obbligazioni, materie prime) contro l'S&P 500, con le etichette in ingresso / in testa / in raffreddamento / in coda. Anche la settimanale non prevede l'extra-rendimento: resta una mappa descrittiva.
 
 ### v4 — Intermarket (11/10/2026, capitolo 5 del libro di Casario, su John Murphy)
 Pagina Intermarket (gruppo Mercati), logica in `src/classify/intermarket.py`. Per Casario è un controllo: i mercati devono confermare lo scenario macro.

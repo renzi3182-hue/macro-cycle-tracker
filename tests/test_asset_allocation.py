@@ -38,3 +38,13 @@ def test_uncertain_area_takes_half_of_each_regime():
     both = combined_portfolio_weights({"A": "Reflazione", "B": "Stagflazione"}, "Medio")
     assert half == pytest.approx(both)
     assert sum(half.values()) == pytest.approx(100.0)
+
+
+def test_confirmation_uses_country_equity_and_skips_assets_without_etf():
+    from src.config.asset_allocation import confirmation
+    above = {"EZU": True, "GLD": False, "DBC": True, "TIP": True, "SPY": False}
+    assert confirmation("Reflazione", above, "EZU") == [
+        ("Azionario", "EZU", True), ("Oro", "GLD", False), ("Materie prime", "DBC", True),
+        ("Obbligazioni indicizzate all'inflazione", "TIP", True)]
+    assert [t for _, t, _ in confirmation("Reflazione", above, None)] == ["GLD", "DBC", "TIP"]  # paese senza ETF azionario
+    assert confirmation("Goldilocks", {}, "SPY") == []

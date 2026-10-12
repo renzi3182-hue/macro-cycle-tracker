@@ -21,7 +21,7 @@ CORE_INPUTS = (GROWTH_INPUT, "inflation_yoy")  # se uno di questi e' in ritardo 
 # Serie FRED ad alta frequenza (area, indicatore): massimo ritardo in giorni di calendario. Giornaliere 5
 # (weekend + un festivo), settimanali 14 (NFCI e sussidi escono 4-6 giorni dopo la settimana di riferimento).
 HIGH_FREQ_MAX_DAYS = {
-    ("USA", "yield_curve"): 5, ("USA", "credit_spread"): 5, ("Mercati", "vix"): 5,
+    ("USA", "yield_curve"): 5, ("USA", "credit_spread"): 5, ("Mercati", "vix"): 5, ("Mercati", "vix3m"): 5,
     ("Mercati", "breakeven_5y"): 5, ("Mercati", "breakeven_5y5y"): 5,
     ("USA", "fin_conditions"): 14, ("USA", "claims"): 14,
 }

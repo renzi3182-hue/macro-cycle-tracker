@@ -11,6 +11,11 @@ def percentile_rank(series: pd.Series) -> float:
     return float((series <= series.iloc[-1]).mean() * 100)
 
 
+def zscore(series: pd.Series) -> float:
+    """Distanza dell'ultimo valore dalla media della serie, in deviazioni standard."""
+    return float((series.iloc[-1] - series.mean()) / series.std())
+
+
 def positioning_label(pct: float) -> str:
     if pct >= CROWDED_PERCENTILE:
         return "Affollato long"

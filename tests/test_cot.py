@@ -6,22 +6,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 import pytest
 
-from src.classify.positioning import percentile_rank, positioning_label
+from src.classify.positioning import percentile_rank, positioning_label, zscore
 from src.data import fetch_cot
 
 
-def test_fetch_net_speculative_pct_of_open_interest(requests_mock):
+def test_fetch_net_legacy_pct_of_open_interest(requests_mock):
     requests_mock.get(
         fetch_cot.URL,
         json=[
             {"report_date_as_yyyy_mm_dd": "2026-09-22T00:00:00.000", "noncomm_positions_long_all": "300",
-             "noncomm_positions_short_all": "100", "open_interest_all": "1000"},
+             "noncomm_positions_short_all": "100", "comm_positions_long_all": "200", "comm_positions_short_all": "500",
+             "open_interest_all": "1000"},
             {"report_date_as_yyyy_mm_dd": "2026-09-15T00:00:00.000", "noncomm_positions_long_all": "100",
-             "noncomm_positions_short_all": "200", "open_interest_all": "1000"},
+             "noncomm_positions_short_all": "200", "comm_positions_long_all": "400", "comm_positions_short_all": "300",
+             "open_interest_all": "1000"},
         ],
     )
-    result = fetch_cot.fetch_net_speculative("13874A")
-    assert list(result.values) == [-10.0, 20.0]  # ordinata per data crescente
+    spec, comm = fetch_cot.fetch_net_legacy("13874A")
+    assert list(spec.values) == [-10.0, 20.0]  # ordinata per data crescente
+    assert list(comm.values) == [10.0, -30.0]
 
 
 def test_percentile_and_label():
@@ -32,3 +35,4 @@ def test_percentile_and_label():
     assert positioning_label(50) == "Neutro"
     with pytest.raises(ValueError):
         percentile_rank(pd.Series(dtype=float))
+    assert zscore(pd.Series([1.0, 2.0, 3.0])) == 1.0

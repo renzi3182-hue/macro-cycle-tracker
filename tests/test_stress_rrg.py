@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.classify.rrg import quadrant, rrg
+from src.classify.rrg import GROUPS, quadrant, rrg, weekly_prices
 from src.classify.stress import monte_carlo, portfolio_returns, scenario, ticker_weights
 
 
@@ -34,3 +34,10 @@ def test_rrg_quadrants():
     ratio, mom = rrg(_px(SPY=flat, XLK=up, XLU=[1e4 / x for x in up]))
     assert quadrant(ratio["XLK"].iloc[-1], mom["XLK"].iloc[-1]) == "Guida"
     assert quadrant(ratio["XLU"].iloc[-1], mom["XLU"].iloc[-1]) == "Arretra"
+
+
+def test_weekly_rrg_groups_exclude_benchmark():
+    assert "SPY" not in GROUPS["Paesi"] and GROUPS["Materie prime"] == ["GLD", "DBC"]
+    days = pd.bdate_range("2026-01-05", periods=10)
+    wk = weekly_prices(pd.DataFrame({"SPY": range(10)}, index=days, dtype=float))
+    assert list(wk["SPY"]) == [4.0, 9.0]  # ultima chiusura di ogni settimana

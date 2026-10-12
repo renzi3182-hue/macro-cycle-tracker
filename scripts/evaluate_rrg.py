@@ -1,8 +1,10 @@
-"""Verifica della rotazione settori (src/classify/rrg.py): il quadrante di fine mese dice qualcosa sui mesi dopo?
+"""Verifica della rotazione relativa (src/classify/rrg.py): il quadrante dice qualcosa sui periodi dopo?
 
-Per ogni settore e mese: quadrante a mese chiuso, poi rendimento del settore meno SPY nei 1 e 3 mesi successivi
-(ETF rettificati per dividendi). Strategia di prova: pesi uguali ai settori in "Guida", ribilanciata ogni mese.
-Uso: py -3.12 scripts/evaluate_rrg.py   (dati da data/cache.db)
+1. Mensile, settori: quadrante a mese chiuso, poi rendimento del settore meno SPY nei 1 e 3 mesi successivi
+   (ETF rettificati per dividendi). Strategia di prova: pesi uguali ai settori in "Guida", ribilanciata ogni mese.
+2. Settimanale, tutti i gruppi di UNIVERSE: quadrante a fine settimana, extra-rendimento su SPY nelle 4 e 13
+   settimane dopo, per quadrante.
+Uso: py -3.12 scripts/evaluate_rrg.py   (mensili da data/cache.db, giornalieri scaricati da Yahoo)
 """
 import sys
 from pathlib import Path
@@ -13,9 +15,12 @@ import math
 
 import pandas as pd
 
-from src.classify.rrg import BENCHMARK, QUADRANTS, SECTORS, quadrant, rrg
+from src.classify.rrg import BENCHMARK, GROUPS, MOMENTUM_WEEKS, QUADRANTS, SECTORS, TREND_WEEKS, quadrant, rrg, weekly_prices
 from src.classify.score import ASSET_AREA, UNIVERSE, complete_months, monthly_prices
 from src.data import cache
+from src.data.fetch_market import fetch_yahoo
+
+WEEKS_SHORT, WEEKS_LONG = 4, 13
 
 
 def perf(r: pd.Series) -> str:
@@ -59,6 +64,31 @@ def main() -> None:
     print(f"  SPY:                   {perf(nxt[BENCHMARK].loc[idx])}")
     print(f"  settori pesi uguali:   {perf(nxt[ratio.columns].where(ok).loc[idx].mean(axis=1))}")
     print(f"  settori in Guida:      {perf(held)}  (in media {lead.loc[idx].sum(axis=1).mean():.1f} settori)")
+    weekly()
+
+
+def weekly() -> None:
+    wk = weekly_prices(pd.DataFrame({t: fetch_yahoo(t, "max", "1d", adjusted=True) for t in UNIVERSE})).iloc[:-1]  # settimana in corso esclusa
+    fwd = {h: wk.shift(-h) / wk - 1 for h in (WEEKS_SHORT, WEEKS_LONG)}
+    order = list(QUADRANTS.values())
+    for group, members in {"Tutti": [t for g in GROUPS.values() for t in g], **GROUPS}.items():
+        ratio, mom = rrg(wk, members, TREND_WEEKS, MOMENTUM_WEEKS)
+        q = pd.DataFrame({t: [quadrant(x, y) if pd.notna(x) and pd.notna(y) else None for x, y in zip(ratio[t], mom[t])]
+                          for t in ratio}, index=ratio.index)
+        long = pd.DataFrame({"q": q.stack(), **{f"ex{h}": (f[ratio.columns].sub(f[BENCHMARK], axis=0)).stack() * 100
+                                                for h, f in fwd.items()}}).dropna()
+        long["dopo2014"] = long.index.get_level_values(0) >= "2014"
+        t = long.groupby("q").agg(casi=("q", "size"), **{f"ex{h}": (f"ex{h}", "mean") for h in fwd},
+                                  sopra=(f"ex{WEEKS_LONG}", lambda x: (x > 0).mean() * 100))
+        print(f"\nSettimanale, {group} ({', '.join(ratio.columns)}), {long.index[0][0]:%Y-%m} -> {long.index[-1][0]:%Y-%m}: "
+              f"extra-rendimento medio su SPY a {WEEKS_SHORT} e {WEEKS_LONG} settimane (%)")
+        print(t.reindex(order).round(2).to_string())
+        for a, b in (("Guida", "Arretra"), ("Migliora", "Indebolisce")):
+            for label, sub in (("tutto", long), ("<2014", long[~long.dopo2014]), (">=2014", long[long.dopo2014])):
+                x, y = (sub.loc[sub.q == k, f"ex{WEEKS_LONG}"] for k in (a, b))
+                # osservazioni sovrapposte (13 settimane): t diviso per la radice di 13
+                tt = (x.mean() - y.mean()) / math.sqrt(x.var() / len(x) + y.var() / len(y)) / math.sqrt(WEEKS_LONG)
+                print(f"  {a} - {b} a {WEEKS_LONG} sett., {label}: {(x.mean() - y.mean()):+.2f} pp, t ~ {tt:.1f}")
 
 
 if __name__ == "__main__":
