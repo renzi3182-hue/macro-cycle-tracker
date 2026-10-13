@@ -143,10 +143,3 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
         "history": hist,
     }
 
-
-def global_axis(assessments: dict[str, dict], col: str) -> pd.Series:
-    """Media fra le aree di una colonna dello storico (growth_z = velocita' della crescita, inflation_score =
-    pressione dei prezzi), solo nei mesi con dati per la maggioranza delle aree. Per il punteggio 1-100 della
-    pagina Oggi: e' il percentile dell'ultimo valore su questa storia, quindi descrive, non prevede."""
-    z = pd.concat({a: x["history"][col] for a, x in assessments.items()}, axis=1)
-    return z.mean(axis=1)[z.notna().sum(axis=1) > len(z.columns) / 2]

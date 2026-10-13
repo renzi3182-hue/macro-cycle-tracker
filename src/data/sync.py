@@ -36,12 +36,13 @@ def local_updated_at(db_path: Path) -> float:
         return db_path.stat().st_mtime
 
 
-def sync_cache(url: str = DATA_URL, db_path: Path = DB_PATH) -> bool:
-    """True se ha sostituito il file locale. Qualsiasi errore di rete lascia la cache com'e'."""
+def sync_cache(url: str = DATA_URL, db_path: Path = DB_PATH) -> bool | None:
+    """True se ha sostituito il file locale, False se il locale e' gia' aggiornato, None se il controllo e' fallito
+    (rete, file remoto assente): la cache resta com'e' e chi chiama puo' riprovare."""
     try:
         head = get_with_retry(url, "github", ATTEMPTS, BACKOFF, method="HEAD", allow_redirects=True, timeout=HEAD_TIMEOUT)
         if "Last-Modified" not in head.headers:
-            return False
+            return None
         remote = parsedate_to_datetime(head.headers["Last-Modified"]).timestamp()
         if db_path.exists() and local_updated_at(db_path) + UPLOAD_SLACK_SECONDS >= remote:
             return False
@@ -52,4 +53,4 @@ def sync_cache(url: str = DATA_URL, db_path: Path = DB_PATH) -> bool:
         os.replace(tmp.name, db_path)
         return True
     except (requests.RequestException, OSError):
-        return False
+        return None

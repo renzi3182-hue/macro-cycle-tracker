@@ -33,6 +33,22 @@ ASSET_ALLOCATION = {
     "Deflazione": ["Azionario difensivo", "Oro", "Obbligazioni governative lunga durata"],
 }
 
+# Fase del ciclo -> (asset da pesare di piu', asset da pesare di meno), dal libro di Casario (cap. 6: fig. 6.12,
+# 6.14, 6.16 e settori difensivi/ciclici). "{paese}" = azionario o titoli di Stato dell'area.
+# Verifica 13/10/2026 sui dati USA (fase point-in-time di src/classify/assess.py, rendimento del mese dopo
+# annualizzato; azionario e materie prime dal 1985, oro dal 2000, Treasury 10Y dal 1962):
+#   Espansione:    materie prime 11,7%, azionario 10,7%, Treasury 2,8% (t = -2,5, l'unica differenza significativa)
+#   Ripresa:       materie prime 13,7%, azionario 9,5%, oro 7,5%, Treasury 5,1%
+#   Rallentamento: oro 18,6% (t = 1,8), azionario 12,1%, Treasury 6,8%, materie prime 0,1%
+#   Recessione:    Treasury 14,3% (t = 1,9), oro 8,5%, azionario -3,2%, materie prime -14,6% (solo 31-67 mesi)
+# Direzioni coerenti col libro, ma come la tabella per regime nessun vantaggio dimostrato.
+PHASE_ASSETS = {
+    "Espansione": (["Azionario {paese}", "Materie prime"], ["Titoli di Stato {paese}"]),
+    "Ripresa (sotto trend)": (["Azionario ciclico {paese}", "Materie prime"], ["Titoli di Stato {paese}"]),
+    "Rallentamento": (["Oro", "Azionario difensivo {paese}"], ["Materie prime"]),
+    "Recessione": (["Titoli di Stato {paese}", "Oro"], ["Azionario {paese}", "Materie prime"]),
+}
+
 # Quota target sull'azionario per profilo di rischio, il resto va agli asset
 # difensivi/diversificatori della allocazione del regime.
 RISK_PROFILE_EQUITY_SHARE = {"Basso": 0.3, "Medio": 0.5, "Alto": 0.7}

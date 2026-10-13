@@ -1,5 +1,4 @@
 import json
-from collections import Counter
 import math
 import sys
 from html import escape
@@ -13,7 +12,7 @@ import streamlit as st
 from streamlit_lightweight_charts import renderLightweightCharts
 
 from src.classify import intermarket as im
-from src.classify.assess import HIGH_FREQ_MAX_DAYS, USED_INPUTS, assess, global_axis, label_regimes, point_in_time_history, stale_high_freq
+from src.classify.assess import HIGH_FREQ_MAX_DAYS, USED_INPUTS, assess, label_regimes, point_in_time_history, stale_high_freq
 from src.classify.currency import CURRENCIES, PAIRS, cot_component, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.leading import SIGNALS
 from src.classify.positioning import percentile_rank, zscore
@@ -27,7 +26,7 @@ from src.classify.score import (
 )
 from src.config import cot_guide
 from src.config.asset_allocation import (
-    ALL_WEATHER_WEIGHTS, AREA_EQUITY, ASSET_ALLOCATION, apply_trend, combined_portfolio_weights, confirmation,
+    ALL_WEATHER_WEIGHTS, AREA_EQUITY, ASSET_ALLOCATION, PHASE_ASSETS, apply_trend, combined_portfolio_weights, confirmation,
 )
 from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
@@ -35,7 +34,7 @@ from src.data.sync import sync_cache
 from src.ui.cards import (
     ALIGN_VARS, alignment_html, answer_card_html, area_hero_html, area_tile_html, axis_card_html, bands_html, bar_rows_html, calendar_html, changes_html,
     chips_html, cot_groups_html, edge_html, events_html, freshness_html, gauge_html, group_rows_html, group_summary, hero_html,
-    history_html, matrix_html, month_it, murphy_html, pairs_html, portfolio_html, prevailing_regime, prob_html, quadrant_html,
+    history_html, matrix_html, month_it, murphy_html, pairs_html, phase_actions_html, portfolio_html, prevailing_regime, prob_html, quadrant_html,
     ranking_html, regime_groups_html, relation_html, risk_html, rrg_html, story_card_html, strength_html, stress_html, trend_chips_html,
     trend_html, weight_deltas, why_text,
 )
@@ -68,11 +67,20 @@ ALL_WEATHER = "All Weather"
 IMPACT_LABELS_IT = {"Alto": "High", "Medio": "Medium", "Basso": "Low", "Festivo": "Holiday"}
 CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}
 CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone"}
+AREA_CCY = {"USA": "USD", "Eurozona": "EUR", "Italia": "EUR", "UK": "GBP", "Giappone": "JPY",
+            "Canada": "CAD", "Cina": "CNY", "Australia": "AUD", "India": "INR"}
 
 
 @st.cache_resource(ttl=600)
 def _sync_cache() -> bool:
-    return sync_cache()
+    """Si memorizza solo un controllo riuscito: se il download fallisce (dopo un redeploy l'app riparte con la cache
+    del repo) l'eccezione non viene memorizzata e il caricamento dopo riprova, invece di aspettare 10 minuti."""
+    done = sync_cache()
+    if done is None:
+        raise ConnectionError("cache non sincronizzata")
+    if done:
+        st.cache_data.clear()  # i load_* tenevano i dati della cache vecchia
+    return done
 
 
 @st.cache_data(ttl=300)
@@ -286,24 +294,21 @@ mode = st.context.theme.type or "dark"
 st.logo(str(LOGO_DIR / ("logo-mark.svg" if mode == "dark" else "logo-mark-light.svg")), size="large")
 st.html(page_css(mode))
 
-_sync_cache()
+try:
+    _sync_cache()
+except ConnectionError:
+    pass  # si lavora con la cache locale, si riprova al prossimo caricamento
 assessments = {area: a for area in AREAS if (a := load_assessment(area))}
 
 
 def page_today() -> None:
-    """Tre domande, tre punteggi 1-100 (alto = favorevole), ognuno porta alla pagina che lo spiega."""
+    """Per ogni paese la fase del ciclo e gli asset da pesare di piu' o di meno; poi due punteggi 1-100 (alto =
+    favorevole), ognuno porta alla pagina che lo spiega."""
+    rows = []
+    for area, a in assessments.items():
+        good, bad = PHASE_ASSETS.get(a["phase"], ([], []))
+        rows.append((area, AREA_CCY[area], a["phase"], [x.format(paese=area) for x in good], [x.format(paese=area) for x in bad]))
     cards = []
-    growth = global_axis(assessments, "growth_z")
-    phases = Counter(a["phase"] for a in assessments.values() if a["phase"])
-    phase, n = phases.most_common(1)[0]
-    by_phase = " · ".join(f"{p}: {', '.join(x for x, a in assessments.items() if a['phase'] == p)}" for p, _ in phases.most_common())
-    infl = percentile_rank(global_axis(assessments, "inflation_score"))
-    cards.append(answer_card_html(
-        "aree", "In che fase siamo", percentile_rank(growth), f"{phase} · {n} aree su {len(assessments)}",
-        f"La crescita delle {len(assessments)} aree accelera più che nel {percentile_rank(growth):.0f}% dei mesi dal {growth.index[0]:%Y}. "
-        f"Pressione dei prezzi {max(1, round(infl))}/100 (alto = inflazione alta o in salita).",
-        f'<p class="note">{escape(by_phase)}</p>',
-        "Punteggio = percentile della velocità media del PIL rispetto alla sua storia: descrive il momento, non prevede."))
     risk = load_risk()
     if not risk.empty:
         r = risk.iloc[-1]
@@ -323,8 +328,15 @@ def page_today() -> None:
             chips_html([f"{UNIVERSE[t][0]} {v:.0f}" for t, v in top.items()]),
             "Punteggio = quota di asset sopra la media a 10 mesi. Il filtro di tendenza taglia le perdite più che "
             "aumentare il rendimento."))
-    ui(hero_html(f"Oggi · {pd.Timestamp.today():%d/%m/%Y}", "Il quadro in tre numeri",
-                 "Ogni punteggio va da 1 a 100: più è alto, più il quadro è favorevole. Tocca una card per il dettaglio."))
+    ui(hero_html(f"Oggi · {pd.Timestamp.today():%d/%m/%Y}", "Il quadro di oggi",
+                 "Per ogni paese la fase del ciclo e cosa pesare di più o di meno. Sotto, due punteggi da 1 a 100 sui mercati: "
+                 "più è alto, più il quadro è favorevole. Tocca una card per il dettaglio."))
+    ui(phase_actions_html(
+        f"In che fase è ogni paese · dati fino a {month_it(max(a['month'] for a in assessments.values()))}", rows,
+        "Tabella dal libro di Casario (cap. 6). Sui dati USA dal 1985 (fase nota a fine mese, rendimento del mese dopo) "
+        "le direzioni tornano, ma l'unica differenza netta è che i titoli di Stato rendono meno in Espansione: tendenze "
+        "storiche, non previsioni."))
+    st.space("small")
     ui('<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">' + "".join(cards) + "</div>")
     st.caption("Solo informativo, non è consulenza finanziaria. Metodo e affidabilità nella sezione **Metodo**.")
 
@@ -612,7 +624,7 @@ def page_intermarket() -> None:
     lv = load_intermarket()
     px, s = load_scores()
     usa = assessments.get("USA")
-    if lv.empty or px.empty or not usa:
+    if lv.empty or im.COPPER_GOLD not in lv or px.empty or not usa:
         st.info("Nessun dato intermarket in cache: arriva con il prossimo aggiornamento dati.", icon=":material/database:")
         st.stop()
     murphy = im.murphy_history(px)

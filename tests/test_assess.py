@@ -97,11 +97,3 @@ def test_cache_refuses_to_wipe_history(tmp_path):
     cache.write_indicator_series("USA", "cli", _m([2.0] * 101), db_path=db)  # serie normale: sostituita
     assert cache.read_indicator_series("USA", "cli", db_path=db).iloc[-1] == 2.0
 
-
-def test_global_axis_needs_majority_of_areas():
-    import pandas as pd
-    from src.classify.assess import global_axis
-    idx = pd.date_range("2020-01-01", periods=3, freq="MS")
-    h = lambda v: {"history": pd.DataFrame({"growth_z": v}, index=idx)}
-    out = global_axis({"A": h([1.0, 2.0, 3.0]), "B": h([None, 4.0, 5.0]), "C": h([None, None, 1.0])}, "growth_z")
-    assert list(out.index) == list(idx[1:]) and list(out) == [3.0, 3.0]

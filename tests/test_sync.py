@@ -28,14 +28,14 @@ def test_keeps_local_when_it_is_newer_or_remote_missing(tmp_path, requests_mock)
     requests_mock.head(URL, headers={"Last-Modified": OLDER})
     assert sync_cache(URL, db) is False and db.read_bytes() == b"local"
     requests_mock.head(URL, status_code=404)
-    assert sync_cache(URL, db) is False
+    assert sync_cache(URL, db) is None
 
 
 def test_network_error_leaves_cache_alone(tmp_path, requests_mock):
     db = tmp_path / "cache.db"
     db.write_bytes(b"local")
     requests_mock.head(URL, exc=requests.ConnectionError)
-    assert sync_cache(URL, db) is False and db.read_bytes() == b"local"
+    assert sync_cache(URL, db) is None and db.read_bytes() == b"local"
 
 
 def test_uses_db_timestamp_not_file_date(tmp_path, requests_mock):
@@ -62,5 +62,5 @@ def test_two_short_attempts_then_keeps_cache(tmp_path, requests_mock):
     db = tmp_path / "cache.db"
     db.write_bytes(b"local")
     requests_mock.head(URL, status_code=503)
-    assert sync_cache(URL, db) is False and db.read_bytes() == b"local"
+    assert sync_cache(URL, db) is None and db.read_bytes() == b"local"
     assert requests_mock.call_count == 2

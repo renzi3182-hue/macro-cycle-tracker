@@ -209,6 +209,23 @@ def answer_card_html(href: str, question: str, score: float, state: str, say: st
     )
 
 
+def phase_actions_html(eyebrow: str, rows: list[tuple[str, str, str | None, list[str], list[str]]], note: str) -> str:
+    """Card della pagina Oggi: per area (nome, valuta, fase) gli asset da pesare di piu' (verde) e di meno (rosso)."""
+    def chips(label: str, items: list[str], var: str) -> str:
+        return f'<span class="muted">{label}</span>' + "".join(
+            f'<span class="chip tint" style="--c:var(--{var})">{escape(i)}</span>' for i in items) if items else ""
+    out = "".join(
+        f'<div class="grp"><div class="top"><b>{escape(area)}</b><small class="mono">{escape(ccy)}</small>'
+        f'<span class="chip tint" style="--c:{phase_color(phase)}">{escape(phase or "n/d")}</span></div>'
+        f'<div class="chips" style="align-items:center">{chips("Più peso", good, "r-gold")}{chips("Meno peso", bad, "r-stag")}</div></div>'
+        for area, ccy, phase, good, bad in rows)
+    return (f'<div class="si card"><span class="eyebrow">{escape(eyebrow)}</span>'
+            '<p class="say">Per ogni paese e la sua valuta: la fase del ciclo e gli asset che in quella fase hanno reso di più '
+            'e di meno.</p>'
+            f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));column-gap:28px">{out}</div>'
+            f'<p class="note">{escape(note)}</p></div>')
+
+
 def regime_groups_html(regimes: dict[str, str]) -> str:
     """Una riga per regime con le sue aree, dal piu' diffuso (a parita' l'ordine delle aree, come prevailing_regime);
     le incerte per coppia di regimi, i regimi senza aree in fondo."""
