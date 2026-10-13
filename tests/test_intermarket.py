@@ -69,8 +69,8 @@ def test_norm_is_median_of_last_5_years():
 
 
 @pytest.mark.parametrize("current, usual, sign, state", [
-    (-0.5, -0.4, -1, "come da libro"), (0.2, -0.4, -1, "rotta"), (-0.1, -0.7, -1, "più debole del solito"),
-    (-0.95, -0.3, -1, "come da libro"),  # piu' forte del solito: non e' un indebolimento
+    (-0.5, -0.4, -1, "regolare"), (0.2, -0.4, -1, "rotta"), (-0.1, -0.7, -1, "più debole del solito"),
+    (-0.95, -0.3, -1, "regolare"),  # piu' forte del solito: non e' un indebolimento
 ])
 def test_relation_state(current, usual, sign, state):
     assert im.relation_state(current, usual, sign) == state

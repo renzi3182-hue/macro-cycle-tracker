@@ -649,8 +649,11 @@ def page_intermarket() -> None:
        + alignment_html(state, macro, checks, mapping, im.MISALIGNED_TEXT if state == im.MISALIGNED else None) + "</div>")
     st.space("small")
 
-    ui('<div class="head"><h3 style="font-size:20px">Le quattro relazioni del libro</h3>'
-       '<span class="note">ultimo anno, una scala per serie</span></div>')
+    ui('<div class="head"><h3 style="font-size:20px">Le quattro relazioni chiave</h3>'
+       '<span class="note">ultimo anno, una scala per serie</span></div>'
+       '<p class="note">Regolare = i due mercati si muovono come di solito. Più debole del solito = stessa direzione, ma il '
+       'legame si è allentato. Rotta = si muovono al contrario del solito: quel mercato oggi è guidato da altro (uno '
+       'shock, una banca centrale, un flusso di capitali) e la relazione non serve a leggerlo finché non torna.</p>')
     cols = st.columns(2)
     for i, (name, a, b, sign, book) in enumerate(im.RELATIONS):
         c = im.rolling_corr(lv, a, b, im.NORM_WINDOW)

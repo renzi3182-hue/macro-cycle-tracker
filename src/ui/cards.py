@@ -608,7 +608,7 @@ def stress_html(rows: list[tuple[str, str, tuple | None, tuple | None]], mc: dic
 MURPHY_VARS = {"Fase 1": "r-defl", "Fase 2": "accent", "Fase 3": "r-gold", "Fase 4": "r-refl", "Fase 5": "r-stag", "Fase 6": "muted"}
 ALIGN_VARS = {"Allineati": "r-gold", "Parzialmente allineati": "r-refl", "Disallineati": "r-stag"}
 CHECK_VARS = {"allineata": "r-gold", "parziale": "r-refl", "disallineata": "r-stag", "coerente": "r-gold", "contrario": "r-stag"}
-RELATION_VARS = {"come da libro": "r-gold", "più debole del solito": "r-refl", "rotta": "r-stag"}
+RELATION_VARS = {"regolare": "r-gold", "più debole del solito": "r-refl", "rotta": "r-stag"}
 
 
 def _num_it(x: float, digits: int = 2) -> str:

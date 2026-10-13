@@ -146,7 +146,7 @@ def relation_state(current: float, usual: float, expected_sign: int) -> str:
         return "rotta"
     if is_break(current, usual) and abs(current) < abs(usual):
         return "più debole del solito"
-    return "come da libro"
+    return "regolare"
 
 
 def change(s: pd.Series, months: int = DIRECTION_MONTHS) -> pd.Series:
