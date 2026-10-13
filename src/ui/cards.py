@@ -212,12 +212,12 @@ def answer_card_html(href: str, question: str, score: float, state: str, say: st
 def phase_actions_html(eyebrow: str, rows: list[tuple[str, str, str | None, list[str], list[str]]], note: str) -> str:
     """Card della pagina Oggi: per area (nome, valuta, fase) gli asset da pesare di piu' (verde) e di meno (rosso)."""
     def chips(label: str, items: list[str], var: str) -> str:
-        return f'<span class="muted">{label}</span>' + "".join(
-            f'<span class="chip tint" style="--c:var(--{var})">{escape(i)}</span>' for i in items) if items else ""
+        return f'<div class="chips" style="align-items:center"><span class="muted" style="min-width:76px">{label}</span>' + "".join(
+            f'<span class="chip tint" style="--c:var(--{var})">{escape(i)}</span>' for i in items) + "</div>" if items else ""
     out = "".join(
         f'<div class="grp"><div class="top"><b>{escape(area)}</b><small class="mono">{escape(ccy)}</small>'
         f'<span class="chip tint" style="--c:{phase_color(phase)}">{escape(phase or "n/d")}</span></div>'
-        f'<div class="chips" style="align-items:center">{chips("Più peso", good, "r-gold")}{chips("Meno peso", bad, "r-stag")}</div></div>'
+        f'{chips("Più peso", good, "r-gold")}{chips("Meno peso", bad, "r-stag")}</div>'
         for area, ccy, phase, good, bad in rows)
     return (f'<div class="si card"><span class="eyebrow">{escape(eyebrow)}</span>'
             '<p class="say">Per ogni paese e la sua valuta: la fase del ciclo e gli asset che in quella fase hanno reso di più '

@@ -91,3 +91,15 @@ def test_answer_card_clips_score_and_links():
     from src.ui.cards import answer_card_html
     html = answer_card_html("aree", "In che fase siamo", 0.2, "Espansione", "frase", "", "nota")
     assert 'href="aree"' in html and ">1</span>" in html and "width:1%" in html
+
+
+def test_phase_actions_cover_every_phase_and_name_the_country():
+    from src.config.asset_allocation import PHASE_ASSETS
+    from src.ui.cards import phase_actions_html
+    from src.ui.theme import PHASE_VARS
+    assert set(PHASE_ASSETS) == set(PHASE_VARS)
+    good, bad = PHASE_ASSETS["Recessione"]
+    html = phase_actions_html("Fasi", [("Italia", "EUR", "Recessione", [x.format(paese="Italia") for x in good],
+                                        [x.format(paese="Italia") for x in bad]), ("Cina", "CNY", None, [], [])], "nota")
+    assert "Titoli di Stato Italia" in html and "Meno peso" in html and "n/d" in html
+    assert html.count("Più peso") == 1  # area senza fase: nessuna azione
