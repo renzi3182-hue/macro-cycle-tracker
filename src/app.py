@@ -19,14 +19,17 @@ from src.classify.positioning import percentile_rank, zscore
 from src.classify.recession import sahm_gap
 from src.classify.regime import INFLATION_HIGH_LEVEL, monthly
 from src.classify.rrg import GROUPS, MOMENTUM_WEEKS, TREND_WEEKS, quadrant, rrg, weekly_prices
-from src.classify.stress import MC_YEARS, PROXY, SCENARIOS, monte_carlo, portfolio_returns, scenario, ticker_weights
+from src.classify.stress import (
+    MC_YEARS, PROXY, SCENARIOS, monte_carlo, portfolio_returns, recovery, scenario, summary, ticker_weights, trend_returns,
+)
 from src.classify.risk import CANARY, FILL_DAYS, canary, components as risk_components, label as risk_label, risk_score
 from src.classify.score import (
     ASSET_AREA, HORIZON_MONTHS, STRONG, UNIVERSE, WEAK, band_table, complete_months, forward_excess, monthly_prices, pillars, scores,
 )
 from src.config import cot_guide
 from src.config.asset_allocation import (
-    ALL_WEATHER_WEIGHTS, AREA_EQUITY, ASSET_ALLOCATION, PHASE_ASSETS, apply_trend, combined_portfolio_weights, confirmation,
+    ALL_WEATHER_WEIGHTS, AREA_EQUITY, ASSET_ALLOCATION, LAZY_PORTFOLIOS, PHASE_ASSETS, apply_trend, combined_portfolio_weights,
+    confirmation,
 )
 from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
@@ -34,7 +37,7 @@ from src.data.sync import sync_cache
 from src.ui.cards import (
     ALIGN_VARS, alignment_html, answer_card_html, area_hero_html, area_tile_html, axis_card_html, bands_html, bar_rows_html, calendar_html, changes_html,
     chips_html, cot_groups_html, edge_html, events_html, freshness_html, gauge_html, group_rows_html, group_summary, hero_html,
-    history_html, matrix_html, month_it, murphy_html, pairs_html, phase_actions_html, portfolio_html, prevailing_regime, prob_html, quadrant_html,
+    history_html, lab_html, matrix_html, month_it, murphy_html, pairs_html, phase_actions_html, portfolio_html, prevailing_regime, prob_html, quadrant_html,
     ranking_html, regime_groups_html, relation_html, risk_html, rrg_html, story_card_html, strength_html, stress_html, trend_chips_html,
     trend_html, weight_deltas, why_text,
 )
@@ -64,6 +67,7 @@ TREND_NAMES = {"SPY": "Azionario", "TLT": "Treasury lunga durata", "IEF": "Treas
                "GLD": "Oro", "DBC": "Materie prime"}
 RISK_PROFILE_LABELS = {"Basso": "Conservativo", "Medio": "Bilanciato", "Alto": "Aggressivo"}
 ALL_WEATHER = "All Weather"
+STATIC_PORTFOLIOS = {ALL_WEATHER: ALL_WEATHER_WEIGHTS, **LAZY_PORTFOLIOS}  # pesi fissi, indipendenti da regime e profilo
 IMPACT_LABELS_IT = {"Alto": "High", "Medio": "Medium", "Basso": "Low", "Festivo": "Holiday"}
 CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}
 CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone"}
@@ -472,10 +476,10 @@ def page_portfolio() -> None:
         top, n = prevailing_regime(regimes)
         ui(hero_html("Portafoglio multi-area", f'Regime prevalente: <span style="color:{regime_color(top)}">{top}</span>',
                      f"{n} aree su {len(regimes)}. Media equipesata dei portafogli per regime di ogni area."))
-        risk_profile = st.segmented_control("Profilo di rischio", ["Basso", "Medio", "Alto", ALL_WEATHER], default="Medio",
-                                            required=True, key="risk", bind="query-params")
-    if risk_profile == ALL_WEATHER:  # pesi statici, indipendenti da regime e profilo
-        weights, deltas = ALL_WEATHER_WEIGHTS, None
+        risk_profile = st.segmented_control("Profilo o portafoglio pigro", ["Basso", "Medio", "Alto", *STATIC_PORTFOLIOS],
+                                            default="Medio", required=True, key="risk", bind="query-params")
+    if risk_profile in STATIC_PORTFOLIOS:
+        weights, deltas = STATIC_PORTFOLIOS[risk_profile], None
     else:
         weights = combined_portfolio_weights(regimes, risk_profile)
         prev = {}
@@ -487,21 +491,23 @@ def page_portfolio() -> None:
     px, _ = load_scores()
     trend = pillars(px)["Tendenza"].iloc[-1].dropna() if len(px) else pd.Series(dtype=float)
     use_trend = st.toggle("Filtro di tendenza: in cash gli asset sotto la media a 10 mesi", key="trend", disabled=trend.empty)
+    base = weights
     if use_trend:
         filtered = apply_trend(weights, (trend > 0).to_dict())
         weights, deltas, delta_note = filtered, weight_deltas(filtered, weights), "vs senza filtro"
     col_p, col_t = st.columns([8, 4])
     with col_p:
         ui(portfolio_html(weights, deltas, "Allocazione", RISK_PROFILE_LABELS.get(risk_profile, "pesi statici"), delta_note))
-        if uncertain and risk_profile != ALL_WEATHER:
+        if uncertain and risk_profile not in STATIC_PORTFOLIOS:
             st.caption(f"Aree incerte ({', '.join(uncertain)}): metà pesi di ciascuno dei due regimi.")
     with col_t:
         if trend.empty:
             st.info("Nessun prezzo degli ETF in cache per il filtro di tendenza.", icon=":material/database:")
         else:
-            ui(trend_html([(name, t, trend[t] * 100) for t, name in TREND_NAMES.items() if t in trend], px.index[-1]))
+            prev = pillars(px)["Tendenza"].iloc[-2] * 100 if len(px) > 1 else pd.Series(dtype=float)
+            ui(trend_html([(name, t, trend[t] * 100, prev.get(t)) for t, name in TREND_NAMES.items() if t in trend], px.index[-1]))
     if not px.empty:
-        stress_section(weights, px)
+        stress_section(base, px)
     st.caption("Dentro ogni regime la quota azionaria segue il profilo (Basso 30%, Medio 50%, Alto 70%). "
                "Solo informativo, non è consulenza: il backtest non mostra un vantaggio sui portafogli statici (sezione Metodo).")
 
@@ -509,7 +515,8 @@ STRESS_ASSETS = sorted({*PROXY, *ALL_WEATHER_WEIGHTS, *(a for v in ASSET_ALLOCAT
 
 
 def stress_section(weights: dict, px: pd.DataFrame) -> None:
-    """Posizioni modificabili (partono dall'allocazione mostrata) e loro stress test (src/classify/stress.py)."""
+    """Posizioni modificabili (partono dall'allocazione mostrata, senza filtro) e loro backtest e stress test con e senza
+    filtro di tendenza (src/classify/stress.py)."""
     col_in, col_out = st.columns([5, 7])
     with col_in:
         st.markdown("**Le tue posizioni**")
@@ -518,17 +525,28 @@ def stress_section(weights: dict, px: pd.DataFrame) -> None:
             num_rows="dynamic", hide_index=True, width="stretch",
             column_config={"Asset": st.column_config.SelectboxColumn(options=STRESS_ASSETS, required=True),
                            "Peso %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=1.0, format="%.1f")})
-        st.caption("Parte dall'allocazione qui sopra: cambia pesi o aggiungi righe. I pesi si riportano a 100.")
+        st.caption("Parte dall'allocazione qui sopra senza filtro: cambia pesi o aggiungi righe. I pesi si riportano a 100. "
+                   "Il filtro si confronta nel backtest.")
     edited = edited.dropna()
     tw, skipped = ticker_weights(edited.groupby("Asset")["Peso %"].sum().to_dict())
     with col_out:
         if not tw:
             st.info("Inserisci almeno una posizione con un ETF di riferimento.", icon=":material/edit:")
             return
-        r, spy = portfolio_returns(tw, px), px["SPY"].pct_change(fill_method=None)
-        rows = [(name, f"{month_it(pd.Timestamp(a), True)} – {month_it(pd.Timestamp(b), True)}", scenario(r, a, b), scenario(spy, a, b))
-                for name, (a, b) in SCENARIOS.items()]
-        ui(stress_html(rows, monte_carlo(r), MC_YEARS, skipped))
+        r, rt, spy = portfolio_returns(tw, px), trend_returns(tw, px), px["SPY"].pct_change(fill_method=None)
+        common = r.dropna().index.intersection(rt.dropna().index)
+        plain = summary(r.loc[common])
+        if plain:
+            ui(lab_html(plain, summary(rt.loc[common])))
+            line_chart({"Senza filtro": (100 * (1 + r.loc[common]).cumprod(), "r-defl"),
+                        "Con filtro": (100 * (1 + rt.loc[common]).cumprod(), "r-refl")}, key="lab", height=240, years=40)
+
+    def crisis(x: pd.Series, a: str, b: str) -> tuple | None:
+        sc = scenario(x, a, b)
+        return (*sc, recovery(x, a, b)) if sc else None
+    rows = [(name, f"{month_it(pd.Timestamp(a), True)} – {month_it(pd.Timestamp(b), True)}", crisis(r, a, b), crisis(rt, a, b),
+             crisis(spy, a, b)) for name, (a, b) in SCENARIOS.items()]
+    ui(stress_html(rows, monte_carlo(r), MC_YEARS, skipped))
 
 
 def page_ranking() -> None:

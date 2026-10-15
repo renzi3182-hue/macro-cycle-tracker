@@ -389,17 +389,25 @@ def portfolio_html(weights: dict, deltas: dict | None, title: str, subtitle: str
     )
 
 
-def trend_html(rows: list[tuple[str, str, float]], month: pd.Timestamp) -> str:
-    """rows: (asset class, ticker, distanza % dalla media a 10 mesi)."""
+def trend_html(rows: list[tuple[str, str, float, float | None]], month: pd.Timestamp) -> str:
+    """rows: (asset class, ticker, distanza % dalla media a 10 mesi, distanza il mese prima o None)."""
+    def change(d: float, prev: float | None) -> str:
+        if prev is None or pd.isna(prev) or (d > 0) == (prev > 0):
+            return ""
+        var = "r-gold" if d > 0 else "r-stag"
+        return f'<span class="chip tint" style="--c:var(--{var})">{"rientra" if d > 0 else "esce"}</span>'
     items = "".join(
         f'<div class="row">{_dot("var(--r-gold)" if d > 0 else "var(--r-stag)")}<span class="grow">{escape(a)} '
-        f'<span class="mono muted" style="font-size:12px">{escape(t)}</span></span>'
+        f'<span class="mono muted" style="font-size:12px">{escape(t)}</span></span>{change(d, prev)}'
         f'<span class="mono" style="color:var(--{"r-gold" if d > 0 else "r-stag"})">{f"{d:+.1f}".replace(".", ",").replace("-", "−")}%</span></div>'
-        for a, t, d in rows
+        for a, t, d, prev in rows
     )
+    changed = sum(1 for _, _, d, prev in rows if prev is not None and not pd.isna(prev) and (d > 0) != (prev > 0))
     return (f'<div class="si card"><div class="head"><h3>Tendenza</h3><span class="note">fine {month_it(month)}, prezzo vs media 10 mesi</span></div>'
+            f'<p>{"Nessun cambio" if not changed else "1 cambio" if changed == 1 else f"{changed} cambi"} rispetto al mese prima.</p>'
             f'<div class="list">{items}</div>'
-            '<p class="note">Rosso = sotto la media: con il filtro attivo quella quota va in cash. Nel backtest 2000-2026 il filtro ha '
+            '<p class="note">Rosso = sotto la media: con il filtro attivo quella quota va in cash. "Esce" e "rientra" = il segnale '
+            'è cambiato a fine mese, l\'unico momento in cui il filtro chiede di fare qualcosa. Nel backtest 2000-2026 il filtro ha '
             'ridotto il drawdown massimo del 55-75% (60/40 da −31% a −13%) e il rendimento di 0,1-0,9 punti l\'anno: '
             'protegge nei crolli lunghi, perde nei rimbalzi veloci.</p></div>')
 
@@ -603,22 +611,64 @@ def _pct_it(x: float, digits: int = 0) -> str:
     return f"{x * 100:+.{digits}f}".replace(".", ",").replace("-", "−") + "%"
 
 
-def stress_html(rows: list[tuple[str, str, tuple | None, tuple | None]], mc: dict | None, years: int, skipped: list[str]) -> str:
-    """rows: (crisi, periodo, (rendimento, drawdown) del portafoglio o None, idem S&P 500). mc: percentile -> valore di 100."""
-    items = "".join(
-        f'<div class="row"><span class="grow">{escape(name)} <span class="muted" style="font-size:12px">{escape(period)}</span></span>'
-        + (f'<span class="mono" style="color:var(--{"r-gold" if p[0] >= 0 else "r-stag"})" title="drawdown massimo {_pct_it(p[1])}">{_pct_it(p[0])}</span>'
-           if p else '<span class="muted" style="font-size:13px">n/d</span>')
-        + f'<span class="mono muted opt" style="font-size:12px;min-width:92px;text-align:right">S&amp;P {_pct_it(s[0]) if s else "n/d"}</span></div>'
-        for name, period, p, s in rows
-    )
-    band = (f'<p>Dopo {years} anni, 100 diventano <b class="mono">{mc[5]:.0f}</b> nel 5% dei casi peggiori, '
-            f'<b class="mono">{mc[50]:.0f}</b> a metà, <b class="mono">{mc[95]:.0f}</b> nel 5% migliore.</p>' if mc else "")
+def _months_it(n: int | None) -> str:
+    return "non ancora" if n is None else "subito" if n == 0 else f"{n} {'mese' if n == 1 else 'mesi'}"
+
+
+def lab_html(plain: dict, trend: dict | None) -> str:
+    """plain/trend: summary() di src/classify/stress.py del portafoglio senza e con filtro di tendenza."""
+    cols = [("Senza filtro", plain), *([("Con filtro di tendenza", trend)] if trend else [])]
+    head = "".join(f"<th>{name}</th>" for name, _ in cols)
+    rows = [("Oggi avresti", lambda x: f"{10000 * x['final']:,.0f} €".replace(",", ".")),
+            ("Guadagno medio all'anno", lambda x: _pct_it(x["cagr"], 1)),
+            ("Calo peggiore", lambda x: _pct_it(x["dd"])),
+            ("Attesa più lunga per tornare in pari", lambda x: "mai sotto" if x["under"] == 0 else _months_it(x["under"]))]
+    body = "".join(f"<tr><td>{label}</td>" + "".join(f"<td>{fmt(x)}</td>" for _, x in cols) + "</tr>" for label, fmt in rows)
+    verdict = ""
+    if trend:
+        diff = (trend["cagr"] - plain["cagr"]) * 100
+        verdict = (f'<p>Il filtro ha reso <b>{abs(diff):.1f} punti l\'anno {"in più" if diff >= 0 else "in meno"}</b>'.replace(".", ",", 1)
+                   + f' e ha portato il calo peggiore da <b class="mono">{_pct_it(plain["dd"])}</b> a <b class="mono">{_pct_it(trend["dd"])}</b>.</p>')
+    return (f'<div class="si card"><div class="head"><h3>Come sarebbe andata</h3><span class="note">da {month_it(plain["start"], True)} a oggi</span></div>'
+            f'<p>Se a {month_it(plain["start"])} avessi messo <b>10.000 €</b> nel portafoglio qui a fianco:</p>'
+            f'<div class="tbl"><table class="mtx"><tr><th></th>{head}</tr>{body}</table></div>{verdict}'
+            '<p class="note">Calo peggiore = quanto sei sceso, al massimo, da un picco. Attesa più lunga = il periodo più lungo passato '
+            'sotto un picco prima di superarlo. Il grafico sotto segue 100 € nel tempo. Ribilanciamento ogni mese, ETF in dollari, '
+            'senza costi né tasse; il filtro sposta in cash (SHY) ogni ETF sotto la sua media a 10 mesi.</p></div>')
+
+
+def stress_html(rows: list[tuple[str, str, tuple | None, tuple | None, tuple | None]], mc: dict | None, years: int, skipped: list[str]) -> str:
+    """rows: (crisi, periodo, (rendimento, drawdown, mesi per recuperare) del portafoglio o None, idem con filtro, idem S&P 500).
+    mc: percentile -> valore di 100."""
+    def back(n: int | None) -> str:
+        return "non ancora in pari" if n is None else "mai sotto la partenza" if n == 0 else f"in pari dopo {_months_it(n)}"
+
+    def cell(x: tuple | None, bold: bool = False) -> str:
+        if not x:
+            return '<td class="n">nessun dato</td>'
+        color = f' style="color:var(--{"r-gold" if x[0] >= 0 else "r-stag"})"' if bold else ""
+        return f'<td{color}>{_pct_it(x[0])}<br><span class="muted" style="font-size:11px">{back(x[2])}</span></td>'
+    body = "".join(f'<tr><td>{escape(name)}<br><span class="muted" style="font-size:12px">{escape(period)}</span></td>'
+                   f"{cell(p, True)}{cell(t, True)}{cell(s)}</tr>" for name, period, p, t, s in rows)
+    worst = min(((name, p, t) for name, _, p, t, _ in rows if p and t), key=lambda x: x[1][0], default=None)
+    example = ""
+    if worst:
+        name, p, t = worst
+        euro = lambda x: f"{10000 * (1 + x[0]):,.0f} €".replace(",", ".")
+        example = (f'<p>Esempio, {escape(name.lower())}: con 10.000 € saresti arrivato a <b class="mono">{euro(p)}</b> '
+                   f'senza filtro e a <b class="mono">{euro(t)}</b> con il filtro.</p>')
+    band = (f'<p>Guardando avanti, fra {years} anni 100 € potrebbero diventare circa <b class="mono">{mc[50]:.0f}</b>: '
+            f'<b class="mono">{mc[5]:.0f}</b> se va molto male, <b class="mono">{mc[95]:.0f}</b> se va molto bene.</p>' if mc else "")
     note = f" Esclusi perché senza ETF: {escape(', '.join(skipped))}." if skipped else ""
-    return (f'<div class="si card"><div class="head"><h3>Stress test</h3><span class="note">rendimento nella crisi</span></div>'
-            f'<div class="list">{items}</div>{band}'
-            '<p class="note">Ogni classe usa il suo ETF (azionario = SPY, cash = SHY), ribilanciamento mensile, niente costi. '
-            'n/d = qualche ETF non esisteva ancora. La banda ricampiona i mesi storici del portafoglio: '
+    return (f'<div class="si card"><div class="head"><h3>Grandi crolli</h3><span class="note">cosa sarebbe successo ai tuoi soldi</span></div>'
+            f'<p>Le {len(rows)} grandi discese della borsa dal 2007. Per ognuna: <b>quanto avresti perso o guadagnato</b> (sopra) e <b>dopo quanto '
+            'tempo saresti tornato alla cifra di partenza</b> (sotto).</p>'
+            '<div class="tbl"><table class="mtx"><tr><th></th><th>Il tuo portafoglio</th><th>Con filtro di tendenza</th>'
+            f'<th>Solo borsa USA</th></tr>{body}</table></div>{example}{band}'
+            '<p class="note">Con filtro di tendenza = vendi ciò che scende sotto la sua media a 10 mesi e lo ricompri quando torna sopra: '
+            'aiuta nei crolli lunghi, nei rimbalzi veloci ti fa ricomprare tardi. Solo borsa USA = tutto nell\'S&amp;P 500. '
+            'Nessun dato = qualche fondo non esisteva ancora.Ogni classe usa il suo ETF (azionario = SPY, '
+            'cash = SHY), ribilanciamento mensile, niente costi. La stima a 10 anni rimescola i mesi passati del portafoglio: '
             f'il passato non garantisce il futuro.{note}</p></div>')
 
 

@@ -1,7 +1,7 @@
 import pandas as pd
 
 from src.classify.rrg import GROUPS, quadrant, rrg, weekly_prices
-from src.classify.stress import monte_carlo, portfolio_returns, scenario, ticker_weights
+from src.classify.stress import monte_carlo, portfolio_returns, recovery, scenario, summary, ticker_weights, trend_returns
 
 
 def _px(**cols):
@@ -20,6 +20,25 @@ def test_scenario_return_drawdown_and_missing_data():
     ret, dd = scenario(r, "2007-11", "2008-01")
     assert round(ret, 4) == round(0.95 * 0.95 * (1 + 0.5 * (90 / 81 - 1)) - 1, 4) and dd < ret
     assert scenario(r, "2007-08", "2007-12") is None  # mese prima dei dati
+
+
+def test_trend_returns_move_to_cash_below_average():
+    spy = [100.0 + i for i in range(12)] + [80.0, 70.0, 75.0]  # crolla dopo 12 mesi di salita
+    px = _px(SPY=spy, SHY=[100 * 1.001 ** i for i in range(15)])
+    rt, r = trend_returns({"SPY": 1.0}, px), portfolio_returns({"SPY": 1.0}, px)
+    assert rt.iloc[:10].isna().all()  # media a 10 mesi non ancora disponibile il mese prima
+    assert rt.iloc[12] == r.iloc[12]  # a fine mese 11 era sopra la media: il crollo si prende
+    assert round(rt.iloc[13], 6) == round(rt.iloc[14], 6) == 0.001  # poi in SHY
+
+
+def test_summary_and_recovery():
+    r = pd.Series([0.1, -0.5, 0.5, 0.4] + [0.0] * 20, index=pd.date_range("2000-01-01", periods=24, freq="MS"))
+    s = summary(r)
+    assert round(s["dd"], 2) == -0.5 and s["under"] == 2 and s["start"] == r.index[0] and round(s["final"], 3) == 1.155
+    assert recovery(r, "2000-02", "2000-02") == 3  # 0.5 * 1.5 * 1.4 = 1.05 al terzo mese
+    assert recovery(r, "2000-03", "2000-04") == 0 and recovery(r.iloc[:3], "2000-02", "2000-02") is None
+    assert recovery(pd.concat([r.iloc[:4], pd.Series([-0.9], index=[r.index[4]])]), "2000-03", "2000-04") == 0  # crollo dopo la crisi
+    assert summary(r.head(12)) is None
 
 
 def test_monte_carlo_is_ordered_and_needs_history():

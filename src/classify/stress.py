@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from src.classify.score import TREND_MONTHS
 from src.config.asset_allocation import CASH, TREND_PROXY
 
 # Stress test di un portafoglio per classi di asset (06/10/2026): rendimento nelle crisi passate e banda Monte Carlo.
@@ -8,9 +9,9 @@ from src.config.asset_allocation import CASH, TREND_PROXY
 # (credito corporate) escono e i pesi si rinormalizzano. Ribilanciamento mensile, niente costi.
 # Gli ETF partono fra il 1993 (SPY) e il 2006 (DBC): una crisi senza dati per tutti gli asset resta n/d.
 PROXY = {**TREND_PROXY, CASH: "SHY"}
-# Crisi: dal mese dopo il massimo dell'S&P 500 al minimo, a fine mese
+# Crisi: dal mese dopo il massimo dell'S&P 500 al minimo, a fine mese. Niente bolla internet (2000-2002): gli ETF di
+# obbligazioni, oro e materie prime partono dopo, quasi nessun portafoglio aveva dati.
 SCENARIOS = {
-    "Bolla internet": ("2000-09", "2002-09"),
     "Crisi finanziaria": ("2007-11", "2009-02"),
     "Crisi dell'euro": ("2011-05", "2011-09"),
     "Covid": ("2020-02", "2020-03"),
@@ -38,6 +39,41 @@ def portfolio_returns(tw: dict, px: pd.DataFrame) -> pd.Series:
     """Rendimento mensile ribilanciato; NaN nei mesi in cui manca anche un solo ETF."""
     r = px[list(tw)].pct_change(fill_method=None)
     return r.mul(pd.Series(tw)).sum(axis=1, min_count=len(tw)).where(r.notna().all(axis=1))
+
+
+def trend_returns(tw: dict, px: pd.DataFrame) -> pd.Series:
+    """Come portfolio_returns, ma un ETF sotto la media a TREND_MONTHS mesi a fine mese passa in SHY il mese dopo
+    (stessa regola di scripts/backtest_assets.py). NaN finche' la media non esiste per tutti gli ETF."""
+    cols = list(tw)
+    r = px.pct_change(fill_method=None)
+    ma = px[cols].rolling(TREND_MONTHS).mean().shift(1)
+    held = r[cols].where(px[cols].shift(1) > ma, r[PROXY[CASH]], axis=0).where(ma.notna())
+    return held.mul(pd.Series(tw)).sum(axis=1, min_count=len(tw)).where(held.notna().all(axis=1))
+
+
+def summary(r: pd.Series) -> dict | None:
+    """Rendimento annuo, valore finale di 1, drawdown massimo e striscia piu' lunga di mesi sotto il massimo precedente.
+    None sotto 2 anni."""
+    r = r.dropna()
+    if len(r) < 24:
+        return None
+    wealth = (1 + r).cumprod()
+    under = wealth < wealth.cummax().clip(lower=1)
+    return {"start": r.index[0], "final": wealth.iloc[-1], "cagr": wealth.iloc[-1] ** (12 / len(r)) - 1,
+            "dd": min(0.0, (wealth / wealth.cummax().clip(lower=1) - 1).min()),
+            "under": int(under.groupby((~under).cumsum()).sum().max())}
+
+
+def recovery(r: pd.Series, start: str, end: str) -> int | None:
+    """Mesi da inizio crisi a quando il portafoglio, dopo il minimo dentro la crisi, torna al valore di partenza; None se
+    non ci e' ancora tornato."""
+    wealth = (1 + r.loc[start:].dropna()).cumprod()
+    crisis = wealth.loc[:end]
+    if crisis.empty or crisis.min() >= 1:
+        return 0
+    after = wealth.loc[crisis.idxmin():]
+    back = after[after >= 1]
+    return None if back.empty else wealth.index.get_loc(back.index[0]) + 1
 
 
 def scenario(r: pd.Series, start: str, end: str) -> tuple[float, float] | None:

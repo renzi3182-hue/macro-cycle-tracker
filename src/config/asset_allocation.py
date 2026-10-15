@@ -101,6 +101,15 @@ ALL_WEATHER_WEIGHTS = {
     "Materie prime": 7.5,
 }
 
+# Portafogli pigri (15/10/2026): pesi fissi da confrontare con e senza filtro di tendenza nella pagina Portafoglio.
+# Ogni classe usa l'ETF dello stress test (src/classify/stress.py), quindi sono approssimazioni: nel Golden Butterfly
+# small cap value e Treasury brevi diventano azionario (SPY) e cash (SHY).
+LAZY_PORTFOLIOS = {
+    "60/40": {"Azionario": 60.0, "Obbligazioni medio termine": 40.0},
+    "Permanent": {"Azionario": 25.0, "Obbligazioni governative lunga durata": 25.0, "Oro": 25.0, "Cash": 25.0},
+    "Golden Butterfly": {"Azionario": 40.0, "Obbligazioni governative lunga durata": 20.0, "Oro": 20.0, "Cash": 20.0},
+}
+
 
 # Filtro di tendenza (scripts/backtest_assets.py, 06/10/2026): un asset sotto la sua media a 10 mesi va in cash.
 # 2000-2026 su 4 portafogli: drawdown massimo -55/75%, rendimento -0,1/0,9 punti l'anno. Riduce il rischio, non
