@@ -184,9 +184,9 @@ def asset_matrix_html(phases: dict[str, str | None]) -> str:
                 return f'<span class="mx" style="--c:var(--{var})">{mark} {escape(extra)}</span>'
         return '<span class="mx"></span>'
     order = sorted(phases.items(), key=lambda kv: PHASES.index(kv[1]) if kv[1] in PHASES else len(PHASES))
-    head = "<span></span><span></span>" + "".join(f'<span class="eyebrow" style="text-align:center">{escape(a)}</span>' for a in MATRIX_ASSETS)
+    head = '<span></span><span class="ph"></span>' + "".join(f'<span class="eyebrow" style="text-align:center">{escape(a)}</span>' for a in MATRIX_ASSETS)
     rows = "".join(
-        f'<b>{escape(area)}</b><span class="mono" style="font-size:12px;color:{phase_color(p)}">{escape(p or "n/d")}</span>'
+        f'<b style="--c:{phase_color(p)}" title="{escape(p or "n/d")}">{escape(area)}</b><span class="mono ph" style="font-size:12px;color:{phase_color(p)}">{escape(p or "n/d")}</span>'
         + "".join(cell(p, a) for a in MATRIX_ASSETS) for area, p in order)
     return f'<div style="overflow-x:auto"><div class="mxg">{head}{rows}</div></div>'
 

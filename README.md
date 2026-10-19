@@ -35,7 +35,7 @@ Se un'area fallisce, l'update la salta e continua con le altre (vedi `src/schedu
 
 ## Aggiornamento automatico
 
-In produzione: il workflow `.github/workflows/update-data.yml` gira ogni 30 minuti nei giorni feriali (una volta nel weekend), aggiorna `data/cache.db` e la pubblica come asset della release `data-latest`; l'app la scarica all'avvio se è più recente di quella locale (`src/data/sync.py`).
+In produzione: il workflow `.github/workflows/update-data.yml` gira ogni 30 minuti nei giorni feriali solo per macro e calendario (`--macro-only`), completo alle 21:45 UTC dopo la chiusura USA e una volta nel weekend, aggiorna `data/cache.db` e la pubblica come asset della release `data-latest`; l'app la scarica all'avvio se è più recente di quella locale (`src/data/sync.py`).
 
 In locale, facoltativo, con Windows Task Scheduler (modifica di sistema, da fare a mano):
 
@@ -58,16 +58,15 @@ In locale, facoltativo, con Windows Task Scheduler (modifica di sistema, da fare
 
 ```bash
 .venv\Scripts\python scripts/backtest_nber.py            # segnali di recessione USA vs date NBER
-.venv\Scripts\python scripts/backtest_alfred.py          # stessi segnali con i dati real-time ALFRED
 .venv\Scripts\python scripts/backtest_leading_intl.py    # anticipatori fuori USA vs rallentamenti OCSE
-.venv\Scripts\python scripts/backtest_assets.py [--alfred]  # regime -> rendimenti asset
+.venv\Scripts\python scripts/backtest_assets.py          # regime -> rendimenti asset
 .venv\Scripts\python scripts/backtest_currency.py        # punteggio valute (legge la cache)
 .venv\Scripts\python scripts/evaluate_intermarket.py    # fase di Murphy e allineamento macro/mercati dal 2000
 ```
 
 ## Pagine
 
-Macro: Panoramica, Aree (regime mese per mese e fase del ciclo come punto sull'onda), Metodo. Mercati: Classifica, Mercati, Intermarket (fase di Murphy, allineamento con la fase del ciclo USA, le quattro relazioni del libro, matrice delle correlazioni, cosa ha funzionato storicamente nella stessa situazione), COT report, Valute, Calendario. Strumenti: Portafoglio, Size Monte Carlo, Interesse composto.
+Oggi (pagina iniziale: fase del ciclo e asset per area, nervosismo e tendenza). Macro: Aree (regime mese per mese e fase del ciclo come punto sull'onda), Metodo. Mercati: Classifica, Mercati (VIX, MOVE, inflazione attesa, prossimi eventi, le quattro relazioni intermarket del libro), COT report, Valute, Calendario. Strumenti: Portafoglio, Size Monte Carlo, Interesse composto.
 
 ## Stato deploy
 

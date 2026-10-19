@@ -5,8 +5,9 @@ name: update-data
 
 on:
   schedule:
-    - cron: "*/30 6-21 * * 1-5"  # giorni feriali, ogni 30 minuti (UTC): copre le uscite USA ed europee
-    - cron: "0 8 * * 0,6"  # weekend: una volta
+    - cron: "*/30 6-21 * * 1-5"  # giorni feriali, ogni 30 minuti (UTC): solo macro e calendario, copre le uscite USA ed europee
+    - cron: "45 21 * * 1-5"  # dopo la chiusura USA: run completo con mercati, COT, valute ed ETF
+    - cron: "0 8 * * 0,6"  # weekend: una volta, completo
   workflow_dispatch:
 
 concurrency:
@@ -34,7 +35,7 @@ jobs:
       - name: Parti dalla cache pubblicata (storico dei cambi di regime)
         run: gh release download data-latest -p cache.db -D data --clobber || echo "nessuna release, uso la cache del repo"
       - id: update
-        run: python -m src.scheduler.update_data
+        run: python -m src.scheduler.update_data ${{ github.event.schedule == '*/30 6-21 * * 1-5' && '--macro-only' || '' }}
       - name: Pubblica la cache
         # anche se l'update esce con errore (FRED giu'): le altre fonti sono comunque aggiornate
         if: ${{ !cancelled() && steps.update.outcome != 'skipped' }}

@@ -207,6 +207,10 @@ __DONUT_TIPS__
 @media (prefers-reduced-motion: no-preference) {
   .si .card { animation: si-in .35s ease-out both; }
 }
+/* Streamlit sbiadisce la pagina a 0,33 a ogni rerun: lampeggia anche quando il rerun dura 100 ms. Qui si sbiadisce
+   poco e solo se il rerun supera 0,4 s; al ritorno l'opacita' torna piena subito. */
+[data-stale="true"] { opacity: .7 !important; transition: opacity .25s ease .4s !important; }
+[data-stale="false"] { transition: none !important; }
 @keyframes si-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 640px) {
   .si .card { padding: 18px; }
@@ -217,6 +221,13 @@ __DONUT_TIPS__
   .si .prow { grid-template-columns: 96px minmax(0, 1fr) 40px; }
   .si .arow { grid-template-columns: 22px minmax(0, 1fr) 52px 32px; }
   .si .arow .opt { display: none; }
+  .si .wave-a { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
+  .si .wave .wl { font-size: 11px; padding: 1px 5px; }
+  .si .mxg { grid-template-columns: minmax(64px, 1fr) repeat(4, minmax(0, 1fr)); min-width: 0; gap: 5px; font-size: 13px; }
+  .si .mxg .ph { display: none; }
+  .si .mxg > b { color: var(--c); }
+  .si .mxg .eyebrow { font-size: 9px; letter-spacing: .02em; }
+  .si .mx { height: auto; min-height: 34px; padding: 4px 2px; font-size: 11px; line-height: 1.2; text-align: center; }
 }
 """
 

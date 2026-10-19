@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 MARKET_AREA = "Mercati"
 CALENDAR_AREA = "Calendario"
 FX_AREA = "Valute"
+SLOW_AREAS = {MARKET_AREA, FX_AREA, score.ASSET_AREA, intermarket.AREA}  # aggiornate solo nel run completo
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 # Fetch falliti in questo run: mostrati in app (src/app.py), senza query string (puo' contenere api_key:
@@ -185,6 +186,9 @@ def update_market_context(fred_key: str) -> None:
             logger.exception("valute %s: fetch fallito, salto e continuo", indicator)
             _record_failure(FX_AREA, indicator, e)
 
+
+def update_calendar(fred_key: str) -> None:
+    """Calendario della settimana (Forex Factory, con i dati usciti) e date future di FOMC e rilasci FRED."""
     # Calendario eventi: le date future stanno come indicatori (valore 1.0) sotto CALENDAR_AREA.
     events = {"FOMC": fetch_calendar.fetch_fomc_dates}
     try:
@@ -225,7 +229,10 @@ def update_intermarket(fred_key: str) -> None:
             _record_failure(intermarket.AREA, name, e)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    """--macro-only: solo dati macro e calendario (escono durante il giorno); mercati, COT, valute e ETF hanno
+    chiusure giornaliere o settimanali e si aggiornano nel run completo della sera."""
+    macro_only = "--macro-only" in (sys.argv[1:] if argv is None else argv)
     _load_dotenv()
     cache.migrate_phase_names("Ripresa", cycle.RECOVERY_BELOW_TREND)
     FETCH_FAILURES.clear()
@@ -236,9 +243,14 @@ def main() -> None:
             update_area(area, indicator_fetchers)
         except Exception:
             logger.exception("update fallito per area %s, salto e continuo", area)
-    update_market_context(fred_key)
-    update_asset_prices()
-    update_intermarket(fred_key)
+    update_calendar(fred_key)
+    if macro_only:
+        # i fallimenti dell'ultimo run completo restano visibili finche' quelle fonti non si riprovano
+        FETCH_FAILURES.extend(f for f in json.loads(cache.read_meta("fetch_failures") or "[]") if f["area"] in SLOW_AREAS)
+    else:
+        update_market_context(fred_key)
+        update_asset_prices()
+        update_intermarket(fred_key)
     cache.write_meta("updated_at", datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"))
     cache.write_meta("fetch_failures", json.dumps(FETCH_FAILURES))
     if fetch_fred.calls["tried"] and not fetch_fred.calls["ok"]:

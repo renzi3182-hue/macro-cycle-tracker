@@ -16,7 +16,6 @@ headingFontWeights = [800, 800, 600, 600, 600, 600]
 linkUnderline = false
 
 [theme.dark]
-base = "dark"
 primaryColor = "#5EEAD4"
 backgroundColor = "#0F1720"
 secondaryBackgroundColor = "#172330"
@@ -43,7 +42,6 @@ textColor = "#EAF2F5"
 borderColor = "#25384A"
 
 [theme.light]
-base = "light"
 primaryColor = "#0A7F70"
 backgroundColor = "#F3F8F8"
 secondaryBackgroundColor = "#FFFFFF"
@@ -68,6 +66,10 @@ backgroundColor = "#F3F8F8"
 secondaryBackgroundColor = "#FFFFFF"
 textColor = "#0F1720"
 borderColor = "#D3E2E6"
+
+# Niente pulsante Deploy ne' menu sviluppatore per chi visita.
+[client]
+toolbarMode = "minimal"
 
 # Niente statistiche d'uso inviate a Streamlit dal browser dei visitatori.
 [browser]
