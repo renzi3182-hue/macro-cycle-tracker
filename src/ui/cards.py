@@ -9,12 +9,13 @@ import pandas as pd
 from src.classify.assess import label_regimes, run_start
 from src.classify.cycle import PHASES
 from src.classify.regime import REGIMES
+from src.classify.risk import CANARY, LABELS as RISK_LABELS
 from src.classify.score import STRONG, WEAK
+from src.config.asset_allocation import PHASE_ASSETS
 from src.ui.theme import DONUT_SLOTS, WAVE_AMPLITUDE, phase_color, regime_color
 
 MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
 WEIGHT_VARS = ["accent", "r-gold", "r-defl", "r-refl", "r-stag", "muted"]
-CONFIDENCE_STEPS = {"Bassa": 1, "Media": 2, "Alta": 3}
 RIBBON_MONTHS = 36
 
 
@@ -54,12 +55,6 @@ def hero_html(eyebrow: str, title: str, lead: str) -> str:
     return f'<div class="hero"><span class="eyebrow">{escape(eyebrow)}</span><h1>{title}</h1><p class="lead">{lead}</p></div>'
 
 
-def solidity_html(confidence: str) -> str:
-    n = CONFIDENCE_STEPS.get(confidence, 0)
-    bars = "".join(f'<i class="{"on" if k < n else ""}"></i>' for k in range(3))
-    return f'<span class="solid" title="Solidità della lettura: quanto i due assi sono lontani dalla soglia di cambio">' \
-           f'<span role="img" aria-label="solidità {escape(confidence.lower())}">{bars}</span>Solidità {escape(confidence.lower())}</span>'
-
 
 def ribbon_html(values: pd.Series, color, months: int = RIBBON_MONTHS, thin: bool = False, ticks: bool = True) -> str:
     """Nastro mensile (dal piu' vecchio a oggi). color: funzione valore -> colore CSS."""
@@ -72,21 +67,6 @@ def ribbon_html(values: pd.Series, color, months: int = RIBBON_MONTHS, thin: boo
         out += f'<div class="ticks"><span>{month_it(v.index[0], True)}</span><span>{month_it(v.index[-1], True)}</span></div>'
     return out
 
-
-def area_tile_html(a: dict, href: str) -> str:
-    """a: risultato di assess() + chiave 'label'."""
-    color = regime_color(a["regime_label"])
-    phase = a["phase"] or "n/d"
-    alert = f'<span class="chip tint" style="--c:var(--r-refl)">Dati in ritardo</span>' if a["stale"] else ""
-    return (
-        f'<a class="card tile" href="{escape(href)}" target="_self">'
-        f'<div class="head"><span class="eyebrow">{escape(a["label"])}</span>'
-        f'<span class="chip tint" style="--c:{phase_color(a["phase"])}">{escape(phase)}</span></div>'
-        f'<div class="regime">{_dot(color)}<span style="color:{color}">{escape(a["regime_label"])}</span></div>'
-        f'<div class="meta"><span>da <b>{month_it(a["regime_since"])}</b></span>{alert}</div>'
-        f'{solidity_html(a["confidence"])}'
-        f'{ribbon_html(a["history"]["regime"], regime_color)}</a>'
-    )
 
 
 def legend_html() -> str:
@@ -107,38 +87,6 @@ def _place_labels(pts: list[dict]) -> None:
                 p["ly"] = q["ly"] + LABEL_GAP_Y
         placed.append(p)
 
-
-def quadrant_html(areas: list[dict], codes: dict[str, str]) -> str:
-    """Posizione di ogni area: x = inflazione, y = crescita, in unita' di banda (+-1 = soglia). Div in %, niente svg."""
-    edge, fill = 2.5, 0.9
-
-    def pct(v):
-        return 50 + max(-edge, min(edge, v)) / edge * 50 * fill
-
-    quads = [("Goldilocks", "top:0;left:0"), ("Reflazione", "top:0;left:50%"),
-             ("Stagflazione", "top:50%;left:50%"), ("Deflazione", "top:50%;left:0")]
-    labels = [("Goldilocks", "top:10px;left:12px"), ("Reflazione", "top:10px;right:12px"),
-              ("Stagflazione", "bottom:10px;right:12px"), ("Deflazione", "bottom:10px;left:12px")]
-    out = ['<div class="quad" role="img" aria-label="Quadrante crescita e inflazione">']
-    out += [f'<div class="q" style="{pos};background:color-mix(in srgb,{regime_color(r)} 13%,transparent)"></div>' for r, pos in quads]
-    out.append('<div class="ax-v"></div><div class="ax-h"></div>')
-    out += [f'<span class="ql" style="{pos};color:{regime_color(r)}">{r}</span>' for r, pos in labels]
-    out.append('<span class="ql" style="bottom:32px;right:12px;font-weight:500">inflazione →</span>')
-    out.append('<span class="ql" style="top:34px;left:calc(50% + 8px);font-weight:500">↑ crescita</span>')
-    pts = []
-    for a in areas:
-        xg, xi = a["positions"]
-        pts.append({"a": a, "x": pct(xi), "y": 100 - pct(xg), "left": pct(xi) > 60})
-    _place_labels(pts)
-    for p in pts:
-        a = p["a"]
-        xg, xi = a["positions"]
-        tip = escape(f'{a["label"]}: {a["regime_label"]} (crescita {xg:+.1f}, inflazione {xi:+.1f}; 0 = soglia)')
-        side = f'right:calc({100 - p["x"]:.1f}% + 12px)' if p["left"] else f'left:calc({p["x"]:.1f}% + 12px)'
-        out.append(f'<div class="pt" title="{tip}" style="left:{p["x"]:.1f}%;top:{p["y"]:.1f}%;background:{regime_color(a["regime_label"])}"></div>'
-                   f'<b class="pl" style="{side};top:{min(p["ly"], 96):.1f}%">{escape(codes.get(a["area"], a["area"]))}</b>')
-    out.append("</div>")
-    return "".join(out)
 
 
 def prob_html(p_inflation: float, estimate: str | None = None) -> str:
@@ -173,78 +121,99 @@ def axis_card_html(eyebrow: str, state: str, state_var: str, value: str, value_n
     )
 
 
-REGIME_MEANING = {"Goldilocks": "crescita accelera, inflazione bassa", "Reflazione": "crescita accelera, inflazione alta",
-                  "Stagflazione": "crescita rallenta, inflazione alta", "Deflazione": "crescita rallenta, inflazione bassa"}
-
 
 def level_var(v: float) -> str:
     """Colore di un valore 0-100 dove alto = bene: sotto 40 rosso, da 60 verde (come le fasce del Risk On/Off)."""
     return "r-gold" if v >= 60 else "r-stag" if v < 40 else "r-refl"
 
 
-def _regime_paint(label: str, alpha: int = 100, angle: int = 90) -> str:
-    """Colore di un'etichetta di regime; un'area incerta e' meta' e meta' dei suoi due regimi."""
-    cs = [f"color-mix(in srgb, {regime_color(r)} {alpha}%, transparent)" for r in label_regimes(label)]
-    return cs[0] if len(cs) == 1 else f"linear-gradient({angle}deg, {cs[0]} 50%, {cs[1]} 50%)"
 
-
-def story_card_html(eyebrow: str, title: str, title_var: str, say: str, body: str, note: str = "") -> str:
-    """Card della Panoramica: lo stato, una frase semplice e il dettaglio che la spiega."""
+def stat_tile_html(href: str, eyebrow: str, value: int, total: int, state: str, color: str, bar: str, note: str) -> str:
+    """Card in alto nella pagina Oggi: un numero su un totale, lo stato a parole e una barra; porta al dettaglio.
+    `note` e' HTML gia' pronto."""
     return (
-        f'<div class="si card"><span class="eyebrow">{escape(eyebrow)}</span>{_big_state(title, f"var(--{title_var})")}'
-        f'<p class="say">{escape(say)}</p>{body}' + (f'<p class="note">{escape(note)}</p>' if note else "") + "</div>"
+        f'<a class="card tile" href="{escape(href)}" target="_self"><span class="eyebrow">{escape(eyebrow)}</span>'
+        f'<div class="total" style="border-top:0;padding-top:0;flex-wrap:wrap"><span class="big" style="font-size:44px;line-height:48px">{value}</span>'
+        f'<span class="muted" style="font-size:16px">/{total}</span>'
+        f'<span style="font-size:20px;font-weight:800;color:{color}">{escape(state)}</span></div>{bar}<p class="note">{note}</p></a>'
     )
 
 
-def answer_card_html(href: str, question: str, score: float, state: str, say: str, body: str, note: str) -> str:
-    """Card della pagina Oggi: una domanda, un punteggio 1-100 (alto = favorevole) e il dettaglio; tutta la card
-    porta alla pagina di approfondimento."""
-    s = max(1, round(score))
+def phase_bar_html(phases: dict[str, str | None]) -> str:
+    """Un segmento per fase, largo quanto i paesi che ci stanno, nell'ordine di PHASES."""
+    n = Counter(phases.values())
+    return '<div class="seg">' + "".join(
+        f'<i style="flex:{n[p]};background:{phase_color(p)}"></i>' for p in PHASES if n[p]) + "</div>"
+
+
+def _assets(items: list[str]) -> str:
+    return ", ".join(i.replace(" {paese}", "") for i in items)
+
+
+def cycle_wave_html(phases: dict[str, str | None]) -> str:
+    """Onda del ciclo (come wave_html) con un punto per paese, sparsi nel quarto della loro fase; etichette alternate
+    sopra e sotto per non sovrapporsi. Sotto, per fase, quanti paesi e gli asset da pesare di piu' e di meno."""
+    pts, cols = [], []
+    for i, p in enumerate(PHASES):
+        areas = [a for a, x in phases.items() if x == p]
+        for j, area in enumerate(areas):
+            x = 25 * i + 25 * (j + 1) / (len(areas) + 1)
+            pos = f"left:{x:.1f}%;top:{50 - WAVE_AMPLITUDE * sin(2 * pi * x / 100):.1f}%"
+            pts.append(f'<b style="{pos};background:{phase_color(p)}"></b><span class="wl{" dn" if j % 2 else ""}" style="{pos}">{escape(area)}</span>')
+        good, bad = PHASE_ASSETS.get(p, ([], []))
+        cols.append(
+            f'<div style="{"" if areas else "opacity:.5"}"><b style="color:{phase_color(p)}">{escape(p)} · {len(areas)}</b>'
+            f'<span style="color:var(--r-gold)">+ {escape(_assets(good))}</span><span style="color:var(--r-stag)">− {escape(_assets(bad))}</span></div>')
+    label = ", ".join(f"{a}: {x}" for a, x in phases.items())
+    return (f'<div class="wave many" role="img" aria-label="{escape(label)}"><div class="mid"><span>trend</span></div><i></i>{"".join(pts)}</div>'
+            f'<div class="wave-l wave-a">{"".join(cols)}</div>')
+
+
+MATRIX_ASSETS = ["Azionario", "Materie prime", "Oro", "Titoli di Stato"]
+
+
+def asset_matrix_html(phases: dict[str, str | None]) -> str:
+    """Paesi per riga (in ordine di fase), asset per colonna: freccia su = piu' peso, giu' = meno peso (PHASE_ASSETS),
+    con l'aggettivo che distingue l'azionario (ciclico, difensivo)."""
+    def cell(phase: str | None, asset: str) -> str:
+        good, bad = PHASE_ASSETS.get(phase, ([], []))
+        for items, mark, var in ((good, "▲", "r-gold"), (bad, "▼", "r-stag")):
+            hit = next((i for i in items if i.startswith(asset)), None)
+            if hit:
+                extra = hit.replace("{paese}", "").removeprefix(asset).strip()
+                return f'<span class="mx" style="--c:var(--{var})">{mark} {escape(extra)}</span>'
+        return '<span class="mx"></span>'
+    order = sorted(phases.items(), key=lambda kv: PHASES.index(kv[1]) if kv[1] in PHASES else len(PHASES))
+    head = "<span></span><span></span>" + "".join(f'<span class="eyebrow" style="text-align:center">{escape(a)}</span>' for a in MATRIX_ASSETS)
+    rows = "".join(
+        f'<b>{escape(area)}</b><span class="mono" style="font-size:12px;color:{phase_color(p)}">{escape(p or "n/d")}</span>'
+        + "".join(cell(p, a) for a in MATRIX_ASSETS) for area, p in order)
+    return f'<div style="overflow-x:auto"><div class="mxg">{head}{rows}</div></div>'
+
+
+def risk_explain_html(score: float, state: str, when: str, parts: list[tuple[str, str, float]], alarm: bool) -> str:
+    """Spiega il punteggio Risk On/Off: la scala a cinque fasce con il segno sul valore, cosa misura e cosa non
+    misura, le cinque componenti e il canarino (fuori dal punteggio)."""
+    s = round(score)
+    low = min(parts, key=lambda x: x[2])
+    bands = "".join(f'<span class="{"on" if lab == state else ""}">{lo}<br>{escape(lab)}</span>'
+                    for lo, lab in zip(range(0, 100, 20), RISK_LABELS))
+    canary = ("<b style=\"color:var(--r-refl)\">in allarme</b>: le obbligazioni legate all'inflazione scendono, spesso prima "
+              "delle tensioni sul resto del mercato" if alarm else "<b>tranquillo</b>: le obbligazioni legate all'inflazione tengono")
     return (
-        f'<a class="card tile" href="{escape(href)}" target="_self"><span class="eyebrow">{escape(question)}</span>'
-        f'<div class="total" style="border-top:0;padding-top:0"><span class="big" style="font-size:56px;line-height:60px;'
-        f'color:var(--{level_var(s)})">{s}</span><span class="muted" style="font-size:13px">/100</span></div>'
-        f'<div class="track"><i style="width:{s}%;background:var(--{level_var(s)})"></i></div>'
-        f'{_big_state(state, "var(--fg)")}<p class="say">{escape(say)}</p>{body}<p class="note">{escape(note)}</p></a>'
+        f'<div class="si card"><span class="eyebrow">Cosa vuol dire {s}/100 · al {escape(when)}</span>'
+        f'<div class="rscale"><div class="seg"><i style="background:var(--r-stag)"></i><i style="background:color-mix(in srgb,var(--r-stag) 45%,var(--raised))"></i>'
+        f'<i style="background:var(--raised)"></i><i style="background:color-mix(in srgb,var(--r-gold) 45%,var(--raised))"></i><i style="background:var(--r-gold)"></i></div>'
+        f'<b style="left:{s}%"></b></div><div class="rbands">{bands}</div>'
+        f'<p class="say"><b>{s}</b> è la media di cinque misure di calma dei mercati. Ognuna va da 0 (il momento più teso della '
+        f'sua storia) a 100 (il più calmo): 50 è una giornata normale. Oggi: <b>{escape(state)}</b>. La misura più bassa '
+        f'è <b>{escape(low[0].lower())}</b> ({low[2]:.0f}).</p>'
+        '<p class="say">Dice <b>quanto può oscillare la borsa</b> nel mese dopo, non se salirà: dal 2012, sotto 20 l\'S&amp;P 500 '
+        'ha oscillato al 30% annuo, sopra 80 all\'11%.</p>'
+        f'<div>{bar_rows_html(parts)}</div>'
+        f'<p class="note">Canarino {CANARY} {canary}. Non entra nel punteggio.</p></div>'
     )
 
-
-def phase_actions_html(eyebrow: str, rows: list[tuple[str, str, str | None, list[str], list[str]]], note: str) -> str:
-    """Card della pagina Oggi: per area (nome, valuta, fase) gli asset da pesare di piu' (verde) e di meno (rosso)."""
-    def chips(label: str, items: list[str], var: str) -> str:
-        return f'<div class="chips" style="align-items:center"><span class="muted" style="min-width:76px">{label}</span>' + "".join(
-            f'<span class="chip tint" style="--c:var(--{var})">{escape(i)}</span>' for i in items) + "</div>" if items else ""
-    out = "".join(
-        f'<div class="grp"><div class="top"><b>{escape(area)}</b><small class="mono">{escape(ccy)}</small>'
-        f'<span class="chip tint" style="--c:{phase_color(phase)}">{escape(phase or "n/d")}</span></div>'
-        f'{chips("Più peso", good, "r-gold")}{chips("Meno peso", bad, "r-stag")}</div>'
-        for area, ccy, phase, good, bad in rows)
-    return (f'<div class="si card"><span class="eyebrow">{escape(eyebrow)}</span>'
-            '<p class="say">Per ogni paese e la sua valuta: la fase del ciclo e gli asset che in quella fase hanno reso di più '
-            'e di meno.</p>'
-            f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));column-gap:28px">{out}</div>'
-            f'<p class="note">{escape(note)}</p></div>')
-
-
-def regime_groups_html(regimes: dict[str, str]) -> str:
-    """Una riga per regime con le sue aree, dal piu' diffuso (a parita' l'ordine delle aree, come prevailing_regime);
-    le incerte per coppia di regimi, i regimi senza aree in fondo."""
-    groups: dict[str, list[str]] = {}
-    for area, label in regimes.items():
-        groups.setdefault(label, []).append(area)
-    rows = sorted(groups.items(), key=lambda g: -len(g[1])) + [(r, []) for r in REGIMES if r not in groups]
-    out = []
-    for label, areas in rows:
-        pair = label_regimes(label)
-        name, meaning = ("Incerte", f"fra {pair[0]} e {pair[1]}") if len(pair) > 1 else (label, REGIME_MEANING[label])
-        ink = "var(--fg)" if len(pair) > 1 else regime_color(label)
-        chips = "".join(f'<span class="chip" style="background:{_regime_paint(label, 22, 135)};color:{ink}">{escape(a)}</span>' for a in areas)
-        out.append(
-            f'<div class="grp"><div class="top"><i class="dot" style="background:{_regime_paint(label)}"></i><b>{escape(name)}</b>'
-            f'<small>{escape(meaning)}</small><span class="mono">{len(areas)}</span></div>'
-            f'<div class="chips">{chips or "<span class=muted>nessuna area</span>"}</div></div>'
-        )
-    return "".join(out)
 
 
 def bar_rows_html(rows: list[tuple[str, str, float]]) -> str:
@@ -255,24 +224,6 @@ def bar_rows_html(rows: list[tuple[str, str, float]]) -> str:
         for label, note, v in rows
     )
 
-
-def group_rows_html(groups: dict[str, list[tuple[str, bool]]]) -> str:
-    """Per gruppo, (nome, in salita?) di ogni elemento: quanti in salita su quanti e un segmento per elemento."""
-    out = []
-    for group, items in groups.items():
-        segs = "".join(f'<i title="{escape(n)}" style="background:{"var(--r-gold)" if up else "color-mix(in srgb, var(--r-stag) 30%, transparent)"}"></i>'
-                       for n, up in items)
-        out.append(f'<div class="brow"><span>{escape(group)}</span><span class="mono">{sum(up for _, up in items)} su {len(items)}</span>'
-                   f'<div class="seg">{segs}</div></div>')
-    return "".join(out)
-
-
-def group_summary(groups: dict[str, list[tuple[str, bool]]]) -> str:
-    """Frase sui gruppi tutti in salita o tutti in calo."""
-    full = [g for g, items in groups.items() if all(up for _, up in items)]
-    none = [g for g, items in groups.items() if not any(up for _, up in items)]
-    parts = ([f"Tutti in salita: {', '.join(full)}."] if full else []) + ([f"Tutti in calo: {', '.join(none)}."] if none else [])
-    return " ".join(parts) or "Nessun gruppo tutto in salita o tutto in calo."
 
 
 def area_hero_html(a: dict, sentence: str, markets: tuple[int, int] | None = None) -> str:
@@ -340,14 +291,6 @@ def freshness_html(rows: list[tuple[str, pd.Timestamp, bool]]) -> str:
            '<p class="note">Giallo = più vecchio del normale ritardo di pubblicazione: la fonte potrebbe aver cambiato dataset.</p></div>'
 
 
-def changes_html(items: list[tuple[str, str, str]]) -> str:
-    """items: (colore CSS, testo html sicuro, data)."""
-    if not items:
-        rows = '<div class="row"><span class="grow muted">Nessun cambio di regime o fase negli ultimi 90 giorni.</span></div>'
-    else:
-        rows = "".join(f'<div class="row">{_dot(c)}<span class="grow">{t}</span><span class="mono muted">{escape(d)}</span></div>' for c, t, d in items)
-    return f'<div class="si card"><h3>Cosa è cambiato</h3><div class="list">{rows}</div></div>'
-
 
 def risk_html(level: str, score: int, total: int) -> str:
     var = {"Alto": "r-stag", "Medio": "r-refl"}.get(level, "r-gold")
@@ -410,6 +353,29 @@ def trend_html(rows: list[tuple[str, str, float, float | None]], month: pd.Times
             'è cambiato a fine mese, l\'unico momento in cui il filtro chiede di fare qualcosa. Nel backtest 2000-2026 il filtro ha '
             'ridotto il drawdown massimo del 55-75% (60/40 da −31% a −13%) e il rendimento di 0,1-0,9 punti l\'anno: '
             'protegge nei crolli lunghi, perde nei rimbalzi veloci.</p></div>')
+
+
+RELATION_VARS = {"regolare": "r-gold", "più debole del solito": "r-refl", "rotta": "r-stag"}
+
+
+def _corr_it(x: float) -> str:
+    return "n/d" if pd.isna(x) else f"{x:+.2f}".replace(".", ",").replace("-", "−")
+
+
+def relations_html(rows: list[tuple[str, float, float, str, str]], when: str) -> str:
+    """Le 4 relazioni chiave fra mercati (intermarket.RELATIONS), una riga ciascuna: (nome, correlazione a 120 giorni,
+    norma degli ultimi 5 anni, stato, cosa dice la relazione). Descrizione del momento, non un segnale."""
+    body = "".join(
+        f'<div class="row" style="align-items:flex-start"><div class="grow"><b style="font-weight:600">{escape(name)}</b>'
+        f'<small class="muted" style="display:block;font-size:12px;line-height:17px">{escape(book)}</small></div>'
+        f'<span class="mono" style="white-space:nowrap;font-size:13px">{_corr_it(cur)} <span class="muted">· norma {_corr_it(usual)}</span></span>'
+        f'<span class="chip tint" style="--c:var(--{RELATION_VARS.get(state, "muted")})">{escape(state)}</span></div>'
+        for name, cur, usual, state, book in rows)
+    return (f'<div class="si card"><div class="head"><h3>Come si muovono i mercati fra loro</h3><span class="note">al {escape(when)}</span></div>'
+            f'<div class="list">{body}</div>'
+            '<p class="note">Correlazione degli ultimi 120 giorni contro la sua norma (mediana di 5 anni): da −1 (opposti) a +1 '
+            "(insieme). Regolare = come di solito. Più debole = stessa direzione, legame allentato. Rotta = al contrario del "
+            "solito: quel mercato oggi è guidato da altro. Descrive il momento, non anticipa i rendimenti.</p></div>")
 
 
 def events_html(events: list[dict]) -> str:
@@ -520,9 +486,6 @@ def bands_html(table: pd.DataFrame, horizon: int, since: pd.Timestamp) -> str:
         'e quante volte l\'asset ha fatto meglio della media. Ogni mese usa solo i prezzi noti in quel momento.</p></div>'
     )
 
-
-def chips_html(items: list[str]) -> str:
-    return '<div class="si" style="display:flex;flex-wrap:wrap;gap:8px">' + "".join(f'<span class="chip">{escape(i)}</span>' for i in items) + "</div>"
 
 
 def trend_chips_html(items: list[tuple[str, bool | None]]) -> str:
@@ -672,92 +635,4 @@ def stress_html(rows: list[tuple[str, str, tuple | None, tuple | None, tuple | N
             f'il passato non garantisce il futuro.{note}</p></div>')
 
 
-MURPHY_VARS = {"Fase 1": "r-defl", "Fase 2": "accent", "Fase 3": "r-gold", "Fase 4": "r-refl", "Fase 5": "r-stag", "Fase 6": "muted"}
-ALIGN_VARS = {"Allineati": "r-gold", "Parzialmente allineati": "r-refl", "Disallineati": "r-stag"}
-CHECK_VARS = {"allineata": "r-gold", "parziale": "r-refl", "disallineata": "r-stag", "coerente": "r-gold", "contrario": "r-stag"}
-RELATION_VARS = {"regolare": "r-gold", "più debole del solito": "r-refl", "rotta": "r-stag"}
 
-
-def _num_it(x: float, digits: int = 2) -> str:
-    return "n/d" if pd.isna(x) else f"{x:+.{digits}f}".replace(".", ",").replace("-", "−")
-
-
-def murphy_color(label: str) -> str:
-    return f"var(--{MURPHY_VARS.get(label, 'line')})"
-
-
-def _big_state(text: str, color: str) -> str:
-    return f'<h3 style="font-size:28px;line-height:32px;font-weight:800;letter-spacing:-0.02em;color:{color}">{escape(text)}</h3>'
-
-
-def murphy_html(label: str, text: str, trends: list[tuple[str, float]], hist: pd.Series, month: pd.Timestamp) -> str:
-    """label: 'Fase 1'..'Fase 6' o fase non definita. trends: (nome, distanza dalla media a 10 mesi). hist: etichette per mese."""
-    chips = "".join(f'<span class="chip tint" style="--c:var(--{"r-gold" if d > 0 else "r-stag"})">{escape(n)} '
-                    f'{"sopra" if d > 0 else "sotto"} la media <span class="mono">{_pct_it(d, 1)}</span></span>' for n, d in trends)
-    legend = ('<div class="meta">' + "".join(f"<span>{_dot(murphy_color(k))} {k}</span>" for k in MURPHY_VARS)
-              + f'<span>{_dot(murphy_color(""))} non definita</span></div>')
-    color = murphy_color(label) if label in MURPHY_VARS else "var(--muted)"
-    return (f'<div class="si card"><span class="eyebrow">Fase di Murphy · fine {month_it(month)}</span>'
-            f'{_big_state(label, color)}<p>{escape(text)}</p><div style="display:flex;flex-wrap:wrap;gap:8px">{chips}</div>'
-            f'<div><div class="rlabel">Ultimi 24 mesi</div>{ribbon_html(hist, murphy_color, 24)}</div>{legend}'
-            '<p class="note">Obbligazioni (TLT), azioni (SPY) e materie prime (DBC) sopra o sotto la media a 10 mesi, a mese chiuso. '
-            'Obbligazioni e materie prime nella stessa direzione, con le azioni contro, non sono una fase del ciclo.</p></div>')
-
-
-def alignment_html(state: str | None, macro_phase: str | None, checks: list[tuple[str, str, str]], mapping: list[str],
-                   message: str | None) -> str:
-    """checks: (voce, valore, esito in CHECK_VARS). state None = fase del ciclo USA non disponibile."""
-    rows = (f'<div class="row"><span class="grow">Fase del ciclo USA</span>'
-            f'<b style="color:{phase_color(macro_phase)}">{escape(macro_phase or "n/d")}</b></div>'
-            + "".join(f'<div class="row"><span class="grow">{escape(k)}</span><span>{escape(v)}</span>'
-                      f'<span class="chip tint" style="--c:var(--{CHECK_VARS[c]})">{escape(c)}</span></div>' for k, v, c in checks))
-    msg = f'<p style="color:var(--r-stag);font-weight:500">{escape(message)}</p>' if message else ""
-    color = f"var(--{ALIGN_VARS.get(state, 'muted')})"
-    return (f'<div class="si card"><span class="eyebrow">Allineamento macro / mercati</span>'
-            f'{_big_state(state or "n/d", color)}<div class="list">{rows}</div>{msg}'
-            f'<p class="note">Fasi di Murphy attese: {escape(" · ".join(mapping))}. Allineati = fase di Murphy e rame/oro '
-            'confermano la fase del ciclo; disallineati = nessuno dei due; parzialmente = uno solo.</p></div>')
-
-
-def relation_html(name: str, current: float, usual: float, state: str, book: str, divergence: str | None = None) -> str:
-    chips = f'<span class="chip tint" style="--c:var(--{RELATION_VARS.get(state, "muted")})">{escape(state)}</span>'
-    if divergence:
-        chips += f'<span class="chip tint" style="--c:var(--r-stag)">{escape(divergence)}</span>'
-    return (f'<div class="head"><h3 style="font-size:17px;font-weight:600">{escape(name)}</h3>'
-            f'<span style="display:flex;gap:6px;flex-wrap:wrap">{chips}</span></div>'
-            f'<div style="margin-top:8px"><span class="big">{_num_it(current)}</span> <span class="muted" style="font-size:13px">'
-            f'correlazione a 120 giorni · norma {_num_it(usual)}</span></div><p class="note" style="margin-top:6px">{escape(book)}</p>')
-
-
-def matrix_html(m: pd.DataFrame, breaks: pd.DataFrame, names: dict[str, str], refs: dict[str, str]) -> str:
-    """m: intermarket.matrix(), colonne (riferimento, finestra o 'norma'); breaks: intermarket.matrix_breaks()."""
-    groups = {ref: [c for c in m.columns if c[0] == ref] for ref in refs}
-    head = ("<tr><th></th>" + "".join(f'<th class="sep" colspan="{len(cols)}">contro {escape(refs[ref])}</th>' for ref, cols in groups.items())
-            + "</tr><tr><th></th>" + "".join(f'<th class="{"sep" if i == 0 else ""}">{"norma" if w == "norma" else f"{w} g"}</th>'
-                                            for cols in groups.values() for i, (_, w) in enumerate(cols)) + "</tr>")
-
-    def cell(t, c, first):
-        v = m[c][t]
-        cls = ["sep"] if first else []
-        if c[1] == "norma":
-            cls.append("n")
-        elif bool(breaks[c][t]):
-            cls.append("brk")
-        return f'<td class="{" ".join(cls)}">{"·" if pd.isna(v) else _num_it(v)}</td>'
-
-    rows = "".join(f'<tr><td>{escape(names.get(t, t))}</td>'
-                   + "".join(cell(t, c, i == 0) for cols in groups.values() for i, c in enumerate(cols)) + "</tr>" for t in m.index)
-    return (f'<div class="si card"><div class="head"><h3>Correlazioni</h3><span class="note">rendimenti giornalieri, finestre in giorni di borsa</span></div>'
-            f'<div class="tbl"><table class="mtx">{head}{rows}</table></div>'
-            '<p class="note">Norma = mediana della correlazione a 120 giorni negli ultimi 5 anni. In rosso = fuori dalla norma: '
-            'segno opposto (se la norma è almeno ±0,2) o distanza oltre 0,5. Per i tassi conta la variazione giornaliera in punti.</p></div>')
-
-
-def edge_html(title: str, table: pd.DataFrame, names: dict[str, str], top: list[str]) -> str:
-    """table: intermarket.edge_table() di un gruppo di ticker; top: quelli in evidenza (intermarket.highlighted)."""
-    head = "<tr><th></th><th>casi</th><th>media</th><th>mediana</th><th>sopra</th><th>t</th></tr>"
-    rows = "".join(
-        f'<tr class="{"top" if t in top else ""}"><td><b>{escape(t)}</b> <span class="muted">{escape(names.get(t, ""))}</span></td>'
-        f'<td>{r.casi:.0f}</td><td>{_num_it(r.media)}%</td><td>{_num_it(r.mediana)}%</td><td>{r.sopra:.0f}%</td><td>{_num_it(r.t, 1)}</td></tr>'
-        for t, r in table.iterrows())
-    return f'<div class="si card"><h3>{escape(title)}</h3><div class="tbl"><table class="mtx">{head}{rows}</table></div></div>'

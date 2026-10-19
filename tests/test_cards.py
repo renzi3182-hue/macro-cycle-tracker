@@ -1,7 +1,7 @@
 import pandas as pd
 
 from src.ui.cards import (
-    duration_it, group_summary, month_it, portfolio_html, prevailing_regime, regime_groups_html, ribbon_html, rrg_html, weight_deltas,
+    duration_it, month_it, portfolio_html, prevailing_regime, ribbon_html, rrg_html, weight_deltas,
     why_text,
 )
 from src.ui.theme import TOKENS, page_css
@@ -59,21 +59,6 @@ def test_wave_dot_sits_on_the_quarter_of_the_phase():
     assert "<b" not in wave_html(None) and "<svg" not in wave_html("Espansione")
 
 
-def test_regime_groups_most_common_first_uncertain_split_and_empty_regimes_last():
-    html = regime_groups_html({"USA": "Stagflazione", "EZ": "Reflazione", "IT": "Incerto: Reflazione / Stagflazione",
-                               "JP": "Reflazione", "UK": "Incerto: Reflazione / Stagflazione"})
-    order = [html.index(f"<b>{n}</b>") for n in ("Reflazione", "Incerte", "Stagflazione", "Goldilocks", "Deflazione")]
-    assert order == sorted(order)
-    assert "fra Reflazione e Stagflazione" in html and html.count("nessuna area") == 2
-    assert "<svg" not in html and "#" not in html  # st.html rimuove gli svg; colori solo da variabili CSS
-
-
-def test_group_summary_names_groups_all_up_or_all_down():
-    groups = {"Paesi": [("SPY", True), ("EWJ", True)], "Settori": [("XLK", True), ("XLU", False)], "Bond": [("TLT", False)]}
-    assert group_summary(groups) == "Tutti in salita: Paesi. Tutti in calo: Bond."
-    assert group_summary({"Settori": groups["Settori"]}) == "Nessun gruppo tutto in salita o tutto in calo."
-
-
 def test_why_text_names_best_and_worst_pillar():
     assert why_text({"Tendenza": 3, "Momentum": 15}, 28) == "meglio in tendenza (3° su 28) che in momentum (15°)"
     assert why_text({"Tendenza": 4, "Momentum": 4}, 28) == "tendenza e momentum entrambi 4° su 28"
@@ -87,19 +72,23 @@ def test_rrg_html_lists_assets_entering_and_cooling():
     assert "<svg" not in html
 
 
-def test_answer_card_clips_score_and_links():
-    from src.ui.cards import answer_card_html
-    html = answer_card_html("aree", "In che fase siamo", 0.2, "Espansione", "frase", "", "nota")
-    assert 'href="aree"' in html and ">1</span>" in html and "width:1%" in html
-
-
-def test_phase_actions_cover_every_phase_and_name_the_country():
+def test_today_blocks_cover_every_phase_and_asset():
     from src.config.asset_allocation import PHASE_ASSETS
-    from src.ui.cards import phase_actions_html
+    from src.ui.cards import asset_matrix_html, cycle_wave_html, risk_explain_html
     from src.ui.theme import PHASE_VARS
     assert set(PHASE_ASSETS) == set(PHASE_VARS)
-    good, bad = PHASE_ASSETS["Recessione"]
-    html = phase_actions_html("Fasi", [("Italia", "EUR", "Recessione", [x.format(paese="Italia") for x in good],
-                                        [x.format(paese="Italia") for x in bad]), ("Cina", "CNY", None, [], [])], "nota")
-    assert "Titoli di Stato Italia" in html and "Meno peso" in html and "n/d" in html
-    assert html.count("Più peso") == 1  # area senza fase: nessuna azione
+    phases = {"Italia": "Recessione", "USA": "Ripresa (sotto trend)", "Cina": None}
+    m = asset_matrix_html(phases)
+    assert m.count("▲") == 4 and m.count("▼") == 3 and "▲ ciclico" in m and "n/d" in m  # Cina senza fase: riga vuota
+    w = cycle_wave_html(phases)
+    assert w.count('class="wl') == 2 and "Recessione · 1" in w and "{paese}" not in w
+    r = risk_explain_html(61.4, "Risk On", "14/10/2026", [("Calma in borsa", "x", 66), ("Voglia di spendere", "y", 13)], True)
+    assert "61/100" in r and "left:61%" in r and "voglia di spendere</b> (13)" in r and "in allarme" in r and "<svg" not in r
+
+
+def test_relations_one_row_each_with_state_color_and_no_svg():
+    from src.ui.cards import relations_html
+    html = relations_html([("Oro / tasso reale", -0.45, -0.3, "regolare", "x"), ("Dollaro", 0.2, -0.4, "rotta", "y"),
+                           ("Rame", float("nan"), 0.1, "n/d", "z")], "16/10/2026")
+    assert html.count('class="row"') == 3 and "−0,45" in html and "norma −0,30" in html and "var(--r-stag)" in html
+    assert "n/d" in html and "<svg" not in html

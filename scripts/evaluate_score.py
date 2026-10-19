@@ -24,7 +24,7 @@ from src.scheduler.update_data import update_asset_prices
 
 SPLIT = "2014-01-01"  # due sottoperiodi di ~12 anni
 TOP_N = 5
-ENTER, EXIT = 80, 60  # soglie dello Smart Quant di Quantaste
+ENTER, EXIT = 80, 60  # soglie dell'app di riferimento
 
 
 def hysteresis(s: pd.DataFrame, enter: float, exit_: float) -> pd.DataFrame:
@@ -91,7 +91,7 @@ def main() -> None:
           f"(Migliori {TOP_N}: cambia in media il {turnover:.0f}% delle posizioni al mese):")
     print(pd.DataFrame({k: perf(v) for k, v in d.items()}).T.round(1).to_string())
 
-    # Soglie di Quantaste: entra sopra ENTER, esce sotto EXIT (isteresi) contro entra/esce sopra/sotto ENTER.
+    # Soglie dell'app di riferimento: entra sopra ENTER, esce sotto EXIT (isteresi) contro entra/esce sopra/sotto ENTER.
     # Pesi uguali fra gli asset tenuti, SHY quando non ce n'e' nessuno.
     print(f"\nTutti gli asset sopra {ENTER} (pesi uguali, SHY se nessuno), con e senza uscita sotto {EXIT}:")
     held = {f"sopra {ENTER}": s > ENTER, f"entra {ENTER} esce {EXIT}": hysteresis(s, ENTER, EXIT)}

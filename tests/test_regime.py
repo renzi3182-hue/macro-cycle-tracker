@@ -52,14 +52,14 @@ def test_needs_enough_data():
 
 
 def test_growing_but_slower_is_slowdown():
-    # USA 10/2026: il PIL cresce ancora (2,7% -> 2,1%) ma rallenta; inflazione alta ma in calo -> Stagflazione (Quantaste).
+    # USA 10/2026: il PIL cresce ancora (2,7% -> 2,1%) ma rallenta; inflazione alta ma in calo -> Stagflazione (lettura di riferimento).
     gdp = _q(WAVE + [2.0, 2.7, 2.1])
     inflation = _m([2.5] * (N - 6) + [3.8, 4.2, 3.5, 3.3, 3.3, 3.3], "2018-01-01")
     assert classify_regime(gdp, inflation, _m([2.5] * N, "2018-01-01")) == "Stagflazione"
 
 
 def test_low_inflation_rising_counts_as_up():
-    # Casario, Reflazione = "inflazione in accelerazione": sale anche se sotto la soglia.
+    # Reflazione = "inflazione in accelerazione": sale anche se sotto la soglia.
     inflation = _m([1.0] * (N - 3) + [1.5, 1.8, 2.1], "2018-01-01")
     assert classify_regime(ACCEL, inflation) == "Reflazione"
 

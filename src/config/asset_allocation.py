@@ -2,11 +2,11 @@
 # Non e' un consiglio di investimento personalizzato.
 #
 # Tabella riallineata il 03/10/2026 al backtest del regime di allora (direzione del CLI). Ricontrollata il
-# 09/10/2026 sulla regola Casario/Quantaste (scripts/backtest_assets.py, USA 1960-2026, regime point-in-time,
+# 09/10/2026 sulla regola attuale del regime (scripts/backtest_assets.py, USA 1960-2026, regime point-in-time,
 # rendimento del mese successivo): resta una sola differenza significativa (|t| > 2), materie prime peggiori in
 # Stagflazione (-2.8%/anno, t = -2.2), gia' escluse. Spariti i vantaggi di prima (Treasury in Stagflazione,
 # materie prime in Goldilocks). Unica stonatura: in Reflazione l'azionario e' l'ultimo dei 5 asset (4.5%/anno,
-# t = -1.8, non significativo); resta in tabella perche' lo indicano Casario e la teoria. Il cash rende di piu'
+# t = -1.8, non significativo); resta in tabella perche' lo indicano il libro di riferimento e la teoria. Il cash rende di piu'
 # con inflazione alta solo per il livello dei tassi.
 # Portafoglio per regime 2000-2026 (profilo Medio): 8.5%/anno contro 5.5% dell'All Weather statico, ma la
 # tabella e' stata scelta guardando questi dati: e' un'opinione guidata dai dati, non un vantaggio dimostrato.
@@ -33,7 +33,7 @@ ASSET_ALLOCATION = {
     "Deflazione": ["Azionario difensivo", "Oro", "Obbligazioni governative lunga durata"],
 }
 
-# Fase del ciclo -> (asset da pesare di piu', asset da pesare di meno), dal libro di Casario (cap. 6: fig. 6.12,
+# Fase del ciclo -> (asset da pesare di piu', asset da pesare di meno), dal libro di riferimento (cap. 6: fig. 6.12,
 # 6.14, 6.16 e settori difensivi/ciclici). "{paese}" = azionario o titoli di Stato dell'area.
 # Verifica 13/10/2026 sui dati USA (fase point-in-time di src/classify/assess.py, rendimento del mese dopo
 # annualizzato; azionario e materie prime dal 1985, oro dal 2000, Treasury 10Y dal 1962):
@@ -124,7 +124,7 @@ TREND_PROXY = {
 CASH = "Cash"
 
 
-# Conferma dei mercati (12/10/2026), la versione dichiarata della % di Quantaste: quanti asset tipici del regime
+# Conferma dei mercati (12/10/2026), la versione dichiarata della % dell'app di riferimento: quanti asset tipici del regime
 # dell'area sono in tendenza positiva. Azionario con l'ETF del paese dove c'e' (Canada e Australia non ne hanno,
 # l'azionario resta fuori), il resto con TREND_PROXY (ETF quotati in USA). Verifica 2004-2026 su 9 aree
 # (scripts/evaluate_model.py, sezione Conferma dei mercati): NON dice se la lettura macro e' giusta. Con conferma

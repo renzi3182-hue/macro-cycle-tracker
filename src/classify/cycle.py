@@ -4,7 +4,7 @@ from src.classify.regime import axis_states, growth_z, monthly
 
 # Fase del ciclo mensile (riscritta il 03/10/2026), 3 ingredienti:
 # - momentum: direzione a 3 mesi del CLI OCSE (era anche l'asse crescita del regime fino all'08/10/2026; il regime
-#   ora usa l'accelerazione del PIL come Quantaste, che qui fa crollare il riconoscimento delle recessioni NBER);
+#   ora usa l'accelerazione del PIL come l'app di riferimento, che qui fa crollare il riconoscimento delle recessioni NBER);
 # - livello: economia sopra/sotto il trend = PIL annuo contro la sua media degli ultimi 10 anni (rivisto il
 #   03/10/2026: la disoccupazione contro la sua media 10 anni coincideva con la crescita sopra il trend a
 #   posteriori solo nel 42-57% dei mesi, perche' in Europa e Giappone scende da anni per demografia; il PIL

@@ -5,12 +5,12 @@ import pandas as pd
 from src.classify.cycle import RECOVERY_BELOW_TREND
 from src.classify.score import HORIZON_MONTHS, UNIVERSE, pillars
 
-# Intermarket (11/10/2026), capitolo 5 del libro di Marco Casario (basato su John Murphy). Per Casario e' un
+# Intermarket (11/10/2026), capitolo 5 del libro di riferimento (basato su John Murphy). Nel libro e' un
 # controllo: i mercati devono confermare lo scenario macro; se non lo fanno si riduce il rischio, si opera solo dove
 # c'e' vantaggio statistico e si preferiscono strumenti meno volatili. Le correlazioni cambiano nel tempo (dopo il
 # 2008 sono salite tutte, nel 2022 petrolio e Treasury insieme fino a giugno), quindi si misurano su finestre mobili
 # e si confrontano con la loro norma, mai date per fisse. Verifica in scripts/evaluate_intermarket.py.
-# Soglie dal libro o dalla richiesta dell'utente (finestre, 0,5, 0,7, 30 casi, t 2); scelte qui a priori, una sola
+# Soglie dal libro di riferimento o dalla richiesta dell'utente (finestre, 0,5, 0,7, 30 casi, t 2); scelte qui a priori, una sola
 # variante ciascuna: |norma| >= 0,2 per contare il segno opposto, 6 mesi per il drawdown nella verifica.
 # Verifica 2000-2026 (11/10/2026): la fase di Murphy non distingue i rendimenti a 3 mesi (3 confronti su 70 con
 # |t| >= 2, tutti con 7-10 casi: quanti ne da' il caso); l'allineamento non anticipa i drawdown S&P 500 > 10% entro
@@ -43,7 +43,7 @@ RELATIONS = [
      "La più importante: materie prime in salita = crescita e inflazione = obbligazioni in calo."),
     ("Dollaro / materie prime", DOLLAR, "DBC", -1, "Dollaro forte = disinflazione e materie prime in calo."),
     ("Oro / tasso reale", "GLD", "DFII10", -1,
-     "La relazione più forte per l'oro (circa −0,82 nel libro); con l'inflazione l'oro è quasi scorrelato."),
+     "La relazione più forte per l'oro (storicamente circa −0,8); con l'inflazione l'oro è quasi scorrelato."),
     ("Rame-oro / rendimento 10 anni", COPPER_GOLD, "DGS10", 1,
      "Rame/oro anticipa crescita e rendimento a 10 anni: in calo = rallentamento o fuga verso i beni rifugio."),
 ]
@@ -76,7 +76,7 @@ MACRO_TO_MURPHY = {
 }
 COPPER_GOLD_UP = {RECOVERY_BELOW_TREND: True, "Espansione": True, "Rallentamento": False, "Recessione": False}
 ALIGNED, PARTIAL, MISALIGNED = "Allineati", "Parzialmente allineati", "Disallineati"
-MISALIGNED_TEXT = ("Per Casario, se i mercati non confermano lo scenario macro: ridurre il rischio, operare solo dove "
+MISALIGNED_TEXT = ("Se i mercati non confermano lo scenario macro: ridurre il rischio, operare solo dove "
                    "c'è vantaggio statistico, preferire strumenti meno volatili.")
 
 EDGE_MIN_CASES, EDGE_MIN_T, EDGE_TOP = 30, 2.0, 3  # "cosa ha funzionato": in evidenza solo con t > 2 e 30 casi
@@ -185,7 +185,7 @@ def murphy_check(macro_phase: str, phase: int) -> str:
 
 
 def alignment(macro_phase: str, phase: int, copper_gold_up: bool) -> str:
-    """Controllo di Casario: la fase del ciclo dell'app e' confermata da fase di Murphy e direzione di rame/oro?
+    """Controllo del libro di riferimento: la fase del ciclo dell'app e' confermata da fase di Murphy e direzione di rame/oro?
     Allineati = entrambi d'accordo; Disallineati = Murphy non allineata e rame/oro contrario; il resto e' parziale."""
     murphy_ok = murphy_check(macro_phase, phase) == "allineata"
     copper_ok = copper_gold_up == COPPER_GOLD_UP[macro_phase]

@@ -11,7 +11,7 @@ from src.data.http import get_with_retry
 # Verificato con dati reali (29/09/2026): serie mensili dal 1960, ultimo dato ago 2026.
 BASE = "https://sdmx.oecd.org/public/rest/data/"
 CLI_URL = BASE + "OECD.SDD.STES,DSD_STES@DF_CLI,/{areas}.M.LI...AA...H"
-# Aree senza una fonte nazionale gia' usata (aggiunte il 09/10/2026, le stesse della dashboard Quantaste piu'
+# Aree senza una fonte nazionale gia' usata (aggiunte il 09/10/2026, le stesse dell'app di riferimento piu'
 # l'India): PIL e inflazione dall'OCSE, che li pubblica anche per Cina e India. Verificato: PIL annuo reale fino
 # al 2o trimestre 2026 (Cina dal 1993, India dal 1997), CPI annuo fino ad agosto 2026.
 # Inflazione core: solo Australia. Quella del Canada si ferma ad aprile 2025, Cina e India non la pubblicano.

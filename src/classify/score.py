@@ -1,6 +1,6 @@
 import pandas as pd
 
-# Punteggio asset 1-100 (06/10/2026), stessa idea dello Smart Quant di Quantaste: e' la posizione in classifica
+# Punteggio asset 1-100 (06/10/2026), stessa idea del punteggio dell'app di riferimento: e' la posizione in classifica
 # dell'asset nell'universo, non una media di indicatori. Ogni pilastro si trasforma in percentile fra gli asset
 # disponibili quel mese; il punteggio e' il percentile della media dei pilastri.
 # Pilastri solo di prezzo, con letteratura solida e pesi uguali (nessuna ottimizzazione):
@@ -14,12 +14,12 @@ import pandas as pd
 # obbligazioni e cash: la scelta e' fatta dopo aver visto i dati, provate solo 3 varianti.
 # Niente pilastro macro: la tabella regime -> asset non batte i portafogli statici (scripts/backtest_assets.py).
 # Niente stagionalita': con 20-30 anni di storia per asset e' rumore.
-# 11/10/2026, 28 ETF (aggiunti XLC, XLRE, QQQ, IWM, IWF, IWD, SMH per i settori del libro di Casario, una sola
+# 11/10/2026, 28 ETF (aggiunti XLC, XLRE, QQQ, IWM, IWF, IWD, SMH per i settori del libro di riferimento, una sola
 # variante provata): IC +0.076 (t 2.2), <2014 +0.049 (t 1.0, prima +0.067), >=2014 +0.107 (t 2.2); fascia 81-100
 # +0.64% mediano, 1-20 -0.92%; migliori 5 14.6%/anno, drawdown -19% (piu' ETF azionari USA forti, es. QQQ e SMH).
 # Tenuti: il totale non peggiora, il sottoperiodo prima del 2014 si'. Storici corti (XLRE 2015, XLC 2018): un ETF
 # entra in classifica solo con 12 mesi di prezzi, fino ad allora e' NaN e non conta per MIN_ASSETS.
-# 12/10/2026, soglie di Quantaste (entra sopra 80, esce solo sotto 60) contro tutti gli asset sopra 80, 2002-2026
+# 12/10/2026, soglie dell'app di riferimento (entra sopra 80, esce solo sotto 60) contro tutti gli asset sopra 80, 2002-2026
 # senza costi: cambi di posizione da 25% a 15% al mese, ma 12,7%/anno contro 13,8%, drawdown uguale (-19%). Con costi
 # da ETF il risparmio non copre la differenza: niente isteresi, la classifica resta mensile.
 # Verifica point-in-time in scripts/evaluate_score.py.

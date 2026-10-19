@@ -7,7 +7,7 @@ CPI/CLI/disoccupazione +1) e ricalcolando una volta sola. Stampa, dal 2000:
    senza ritardi), cambi di regime l'anno, distribuzione, episodi noti.
 2. Ciclo: confronto con NBER (USA) e con i rallentamenti OCSE (EUROREC, ITAREC, GBRREC, JPNREC, fino al 2022).
 3. CLI OCSE: quante volte direzione e livello restano gli stessi dopo le revisioni (vintage ALFRED dal 2018).
-4. Quantaste: quante letture note di Quantaste/Casario il modello riproduce (riferimento dell'utente).
+4. Letture di riferimento: quante letture note (app e libro di riferimento) il modello riproduce.
 5. Conferma dei mercati: quanti asset tipici del regime sono in salita, contro la bonta' della lettura in tempo reale.
 6. Calibrazione: pesi delle probabilita' (src/classify/regime.py, PROB_*), stimati sul 2000-2014 e provati sul
    2015-2026, poi ristimati su tutto: se cambiano molto, aggiornare le costanti.
@@ -37,10 +37,10 @@ START = "2000-01-01"
 EPISODES = ["2001-09", "2008-12", "2009-09", "2020-05", "2021-06", "2022-09", "2023-12"]
 REFERENCE = {"USA": "USREC", "Eurozona": "EUROREC", "Italia": "ITAREC", "UK": "GBRREC", "Giappone": "JPNREC",
              "Canada": "CANREC", "Cina": "CHNREC", "Australia": "AUSREC", "India": "INDREC"}
-# Letture note di Quantaste / Marco Casario (Espansione = Goldilocks). Trimestri 2015-2022: blog marcocasario.com
+# Letture note dell'app e del libro di riferimento (Espansione = Goldilocks). Trimestri 2015-2022: blog dell'autore,
 # "il-gold-e-partito" (area non dichiarata, presunta USA; Q4 2022 escluso perche' etichettato due volte); Q1 2024:
-# libro di Casario; 2026Q3: dashboard Quantaste dell'08/10/2026, confrontata con la lettura in tempo reale.
-QUANTASTE = [("USA", "2015Q1", "Goldilocks"), ("USA", "2016Q1", "Stagflazione"), ("USA", "2016Q3", "Reflazione"),
+# libro; 2026Q3: dashboard dell'app di riferimento dell'08/10/2026, confrontata con la lettura in tempo reale.
+KNOWN_READINGS = [("USA", "2015Q1", "Goldilocks"), ("USA", "2016Q1", "Stagflazione"), ("USA", "2016Q3", "Reflazione"),
              ("USA", "2016Q4", "Reflazione"), ("USA", "2017Q2", "Goldilocks"), ("USA", "2018Q3", "Deflazione"),
              ("USA", "2019Q3", "Goldilocks"), ("USA", "2021Q1", "Reflazione"), ("USA", "2022Q2", "Reflazione"),
              ("USA", "2022Q3", "Stagflazione"), ("USA", "2024Q1", "Stagflazione"), ("Eurozona", "2024Q1", "Reflazione"),
@@ -53,7 +53,7 @@ QUANTASTE = [("USA", "2015Q1", "Goldilocks"), ("USA", "2016Q1", "Stagflazione"),
 # 3 mesi fino a luglio) e la variazione sul trimestre prima; rallenta solo l'ultimo mese (giugno 2,1% -> luglio 1,4%) e
 # la salita del CLI (da +0,20 a +0,09 al mese). Cina, inflazione: il CPI totale scende sui 3 mesi (1,1% -> 0,8%) per
 # il cibo (-1,6% annuo); l'ultimo mese sale (0,5% -> 0,8%). Il core cinese non c'e' all'OCSE e i prezzi alla
-# produzione su FRED si fermano al 2022: non verificabile. Quantaste usa quindi un dato che qui manca.
+# produzione su FRED si fermano al 2022: non verificabile. L'app di riferimento usa quindi un dato che qui manca.
 CLI_FRED = {"USA": "USALOLITOAASTSAM", "Eurozona": "G4ELOLITOAASTSAM", "Italia": "ITALOLITOAASTSAM",
             "UK": "GBRLOLITOAASTSAM", "Giappone": "JPNLOLITOAASTSAM", "Canada": "CANLOLITOAASTSAM",
             "Cina": "CHNLOLITOAASTSAM", "Australia": "AUSLOLITOAASTSAM", "India": "INDLOLITOAASTSAM"}
@@ -75,10 +75,10 @@ def regime_report(area: str, series: dict) -> pd.DataFrame:
     return df
 
 
-def quantaste_report(histories: dict) -> None:
+def reference_report(histories: dict) -> None:
     """histories: area -> (tempo reale, a posteriori). Trimestri passati a posteriori, trimestre in corso in tempo reale."""
     hits, misses = 0, []
-    for area, q, label in QUANTASTE:
+    for area, q, label in KNOWN_READINGS:
         p = pd.Period(q, "Q")
         real, hind = histories[area]
         h = real if p.end_time > hind.index[-1] else hind
@@ -87,7 +87,7 @@ def quantaste_report(histories: dict) -> None:
         hits += got == label
         if got != label:
             misses.append(f"{area} {q}: {got} invece di {label}")
-    print(f"\n== Quantaste: {hits}/{len(QUANTASTE)} letture note riprodotte. " + "; ".join(misses))
+    print(f"\n== Letture di riferimento: {hits}/{len(KNOWN_READINGS)} letture note riprodotte. " + "; ".join(misses))
 
 
 def confirmation_report(histories: dict) -> None:
@@ -187,7 +187,7 @@ def main() -> None:
                 step(area, df, key) if step is cycle_report else step(area, key)
             except (requests.RequestException, KeyError, IndexError) as e:
                 print(f"   {step.__name__}: non disponibile ({e})")
-    quantaste_report(histories)
+    reference_report(histories)
     confirmation_report(histories)
     calibration_report(samples)
 

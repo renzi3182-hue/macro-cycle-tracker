@@ -8,7 +8,7 @@ import pandas as pd
 # - ampiezza: quota di ETF dell'universo del punteggio sopra la media a 200 sedute (circa 10 mesi);
 # - struttura del VIX: 100 - percentile di VIX / VIX a 3 mesi (sopra 1 = paura concentrata sul breve termine);
 # - consumi: percentile di XLY/XLP rispetto alla sua media a 200 sedute (discrezionali contro beni di base).
-# Struttura e consumi vengono dal Risk On/Off di Quantaste (letto dalla dashboard il 12/10/2026), con lo stesso
+# Struttura e consumi vengono dal Risk On/Off dell'app di riferimento (letto dalla dashboard il 12/10/2026), con lo stesso
 # percentile delle altre componenti invece dei loro punti fissi.
 # Verifica (scripts/evaluate_risk.py, 12/10/2026, 3420 sedute 2012-2026, finestra del VIX a 3 mesi): come la
 # versione mensile prevede la volatilita', non il rendimento. Correlazione con la volatilita' dei 21 giorni dopo -0.51
@@ -17,7 +17,7 @@ import pandas as pd
 # Usato come timing (SPY sopra 40, se no SHY) 11,7%/anno contro 12,2% del filtro di tendenza: nessuno split
 # Risk assets/Difensivo/Cash.
 # Canarino: momentum 13612W di TIP (Keller-Keuning, Defensive Asset Allocation 2018, che pero' usa VWO e BND;
-# Quantaste usa TIP). Mostrato a parte, non entra nel punteggio: come tetto (massimo 59 con canarino in allarme)
+# l'app di riferimento usa TIP). Mostrato a parte, non entra nel punteggio: come tetto (massimo 59 con canarino in allarme)
 # peggiorava la correlazione con la volatilita' (-0.49). 2004-2026: in allarme il 28% delle sedute, calo dell'S&P 500
 # oltre il 10% entro 63 sedute 20% contro 11%. Come timing giornaliero 14,4%/anno contro 11,0% di SPY, ma il
 # risultato dipende dalla variante (ricerca del 12/10/2026: TIP a 12 mesi 9,1%, segnale a fine mese 10,3% contro 10,9%):

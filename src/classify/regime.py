@@ -2,23 +2,23 @@ import math
 
 import pandas as pd
 
-# Regime macro = crescita x inflazione, con la regola di Marco Casario / Quantaste (riscritto l'08/10/2026).
-# Quantaste e' il riferimento dell'utente: sulle 14 letture note (dashboard 10/2026, libro Q1 2024, trimestri
-# 2015-2022 dal blog marcocasario.com) questa regola ne riproduce 13; il modello precedente (direzione del CLI
-# OCSE + inflazione contro il 2%) 5, cioe' quanto il caso. Differenza di fondo: per Casario la crescita e' la
+# Regime macro = crescita x inflazione, con la regola dell'app di riferimento (riscritto l'08/10/2026).
+# L'app di riferimento e' quella scelta dall'utente: sulle 14 letture note (dashboard 10/2026, libro Q1 2024, trimestri
+# 2015-2022 dal blog dell'autore) questa regola ne riproduce 13; il modello precedente (direzione del CLI
+# OCSE + inflazione contro il 2%) 5, cioe' quanto il caso. Differenza di fondo: qui la crescita e' la
 # VELOCITA' del PIL (annuo in accelerazione o in rallentamento sul trimestre prima), non il livello di attivita'
 # in salita. Esempio USA 10/2026: CLI ancora in salita, ma PIL annuo 2,7% -> 2,1% = rallentamento -> Stagflazione.
 # Prezzo: ~3 cambi di regime l'anno e lettura in tempo reale diversa da quella a posteriori ~1 mese su 2
 # (il PIL esce 1 mese dopo il trimestre e viene rivisto). La fase del ciclo resta sul CLI (src/classify/cycle.py).
-# Verifica in scripts/evaluate_model.py (sezione Quantaste).
+# Verifica in scripts/evaluate_model.py (sezione Letture di riferimento).
 GROWTH_INPUT = "growth_yoy"
 GROWTH_FALLBACK = "cli"
 GROWTH_CHANGE_MONTHS = 3  # un trimestre: il PIL trimestrale riportato a mensile cambia ogni 3 mesi
-GROWTH_BAND = 0.0  # niente zona neutra: accelera o rallenta, come Quantaste
+GROWTH_BAND = 0.0  # niente zona neutra: accelera o rallenta, come l'app di riferimento
 GROWTH_SCALE = 0.4  # per indicatori e solidita': z della variazione che vale "1" sulla scala dell'asse
 
 # Inflazione "alta" se la media a 3 mesi di totale + core e' sopra il 2,5% OPPURE se il totale (media 3 mesi)
-# sale rispetto ai 3 mesi prima. Casario: Reflazione = "inflazione in accelerazione", Stagflazione = "inflazione
+# sale rispetto ai 3 mesi prima. Nel libro di riferimento: Reflazione = "inflazione in accelerazione", Stagflazione = "inflazione
 # in aumento". Solo variazione: 11/14 letture (Europa Q1 2024 sbagliata); con il livello 13/14.
 INFLATION_INPUTS = ("inflation_yoy", "core_inflation_yoy")
 INFLATION_HIGH_LEVEL = 2.5
@@ -30,7 +30,7 @@ CONFIRM_MONTHS = 1  # nessuna conferma: il PIL cambia una volta a trimestre
 MIN_SCALE_MONTHS = 24  # sotto questi punti la deviazione standard usa tutto il campione
 
 # Probabilita' (09/10/2026): regime del TRIMESTRE IN CORSO come risultera' a dati completi, non dell'etichetta
-# (che usa l'ultimo PIL pubblicato, come Quantaste). Regressione logistica dello stato a posteriori di ogni asse
+# (che usa l'ultimo PIL pubblicato, come l'app di riferimento). Regressione logistica dello stato a posteriori di ogni asse
 # sulla lettura in tempo reale, 9 aree 2000-2026 con i ritardi di pubblicazione veri (scripts/evaluate_model.py,
 # sezione Calibrazione). Crescita: l'ultimo PIL pubblicato non dice nulla sul trimestre dopo (peso ~0, e' gia'
 # passato un trimestre); qualcosa dice l'attivita' mensile (produzione industriale, CLI dove manca), quindi la

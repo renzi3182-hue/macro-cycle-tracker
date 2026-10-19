@@ -2,8 +2,6 @@
 
 Dashboard per uso personale: regime macro (Goldilocks/Deflazione/Reflazione/Stagflazione) e fase del ciclo economico (Espansione/Rallentamento/Recessione/Ripresa (sotto trend)) per nove aree: USA, Eurozona, Italia, UK, Giappone, Canada, Cina, Australia, India. Pubblicata su https://macrocycletracker.streamlit.app/, con dati aggiornati da GitHub Actions.
 
-Vedi [intent](intent/001-macro-cycle-dashboard.md), [spec.md](spec.md), [plan.md](plan.md) per il processo che ha portato a questo codice.
-
 ## Setup
 
 ```bash

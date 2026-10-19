@@ -94,6 +94,23 @@ _CSS = """
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent); }
 .si .wave-l { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; text-align: center; font-size: 12px; color: var(--muted); }
 .si .wave-l .on { color: var(--accent); font-weight: 700; }
+/* pagina Oggi: onda con un punto per paese, matrice paesi x asset, scala del Risk On/Off */
+.si .wave.many { height: 220px; margin: 0 8px; }
+.si .wave.many b { width: 14px; height: 14px; margin: -7px 0 0 -7px; box-shadow: 0 0 0 3px var(--surface); }
+.si .wave .wl { position: absolute; transform: translate(-50%, -190%); font-size: 12px; font-weight: 700; white-space: nowrap;
+  background: var(--raised); padding: 1px 7px; border-radius: 999px; }
+.si .wave .wl.dn { transform: translate(-50%, 90%); }
+.si .wave-a { gap: 16px; text-align: left; font-size: 13px; }
+.si .wave-a div { display: flex; flex-direction: column; gap: 4px; }
+.si .wave-a b { font-size: 15px; }
+.si .mxg { display: grid; grid-template-columns: minmax(84px, 1fr) minmax(130px, 1.2fr) repeat(4, minmax(96px, 1fr)); gap: 6px 8px;
+  align-items: center; font-size: 14px; min-width: 620px; }
+.si .mx { height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: var(--raised); }
+.si .mx[style] { background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
+.si .rscale { position: relative; padding-top: 6px; }
+.si .rscale b { position: absolute; top: 0; width: 4px; height: 22px; margin-left: -2px; border-radius: 2px; background: var(--fg); box-shadow: 0 0 0 3px var(--surface); }
+.si .rbands { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; font-size: 11px; line-height: 14px; color: var(--muted); }
+.si .rbands .on { color: var(--fg); font-weight: 700; }
 
 /* barre */
 .si .track { height: 8px; border-radius: 4px; background: var(--raised); overflow: hidden; }
