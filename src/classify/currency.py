@@ -13,15 +13,24 @@ import pandas as pd
 # (3m fuori campione: 0.06 vs -0.01 della versione precedente). Vedi scripts/backtest_currency.py.
 WEIGHTS = {"real_rate": 0.0, "growth": 0.25, "momentum": 0.20, "cot": 0.0, "vix": 0.30}
 # Sensibilita' al risk-off: score_vix = 50 + beta * (percentile VIX - 50). JPY rifugio (+), GBP rischiosa (-).
-VIX_BETA = {"JPY": 1.0, "USD": 0.5, "EUR": -0.25, "GBP": -0.5}
+# CAD, AUD, CNY, INR (19/10/2026): valute legate alle materie prime o emergenti = rischiose, CNY gestito = neutro.
+VIX_BETA = {"JPY": 1.0, "USD": 0.5, "EUR": -0.25, "GBP": -0.5, "CAD": -0.25, "AUD": -0.5, "CNY": 0.0, "INR": -0.25}
 REAL_RATE_RANGE = (-3.0, 3.0)  # tasso a breve - inflazione YoY, punti %
-GROWTH_RANGE = (-2.0, 4.0)  # PIL reale YoY, %
+# Crescita contro la media 10 anni del paese (19/10/2026, con CAD, AUD, CNY, INR): il PIL assoluto dava sempre 100
+# a Cina e India (5-7%). Backtest 8 valute 2000-2026, una sola variante: IC 0.058/0.114/0.171 a 3/6/12 mesi contro
+# 0.048/0.111/0.173 col PIL assoluto, fuori campione 3 mesi 0.053 contro 0.035. Segnali deboli (t < 2): solo informativo.
+GROWTH_RANGE = (-3.0, 3.0)  # PIL reale YoY meno la sua media degli ultimi 10 anni, punti %
+GROWTH_YEARS = 10
 MOMENTUM_RANGE = (-12.0, 12.0)  # rendimento 12 mesi vs media delle 4 valute, %
 MOMENTUM_DAYS = 252
 BUY_ABOVE = 60  # punteggio coppia: >= BUY_ABOVE buy, <= SELL_BELOW sell, altrimenti neutra
 SELL_BELOW = 40
-CURRENCIES = ["USD", "EUR", "GBP", "JPY"]
-PAIRS = [("EUR", "USD"), ("GBP", "USD"), ("USD", "JPY"), ("EUR", "GBP"), ("EUR", "JPY"), ("GBP", "JPY")]
+CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CNY", "INR"]
+PAIRS = [("EUR", "USD"), ("GBP", "USD"), ("USD", "JPY"), ("EUR", "GBP"), ("EUR", "JPY"), ("GBP", "JPY"),
+         ("USD", "CAD"), ("AUD", "USD"), ("USD", "CNY"), ("USD", "INR")]
+# cambio in cache -> (valuta, +1 se quotato in USD per unita' di valuta, -1 se in valuta per 1 USD)
+FX_QUOTES = {"eurusd": ("EUR", 1), "gbpusd": ("GBP", 1), "usdjpy": ("JPY", -1), "usdcad": ("CAD", -1),
+             "audusd": ("AUD", 1), "usdcny": ("CNY", -1), "usdinr": ("INR", -1)}
 
 
 def _scale(x: float, lo_hi: tuple[float, float]) -> float:
@@ -29,15 +38,26 @@ def _scale(x: float, lo_hi: tuple[float, float]) -> float:
     return min(100.0, max(0.0, (x - lo) / (hi - lo) * 100))
 
 
-def momentum_returns(eurusd: pd.Series, gbpusd: pd.Series, usdjpy: pd.Series, days: int = MOMENTUM_DAYS) -> dict[str, float]:
-    """Rendimento % a `days` giorni di borsa di ogni valuta vs USD, poi centrato sulla media delle 4."""
-    def ret(s: pd.Series) -> float:
+def momentum_returns(fx: dict[str, pd.Series], days: int = MOMENTUM_DAYS) -> dict[str, float]:
+    """Rendimento % a `days` giorni di borsa di ogni valuta vs USD, poi centrato sulla media delle valute.
+    fx: nome del cambio (FX_QUOTES) -> serie; un cambio vuoto o troppo corto resta fuori."""
+    vs_usd = {"USD": 0.0}
+    for name, s in fx.items():
         s = s.dropna()
-        return math.log(s.iloc[-1] / s.iloc[-1 - days]) * 100
-
-    vs_usd = {"USD": 0.0, "EUR": ret(eurusd), "GBP": ret(gbpusd), "JPY": -ret(usdjpy)}
+        if len(s) > days:
+            ccy, sign = FX_QUOTES[name]
+            vs_usd[ccy] = sign * math.log(s.iloc[-1] / s.iloc[-1 - days]) * 100
     mean = sum(vs_usd.values()) / len(vs_usd)
     return {c: v - mean for c, v in vs_usd.items()}
+
+
+def growth_gap(growth: pd.Series) -> float | None:
+    """Ultimo PIL annuo contro la media dei GROWTH_YEARS anni prima (serie gia' tagliata alla data, nel backtest)."""
+    s = growth.dropna()
+    if len(s) < 8:
+        return None
+    s = s[s.index > s.index[-1] - pd.DateOffset(years=GROWTH_YEARS)]
+    return float(s.iloc[-1] - s.mean())
 
 
 def cot_component(cot_percentile: float | None) -> float | None:

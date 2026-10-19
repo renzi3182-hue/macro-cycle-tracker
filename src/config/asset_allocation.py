@@ -125,13 +125,13 @@ CASH = "Cash"
 
 
 # Conferma dei mercati (12/10/2026), la versione dichiarata della % dell'app di riferimento: quanti asset tipici del regime
-# dell'area sono in tendenza positiva. Azionario con l'ETF del paese dove c'e' (Canada e Australia non ne hanno,
-# l'azionario resta fuori), il resto con TREND_PROXY (ETF quotati in USA). Verifica 2004-2026 su 9 aree
+# dell'area sono in tendenza positiva. Azionario con l'ETF del paese (EWC, EWA, MCHI, INDA dal 19/10/2026, prima Cina e India con EEM;
+# Canada e Australia senza azionario), il resto con TREND_PROXY (ETF quotati in USA). Verifica 2004-2026 su 9 aree
 # (scripts/evaluate_model.py, sezione Conferma dei mercati): NON dice se la lettura macro e' giusta. Con conferma
 # alta (almeno 2/3 degli asset in salita) il regime del momento coincide con quello a dati completi nel 49% dei
 # mesi, con conferma bassa (al massimo 1/3) nel 51%; resta uguale 3 mesi dopo nel 42% contro il 39%.
 # Si mostra come descrizione, non come affidabilita'.
-AREA_EQUITY = {"USA": "SPY", "Eurozona": "EZU", "Italia": "EWI", "UK": "EWU", "Giappone": "EWJ", "Cina": "EEM", "India": "EEM"}
+AREA_EQUITY = {"USA": "SPY", "Eurozona": "EZU", "Italia": "EWI", "UK": "EWU", "Giappone": "EWJ", "Canada": "EWC", "Cina": "MCHI", "Australia": "EWA", "India": "INDA"}
 
 
 def confirmation(regime: str, above: dict[str, bool], equity: str | None) -> list[tuple[str, str, bool]]:

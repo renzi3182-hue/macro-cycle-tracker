@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from src.classify import intermarket as im
-from src.classify.currency import CURRENCIES, PAIRS, cot_component, momentum_returns, pair_view, strength_score, vix_component
+from src.classify.currency import CURRENCIES, FX_QUOTES, PAIRS, cot_component, growth_gap, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.positioning import percentile_rank, zscore
 from src.classify.rrg import GROUPS, MOMENTUM_WEEKS, TREND_WEEKS, quadrant, rrg, weekly_prices
 from src.classify.score import HORIZON_MONTHS, STRONG, UNIVERSE, WEAK, band_table, forward_excess, pillars
@@ -21,8 +21,8 @@ from src.ui.data import load_indicator, load_scores, spark, ui
 from src.ui.theme import hex_color
 
 IMPACT_LABELS_IT = {"Alto": "High", "Medio": "Medium", "Basso": "Low", "Festivo": "Holiday"}
-CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}
-CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone"}
+CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}  # CAD, AUD, CNY, INR senza COT (peso 0)
+CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone", "CAD": "Canada", "AUD": "Australia", "CNY": "Cina", "INR": "India"}
 
 
 @st.cache_data
@@ -46,18 +46,15 @@ def load_weekly() -> tuple[pd.DataFrame, pd.Timestamp | None]:
 
 
 def currency_scores() -> dict[str, dict]:
-    try:
-        mom = momentum_returns(*(load_indicator("Valute", n) for n in ("eurusd", "gbpusd", "usdjpy")))
-    except Exception:  # serie assente o troppo corta
-        mom = {}
+    mom = momentum_returns({n: load_indicator("Valute", n) for n in FX_QUOTES})
     vix = load_indicator("Mercati", "vix")
     vix_pct = None if vix.empty else percentile_rank(vix)
     out = {}
     for ccy in CURRENCIES:
-        cot = load_indicator("Mercati", f"cot_{CCY_COT[ccy]}")
+        cot = load_indicator("Mercati", f"cot_{CCY_COT[ccy]}") if ccy in CCY_COT else pd.Series(dtype=float)
         rate, infl = last_value("Valute", f"rate_{ccy}"), last_value(CCY_AREA[ccy], "inflation_yoy")
         real = None if rate is None or infl is None else rate - infl
-        res = strength_score(real, last_value(CCY_AREA[ccy], "growth_yoy"), mom.get(ccy),
+        res = strength_score(real, growth_gap(load_indicator(CCY_AREA[ccy], "growth_yoy")), mom.get(ccy),
                              cot_component(None if cot.empty else percentile_rank(cot.tail(COT_WEEKS))), vix_component(ccy, vix_pct))
         res["real_rate"], res["rate"], res["inflation"] = real, rate, infl
         out[ccy] = res
@@ -290,7 +287,7 @@ def page_currencies() -> None:
         ui(strength_html({ccy: v["score"] for ccy, v in scores.items()}))
     with col_p:
         ui(pairs_html(pairs))
-    st.caption("Solo informativo, orizzonte 6-12 mesi. Forza 1-100 = crescita PIL, momentum 12 mesi del cambio e VIX "
+    st.caption("Solo informativo, orizzonte 6-12 mesi. Forza 1-100 = crescita del PIL contro la media 10 anni del paese, momentum 12 mesi del cambio e VIX "
                "(risk-off favorisce JPY/USD). Tasso reale e COT mostrati ma con peso 0% (backtest 1999-2026).")
     with st.expander("Composizione del punteggio", icon=":material/table:"):
         st.dataframe(pd.DataFrame([

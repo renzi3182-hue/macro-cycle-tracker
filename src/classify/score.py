@@ -14,6 +14,10 @@ import pandas as pd
 # obbligazioni e cash: la scelta e' fatta dopo aver visto i dati, provate solo 3 varianti.
 # Niente pilastro macro: la tabella regime -> asset non batte i portafogli statici (scripts/backtest_assets.py).
 # Niente stagionalita': con 20-30 anni di storia per asset e' rumore.
+# Niente pilastro valutazione (19/10/2026): rendimento da dividendo 12 mesi (da adjclose/close mensili Yahoo, una sola
+# variante) ha IC -0.026 (t -0.8) sull'universo, -0.058 (t -1.5) solo azionario, -0.140 (t -2.3) dal 2014; come terzo
+# pilastro porta l'IC totale da +0.076 a +0.050 e i migliori 5 da 11,4% a 9,6%/anno. CAPE per paese: nessuna fonte
+# gratuita con storico.
 # 11/10/2026, 28 ETF (aggiunti XLC, XLRE, QQQ, IWM, IWF, IWD, SMH per i settori del libro di riferimento, una sola
 # variante provata): IC +0.076 (t 2.2), <2014 +0.049 (t 1.0, prima +0.067), >=2014 +0.107 (t 2.2); fascia 81-100
 # +0.64% mediano, 1-20 -0.92%; migliori 5 14.6%/anno, drawdown -19% (piu' ETF azionari USA forti, es. QQQ e SMH).
@@ -22,6 +26,8 @@ import pandas as pd
 # 12/10/2026, soglie dell'app di riferimento (entra sopra 80, esce solo sotto 60) contro tutti gli asset sopra 80, 2002-2026
 # senza costi: cambi di posizione da 25% a 15% al mese, ma 12,7%/anno contro 13,8%, drawdown uguale (-19%). Con costi
 # da ETF il risparmio non copre la differenza: niente isteresi, la classifica resta mensile.
+# 19/10/2026, 32 ETF (aggiunti EWC, EWA, MCHI, INDA: un ETF per ognuna delle 9 aree, una sola variante): IC +0.075 (t 2.2),
+# <2014 +0.062 (t 1.2, prima +0.049), >=2014 +0.088 (t 1.9, prima +0.107); migliori 5 14,5%/anno, drawdown -18%. Neutro, tenuti.
 # Verifica point-in-time in scripts/evaluate_score.py.
 TREND_MONTHS = 10
 MOMENTUM_MONTHS = 12
@@ -36,7 +42,8 @@ ASSET_AREA = "Asset"  # area in cache: un indicatore per ticker, chiusura mensil
 # ETF USA con storico lungo (dati Yahoo rettificati per dividendi). ticker -> (nome, gruppo)
 UNIVERSE = {
     "SPY": ("USA", "Paesi"), "EZU": ("Eurozona", "Paesi"), "EWI": ("Italia", "Paesi"), "EWU": ("Regno Unito", "Paesi"),
-    "EWJ": ("Giappone", "Paesi"), "EEM": ("Emergenti", "Paesi"),
+    "EWJ": ("Giappone", "Paesi"), "EEM": ("Emergenti", "Paesi"), "EWC": ("Canada", "Paesi"), "EWA": ("Australia", "Paesi"),
+    "MCHI": ("Cina", "Paesi"), "INDA": ("India", "Paesi"),
     "XLK": ("Tecnologia", "Settori USA"), "XLF": ("Finanziari", "Settori USA"), "XLV": ("Salute", "Settori USA"),
     "XLE": ("Energia", "Settori USA"), "XLI": ("Industriali", "Settori USA"), "XLY": ("Consumi discrezionali", "Settori USA"),
     "XLP": ("Consumi di base", "Settori USA"), "XLU": ("Utility", "Settori USA"), "XLB": ("Materiali", "Settori USA"),

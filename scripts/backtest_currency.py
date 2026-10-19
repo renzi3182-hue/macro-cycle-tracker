@@ -14,12 +14,12 @@ import numpy as np
 import pandas as pd
 
 from src.classify.currency import (
-    BUY_ABOVE, CURRENCIES, MOMENTUM_DAYS, PAIRS, SELL_BELOW, cot_component, momentum_returns, pair_view, strength_score, vix_component,
+    BUY_ABOVE, CURRENCIES, FX_QUOTES, MOMENTUM_DAYS, PAIRS, SELL_BELOW, cot_component, growth_gap, momentum_returns, pair_view, strength_score, vix_component,
 )
 from src.data import cache
 from src.data.fetch_cot import WEEKS
 
-CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone"}
+CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone", "CAD": "Canada", "AUD": "Australia", "CNY": "Cina", "INR": "India"}
 CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}
 LAG_DAYS = {"growth": 120, "inflation": 45, "rate": 30}
 MIN_COT_WEEKS = 52
@@ -43,10 +43,10 @@ def pct_expanding(series, t):
 
 
 def main():
-    fx = {n: load("Valute", n).dropna() for n in ("eurusd", "gbpusd", "usdjpy")}
-    lvl = pd.DataFrame({"USD": 0.0, "EUR": np.log(fx["eurusd"]), "GBP": np.log(fx["gbpusd"]), "JPY": -np.log(fx["usdjpy"])}).dropna()
+    fx = {n: load("Valute", n).dropna() for n in FX_QUOTES}
+    lvl = pd.DataFrame({"USD": 0.0, **{FX_QUOTES[n][0]: FX_QUOTES[n][1] * np.log(s) for n, s in fx.items()}}).dropna()
     data = {c: {"growth": load(CCY_AREA[c], "growth_yoy"), "infl": load(CCY_AREA[c], "inflation_yoy"),
-                "rate": load("Valute", f"rate_{c}"), "cot": load("Mercati", f"cot_{CCY_COT[c]}")} for c in CURRENCIES}
+                "rate": load("Valute", f"rate_{c}"), "cot": load("Mercati", f"cot_{CCY_COT[c]}") if c in CCY_COT else pd.Series(dtype=float, index=pd.DatetimeIndex([]))} for c in CURRENCIES}
     vix = load("Mercati", "vix")
     month_ends = lvl.groupby(lvl.index.to_period("M")).tail(1).index
 
@@ -54,9 +54,9 @@ def main():
     for i, t in enumerate(month_ends):
         if len(lvl[lvl.index <= t]) <= MOMENTUM_DAYS + 1:
             continue
-        past = [fx[n][fx[n].index <= t] for n in ("eurusd", "gbpusd", "usdjpy")]
-        mom = momentum_returns(*past)  # 12 mesi (MOMENTUM_DAYS)
-        mom3 = momentum_returns(*past, days=63)
+        past = {n: s[s.index <= t] for n, s in fx.items()}
+        mom = momentum_returns(past)  # 12 mesi (MOMENTUM_DAYS)
+        mom3 = momentum_returns(past, days=63)
         vp = pct_expanding(vix, t) if len(vix[vix.index <= t]) else (None, 0)
         vix_pct = vp[0] if vp[1] >= MIN_VIX_OBS else None
         comp = {}
@@ -68,7 +68,7 @@ def main():
             if len(d["cot"][d["cot"].index <= t]) >= MIN_COT_WEEKS:
                 cot_pct = pct_expanding(d["cot"][d["cot"].index <= t].tail(WEEKS), t)[0]  # stessa finestra 5 anni dell'app
             # momentum 3m per 2: stessa scala MOMENTUM_RANGE (+-12%) del 12 mesi
-            comp[c] = dict(real=real, growth=asof(d["growth"], t, LAG_DAYS["growth"]), mom=mom[c], mom3=mom3[c] * 2,
+            comp[c] = dict(real=real, growth=growth_gap(d["growth"][d["growth"].index <= t - pd.Timedelta(days=LAG_DAYS["growth"])]), mom=mom[c], mom3=mom3[c] * 2,
                            cot=cot_component(cot_pct), vix=vix_component(c, vix_pct))
         variants = {
             "IN USO (pesi currency.py)": lambda x: strength_score(x["real"], x["growth"], x["mom"], x["cot"], x["vix"]),
