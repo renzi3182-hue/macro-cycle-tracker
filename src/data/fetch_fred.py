@@ -76,6 +76,11 @@ def fetch_unemployment_rate(api_key: str, series_id: str = SERIES_UNEMPLOYMENT) 
     return _fetch_series(series_id, api_key, units="lin")  # gia' un tasso %, no trasformazione
 
 
+def fetch_level(series_id: str, api_key: str) -> pd.Series:
+    """Serie nel suo livello, senza trasformazione (es. rendimenti Treasury GS10 in %)."""
+    return _fetch_series(series_id, api_key, units="lin")
+
+
 def fetch_yield_curve(api_key: str) -> pd.Series:
     return _fetch_series(SERIES_YIELD_CURVE, api_key, units="lin")
 

@@ -1,13 +1,15 @@
 """Verifica del punteggio asset (src/classify/score.py): un punteggio alto anticipa rendimenti migliori?
 
-Il punteggio di fine mese t usa solo prezzi fino a t (i prezzi non vengono rivisti: e' gia' point-in-time).
+Il punteggio di fine mese t usa solo prezzi fino a t e pesi stimati solo su esiti gia' noti (walk-forward).
 Si misura il rendimento dei 3 mesi successivi contro la media equipesata degli asset disponibili.
 Stampa:
-1. per fascia di punteggio: casi, extra-rendimento mediano e medio a 3 mesi, % di volte sopra la media;
+1. per fascia di punteggio: casi, extra-rendimento mediano e medio a 3 mesi, % di volte sopra la media, per il
+   punteggio e per la prima versione (tendenza e momentum a pesi uguali), sugli stessi mesi e asset;
 2. IC (correlazione di rango punteggio -> extra-rendimento) per pilastro e totale, in due sottoperiodi;
-3. portafoglio dei migliori N, ribilanciato ogni mese, contro pesi uguali, SPY e 60/40 (niente costi).
+3. taratura: probabilita' prevista contro frequenza realizzata, e i pesi stimati per decennio;
+4. portafoglio dei migliori N, ribilanciato ogni mese, contro pesi uguali, SPY e 60/40 (niente costi).
 Uso, da root del monorepo: .venv/Scripts/python code/macro-cycle-tracker/scripts/evaluate_score.py
-(legge data/cache.db; se mancano i prezzi li scarica da Yahoo)
+(legge data/cache.db; se mancano prezzi o serie lunghe li scarica, le serie FRED con FRED_API_KEY)
 """
 import sys
 from pathlib import Path
@@ -15,31 +17,45 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import math
+import os
 
 import pandas as pd
 
-from src.classify.score import ASSET_AREA, HORIZON_MONTHS as HORIZON, UNIVERSE, band_table, complete_months, forward_excess, monthly_prices, pillars, scores
+from src.classify.assess import USED_INPUTS, assess
+from src.classify.score import (
+    ASSET_AREA, ENTER, EXIT, HISTORY_AREA, HISTORY_SERIES, HORIZON_MONTHS as HORIZON, MIN_ASSETS, UNIVERSE, band_table,
+    complete_months, extended_prices, forward_excess, hysteresis, macro, model, monthly_prices, pillars, proxy_returns,
+    seasonality,
+)
 from src.data import cache
-from src.scheduler.update_data import update_asset_prices
+from src.scheduler.update_data import _load_dotenv, update_asset_prices, update_history
 
 SPLIT = "2014-01-01"  # due sottoperiodi di ~12 anni
 TOP_N = 5
-ENTER, EXIT = 80, 60  # soglie dell'app di riferimento
-
-
-def hysteresis(s: pd.DataFrame, enter: float, exit_: float) -> pd.DataFrame:
-    """True da quando il punteggio supera enter finche' non scende sotto exit_ (o sparisce)."""
-    out, held = [], pd.Series(False, index=s.columns)
-    for _, row in s.iterrows():
-        held = (row > enter) | (held & (row >= exit_))
-        out.append(held)
-    return pd.DataFrame(out, index=s.index)
 
 
 def load_prices() -> pd.DataFrame:
     if any(cache.read_indicator_series(ASSET_AREA, t).empty for t in UNIVERSE):
         update_asset_prices()
     return complete_months(monthly_prices({t: cache.read_indicator_series(ASSET_AREA, t) for t in UNIVERSE}))
+
+
+def load_inputs() -> tuple[pd.DataFrame, pd.Series]:
+    """Rendimenti delle serie lunghe (scaricate se mancano) e regime USA mensile."""
+    if any(cache.read_indicator_series(HISTORY_AREA, s).empty for s in HISTORY_SERIES):
+        _load_dotenv()
+        update_history(os.environ.get("FRED_API_KEY", ""))
+    proxies = proxy_returns({s: cache.read_indicator_series(HISTORY_AREA, s) for s in HISTORY_SERIES})
+    usa = assess("USA", {n: cache.read_indicator_series("USA", n) for n in USED_INPUTS})
+    return proxies, usa["history"]["regime"]
+
+
+def first_version(px: pd.DataFrame) -> pd.DataFrame:
+    """Punteggio fino al 19/10/2026: percentile della media dei percentili di tendenza e momentum."""
+    p = pillars(px)
+    avg = (p["Tendenza"].rank(axis=1, pct=True) + p["Momentum"].rank(axis=1, pct=True)) / 2
+    s = (avg.rank(axis=1, pct=True) * 100).round().clip(lower=1)
+    return s.where(avg.notna().sum(axis=1) >= MIN_ASSETS, axis=0)
 
 
 def ic(signal: pd.DataFrame, excess: pd.DataFrame) -> tuple[float, float, int]:
@@ -60,50 +76,66 @@ def perf(r: pd.Series) -> dict:
 
 def main() -> None:
     px = load_prices()
-    s = scores(px)
+    proxies, regime = load_inputs()
+    m = model(px, proxies, regime)
+    old = first_version(px)
+    both = m["score"].notna() & old.notna()
+    s, old = m["score"].where(both), old.where(both)
     excess = forward_excess(px, s)
     start = s.dropna(how="all").index[0]
-    print(f"Universo {px.shape[1]} ETF, punteggi da {start:%Y-%m} a {s.index[-1]:%Y-%m}, orizzonte {HORIZON} mesi\n")
+    ext = extended_prices(px, proxies)
+    print(f"Universo {px.shape[1]} ETF, storico esteso da {ext.index[0]:%Y-%m}, punteggi da {start:%Y-%m} "
+          f"a {s.index[-1]:%Y-%m}, orizzonte {HORIZON} mesi\n")
 
-    table = band_table(s, excess)
-    print("Extra-rendimento a 3 mesi contro la media dell'universo, per fascia di punteggio (%):")
-    print(table.round(2).to_string(), "\n")
+    for name, sc in (("Punteggio", s), ("Prima versione", old)):
+        print(f"{name}: extra-rendimento a 3 mesi contro la media dell'universo, per fascia (%):")
+        print(band_table(sc, excess).round(2).to_string(), "\n")
 
-    print("IC (Spearman mensile punteggio -> extra-rendimento a 3 mesi; t > 2 = probabilmente non casuale):")
-    signals = {**{k: v.where(s.notna()) for k, v in pillars(px).items()}, "Punteggio": s}
-    for name, sig in signals.items():
-        parts = [f"{label} IC {m:+.3f} t {t:+.1f} ({n} mesi)"
-                 for label, (m, t, n) in (("tutto", ic(sig, excess)), (f"<{SPLIT[:4]}", ic(sig.loc[:SPLIT], excess.loc[:SPLIT])),
-                                          (f">={SPLIT[:4]}", ic(sig.loc[SPLIT:], excess.loc[SPLIT:])))]
-        print(f"- {name:10s} " + " | ".join(parts))
+    print("IC (Spearman mensile -> extra-rendimento a 3 mesi; t > 2 = probabilmente non casuale):")
+    raw = {**pillars(px), "Stagionalità": seasonality(ext).reindex(px.index), "Macro": macro(ext, regime).reindex(px.index)}
+    for name, sig in {**{k: v.where(both) for k, v in raw.items()}, "Punteggio": s, "Prima vers.": old}.items():
+        parts = [f"{label} IC {mu:+.3f} t {t:+.1f} ({n} mesi)"
+                 for label, (mu, t, n) in (("tutto", ic(sig, excess)), (f"<{SPLIT[:4]}", ic(sig.loc[:SPLIT], excess.loc[:SPLIT])),
+                                           (f">={SPLIT[:4]}", ic(sig.loc[SPLIT:], excess.loc[SPLIT:])))]
+        print(f"- {name:13s} " + " | ".join(parts))
+
+    long = pd.DataFrame({"p": m["prob"].where(both).stack(), "y": (excess > 0).where(excess.notna()).stack()}).dropna()
+    long["prevista"] = pd.cut(long["p"], [0, .4, .45, .5, .55, .6, 1])
+    print("\nTaratura fuori campione (probabilita' prevista -> % di volte sopra la media):")
+    print(long.groupby("prevista", observed=True)["y"].agg(casi="size", realizzata=lambda x: x.mean() * 100).round(1).to_string())
+    w = m["weights"]
+    print("\nPesi medi per decennio (logistica sui pilastri in posizione -0,5..+0,5):")
+    print(w.groupby(w.index.year // 10 * 10).mean().round(2).to_string())
 
     ret1 = px.pct_change(fill_method=None).shift(-1)  # punteggio a fine t -> rendimento del mese t+1
-    top = s.rank(axis=1, ascending=False, method="first") <= TOP_N
+    tops = {name: sc.rank(axis=1, ascending=False, method="first") <= TOP_N for name, sc in (("", s), (" prima vers.", old))}
     strategies = {
-        f"Migliori {TOP_N}": ret1.where(top).mean(axis=1),
+        **{f"Migliori {TOP_N}{name}": ret1.where(top).mean(axis=1) for name, top in tops.items()},
         "Pesi uguali": ret1.where(s.notna()).mean(axis=1),
         "SPY": ret1["SPY"],
         "60/40 SPY-IEF": 0.6 * ret1["SPY"] + 0.4 * ret1["IEF"],
     }
     d = pd.DataFrame(strategies).loc[start:].dropna()
-    turnover = (top.astype(int).diff().abs().sum(axis=1) / 2 / TOP_N).loc[start:].mean() * 100
+    turnover = (tops[""].astype(int).diff().abs().sum(axis=1) / 2 / TOP_N).loc[start:].mean() * 100
     print(f"\nPortafogli ribilanciati ogni mese, {d.index[0]:%Y-%m} -> {d.index[-1]:%Y-%m}, senza costi "
           f"(Migliori {TOP_N}: cambia in media il {turnover:.0f}% delle posizioni al mese):")
     print(pd.DataFrame({k: perf(v) for k, v in d.items()}).T.round(1).to_string())
 
-    # Soglie dell'app di riferimento: entra sopra ENTER, esce sotto EXIT (isteresi) contro entra/esce sopra/sotto ENTER.
+    # Segnale attivo: entra sopra ENTER, esce sotto EXIT (isteresi) contro entra/esce sopra/sotto ENTER.
     # Pesi uguali fra gli asset tenuti, SHY quando non ce n'e' nessuno.
     print(f"\nTutti gli asset sopra {ENTER} (pesi uguali, SHY se nessuno), con e senza uscita sotto {EXIT}:")
     held = {f"sopra {ENTER}": s > ENTER, f"entra {ENTER} esce {EXIT}": hysteresis(s, ENTER, EXIT)}
     rows = {}
     for name, h in held.items():
-        w = h.astype(float).div(h.sum(axis=1), axis=0).fillna(0)
-        r = (w * ret1.fillna(0)).sum(axis=1).where(h.any(axis=1), ret1["SHY"]).reindex(d.index)  # stesso periodo dei portafogli sopra
+        wt = h.astype(float).div(h.sum(axis=1), axis=0).fillna(0)
+        r = (wt * ret1.fillna(0)).sum(axis=1).where(h.any(axis=1), ret1["SHY"]).reindex(d.index)  # stesso periodo dei portafogli sopra
         rows[name] = {**perf(r), "asset medi": h.reindex(d.index).sum(axis=1).mean(),
-                      "turnover %/mese": (w.diff().abs().sum(axis=1) / 2).reindex(d.index).mean() * 100}
+                      "turnover %/mese": (wt.diff().abs().sum(axis=1) / 2).reindex(d.index).mean() * 100}
     print(pd.DataFrame(rows).T.round(1).to_string())
-    print(f"\nPunteggi attuali ({s.index[-1]:%Y-%m}):")
-    print(s.iloc[-1].dropna().sort_values(ascending=False).astype(int).rename(lambda t: f"{t} {UNIVERSE[t][0]}").to_string())
+    last = m["score"].iloc[-1].dropna().sort_values(ascending=False)
+    print(f"\nPunteggi attuali ({last.name:%Y-%m}), con probabilita' di battere la media a {HORIZON} mesi:")
+    for t, v in last.items():
+        print(f"  {t:5s} {UNIVERSE[t][0]:24s} {v:3.0f}  {m['prob'].loc[last.name, t] * 100:4.1f}%")
 
 
 if __name__ == "__main__":

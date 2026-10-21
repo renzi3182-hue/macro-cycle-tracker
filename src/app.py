@@ -32,7 +32,7 @@ from src.ui.cards import (
     risk_explain_html, risk_html, stat_tile_html, stress_html, trend_chips_html, trend_html, weight_deltas,
 )
 from src.ui.data import load_indicator, load_scores, spark, ui
-from src.ui.market_pages import page_calendar, page_cot, page_currencies, page_markets, page_ranking
+from src.ui.market_pages import page_allocation, page_calendar, page_cot, page_currencies, page_markets, page_ranking
 from src.ui.theme import hex_color, page_css, phase_color, regime_color
 from src.ui.tool_pages import page_interest, page_sizing
 
@@ -98,13 +98,13 @@ def load_assessment(area: str) -> dict | None:
 
 @st.cache_data
 def load_risk() -> pd.DataFrame:
-    """Componenti del Risk On/Off (src/classify/risk.py) giornaliere, piu' le colonne Punteggio e Canarino."""
+    """Componenti del Risk On/Off (src/classify/risk.py) giornaliere, piu' Punteggio e Allarme (momentum del canarino, sotto zero = allarme)."""
     m = lambda k: load_indicator("Mercati", k)
     px = pd.DataFrame({t: load_indicator(im.AREA, t) for t in UNIVERSE})
     if px.empty:
         return px
     comp = risk_components(m("vix"), m("vix3m"), load_indicator("USA", "credit_spread"), m("xly"), m("xlp"), px)
-    return comp.assign(Punteggio=risk_score(comp), Canarino=canary(px[CANARY]).reindex(comp.index).ffill(limit=FILL_DAYS)).dropna()
+    return comp.assign(Punteggio=risk_score(comp), Allarme=canary(px[CANARY]).reindex(comp.index).ffill(limit=FILL_DAYS)).dropna()
 
 
 
@@ -119,7 +119,8 @@ RISK_PARTS = [("VIX", "Calma in borsa", "volatilità (VIX) rispetto alla sua sto
               ("Credito", "Calma sul credito", "stress sulle obbligazioni societarie"),
               ("Ampiezza", "Asset in salita", "quota sopra la media a 200 sedute"),
               ("Struttura", "Paura sul breve assente", "VIX a 1 mese contro VIX a 3 mesi"),
-              ("Consumi", "Voglia di spendere", "consumi discrezionali contro beni di base (XLY/XLP)")]
+              ("Consumi", "Voglia di spendere", "consumi discrezionali contro beni di base (XLY/XLP)"),
+              ("Canarino", "Obbligazioni anti-inflazione", "momentum di TIP, spesso scende prima delle tensioni")]
 
 
 def describe(a: dict) -> str:
@@ -203,7 +204,7 @@ def page_today() -> None:
         r = risk.iloc[-1]
         s = max(1, round(r["Punteggio"]))
         state = risk_label(r["Punteggio"])
-        alarm = r["Canarino"] < 0
+        alarm = r["Allarme"] < 0
         tiles.append(stat_tile_html(
             "#cosa-vuol-dire", f"Nervosismo dei mercati · al {risk.index[-1]:%d/%m}", s, 100, state, f"var(--{level_var(s)})",
             f'<div class="track"><i style="width:{s}%;background:var(--{level_var(s)})"></i></div>',
@@ -481,6 +482,7 @@ PAGES = {
     ],
     "Mercati": [
         st.Page(page_ranking, title="Classifica", icon=":material/leaderboard:", url_path="classifica"),
+        st.Page(page_allocation, title="Allocazione", icon=":material/public:", url_path="allocazione"),
         st.Page(page_markets, title="Mercati", icon=":material/candlestick_chart:", url_path="mercati"),
         st.Page(lambda: page_cot(mode), title="COT report", icon=":material/groups:", url_path="cot"),
         st.Page(page_currencies, title="Valute", icon=":material/currency_exchange:", url_path="valute"),

@@ -22,6 +22,8 @@ Copia `.env.example` in `.env` e riempi:
 
 Indicatori anticipatori (tutte le aree, vedi `src/classify/leading.py`): OECD CLI (API SDMX OCSE, senza chiave), Economic Sentiment Indicator (Eurostat), curve dei tassi e spread BTP-Bund (FRED/OCSE), Tankan (API Bank of Japan, senza chiave). USA, solo informativi: sussidi di disoccupazione, permessi di costruzione, Philly Fed (proxy dell'ISM PMI, non disponibile gratis), GDPNow.
 
+Storico lungo per la Classifica (`src/data/fetch_french.py`, area di cache `Storico`): rendimenti mensili di mercato e 12 settori USA dalla Kenneth French Data Library (Dartmouth, gratuita, senza chiave, dal 1926) e rendimenti Treasury GS10/GS1 da FRED.
+
 La dashboard avvisa se un dato ha piu' di 250 giorni: di solito la fonte ha cambiato dataset.
 
 Se un'area fallisce, l'update la salta e continua con le altre (vedi `src/scheduler/update_data.py`), quindi non blocca il resto della dashboard.

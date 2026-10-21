@@ -31,3 +31,14 @@ def fetch_yahoo(symbol: str, range_: str = "5y", interval: str = "1d", adjusted:
 def fetch_move() -> pd.Series:
     """ICE BofA MOVE Index (volatilita' implicita sui Treasury), chiusura giornaliera."""
     return fetch_yahoo("^MOVE")
+
+
+# Oro, prezzo medio mensile in dollari dal 1833 (dataset pubblico datahub "gold-prices", licenza ODC-PDDL, fonte World
+# Bank/Bundesbank): allunga lo storico prima di GLD (2004) per la classifica delle classi di asset.
+GOLD_URL = "https://raw.githubusercontent.com/datasets/gold-prices/main/data/monthly.csv"
+
+
+def fetch_gold_monthly() -> pd.Series:
+    resp = get_with_retry(GOLD_URL, source="datahub", timeout=60)
+    rows = [line.split(",") for line in resp.text.splitlines()[1:] if line.count(",") == 1]
+    return pd.Series([float(v) for _, v in rows], index=pd.to_datetime([d for d, _ in rows], format="%Y-%m")).sort_index()

@@ -1,27 +1,29 @@
-"""Pagine del gruppo Mercati: Classifica, Mercati, COT report, Valute, Calendario."""
+"""Pagine del gruppo Mercati: Classifica, Allocazione, Mercati, COT report, Valute, Calendario."""
 import math
 
 import altair as alt
 import pandas as pd
 import streamlit as st
 
+from src.classify import allocation as al
 from src.classify import intermarket as im
 from src.classify.currency import CURRENCIES, FX_QUOTES, PAIRS, cot_component, growth_gap, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.positioning import percentile_rank, zscore
 from src.classify.rrg import GROUPS, MOMENTUM_WEEKS, TREND_WEEKS, quadrant, rrg, weekly_prices
-from src.classify.score import HORIZON_MONTHS, STRONG, UNIVERSE, WEAK, band_table, forward_excess, pillars
+from src.classify.score import ENTER, EXIT, HORIZON_MONTHS, PILLARS, STRONG, UNIVERSE, WEAK, band_table, forward_excess, hysteresis, pillars
 from src.config import cot_guide
 from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.ui.cards import (
     bands_html, calendar_html, cot_groups_html, events_html, hero_html, month_it, pairs_html, ranking_html, relations_html,
-    rrg_html, strength_html, why_text,
+    rrg_html, strength_html, weights_html, why_text,
 )
-from src.ui.data import load_indicator, load_scores, spark, ui
+from src.ui.data import load_allocation, load_indicator, load_model, spark, ui
 from src.ui.theme import hex_color
 
 IMPACT_LABELS_IT = {"Alto": "High", "Medio": "Medium", "Basso": "Low", "Festivo": "Holiday"}
-CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}  # CAD, AUD, CNY, INR senza COT (peso 0)
+CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen", "CAD": "Dollaro canadese",
+           "AUD": "Dollaro australiano"}  # CNY, INR senza future CFTC
 CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone", "CAD": "Canada", "AUD": "Australia", "CNY": "Cina", "INR": "India"}
 
 
@@ -75,28 +77,31 @@ def upcoming_events() -> list[dict]:
 
 
 def page_ranking() -> None:
-    px, s = load_scores()
+    m = load_model()
+    px, s = m["px"], m["score"]
     if s.empty:
         st.info("Nessun prezzo degli asset in cache.", icon=":material/database:")
         st.stop()
     month, now = s.index[-1], s.iloc[-1].dropna().sort_values(ascending=False)
     prev = s.iloc[-2] if len(s) > 1 else pd.Series(dtype=float)
-    p = {k: v.loc[month] for k, v in pillars(px).items()}
-    strong = [UNIVERSE[t][0] for t in now.index if now[t] > STRONG]
+    trend = pillars(px)["Tendenza"].loc[month]
+    active = hysteresis(s).iloc[-1]
+    on = [UNIVERSE[t][0] for t in now.index if active[t]]
     ui(hero_html(f"Classifica asset · fine {month_it(month)}", "In testa: " + ", ".join(UNIVERSE[t][0] for t in now.index[:3]),
-                 f"Punteggio 1-100 = posizione fra {len(now)} ETF per tendenza (prezzo contro la media a 10 mesi) e momentum "
-                 f"(rendimento 12 mesi escluso l'ultimo). Sopra {STRONG}: <b>{', '.join(strong) or 'nessuno'}</b>."))
+                 f"Punteggio 1-100 = posizione fra {len(now)} ETF per probabilità di battere la media degli asset nei "
+                 f"{HORIZON_MONTHS} mesi dopo, stimata da cinque pilastri: {', '.join(PILLARS).lower()}. Segnale attivo sopra "
+                 f"{ENTER}, si spegne sotto {EXIT}: <b>{', '.join(on) or 'nessuno'}</b>."))
     groups = ["Tutti", *dict.fromkeys(g for _, g in UNIVERSE.values())]
     group = st.segmented_control("Gruppo", groups, default="Tutti", required=True, key="group", label_visibility="collapsed")
-    ranks = {k: v[now.index].rank(ascending=False, method="min").astype(int) for k, v in p.items()}
     rows = [{"ticker": t, "nome": UNIVERSE[t][0], "gruppo": UNIVERSE[t][1], "punteggio": sc,
-             "delta": sc - prev[t] if pd.notna(prev.get(t)) else None, **{k: v[t] for k, v in p.items()}, "storico": s[t],
-             "perche": why_text({k: r[t] for k, r in ranks.items()}, len(now))}
+             "delta": sc - prev[t] if pd.notna(prev.get(t)) else None, "Tendenza": trend[t], "prob": m["prob"].loc[month, t],
+             "attivo": bool(active[t]), "storico": s[t], "perche": why_text({k: c.loc[month, t] for k, c in m["contrib"].items()})}
             for t, sc in now.items() if group == "Tutti" or UNIVERSE[t][1] == group]
     col_r, col_e = st.columns([8, 4])
     with col_r:
         ui(ranking_html(rows, month))
     with col_e:
+        ui(weights_html(m["weights"].iloc[-1][PILLARS].to_dict(), m["weights"].index[-1]))
         ui(bands_html(band_table(s, forward_excess(px, s)), HORIZON_MONTHS, s.index[0]))
         wk, last_day = load_weekly()
         if not wk.empty:
@@ -108,9 +113,10 @@ def page_ranking() -> None:
             if items:
                 ui(rrg_html(items, f"Rotazione · {rot}", f"settimanale, al {last_day:%d/%m/%Y}"))
     st.caption(f"Solo informativo, non è consulenza. Si aggiorna a fine mese. Verde sopra {STRONG}, rosso fino a {WEAK}. "
-               "Backtest 2002-2026 senza costi (scripts/evaluate_score.py, 06/10/2026): i 5 migliori ribilanciati ogni mese "
-               "14,6% l'anno con drawdown massimo −19%, S&P 500 11,2% e −51%. Il vantaggio è piccolo e sta più nel ridurre le perdite che nel rendimento. "
-               "Entrare sopra 80 e uscire solo sotto 60 riduce i cambi di posizione del 40% ma rende 1,1 punti l'anno in meno.")
+               "Verifica 2002-2026 senza costi, con pesi stimati solo sul passato (scripts/evaluate_score.py, 19/10/2026): "
+               "i 5 migliori ribilanciati ogni mese 14,2% l'anno con drawdown massimo −28%, S&P 500 11,2% e −51%; segnale attivo "
+               f"(entra sopra {ENTER}, esce sotto {EXIT}) 12,4% e −26%. La probabilità è tarata: quando dice 55-60% l'asset ha "
+               "battuto la media il 54% delle volte. Il vantaggio è piccolo e sta più nel ridurre le perdite che nel rendimento.")
 
 
 
@@ -288,7 +294,8 @@ def page_currencies() -> None:
     with col_p:
         ui(pairs_html(pairs))
     st.caption("Solo informativo, orizzonte 6-12 mesi. Forza 1-100 = crescita del PIL contro la media 10 anni del paese, momentum 12 mesi del cambio e VIX "
-               "(risk-off favorisce JPY/USD). Tasso reale e COT mostrati ma con peso 0% (backtest 1999-2026).")
+               "(risk-off favorisce JPY/USD). Tasso reale e COT mostrati ma con peso 0% (backtest 1999-2026). Classifica delle "
+               "valute con carry, cambio reale e COT, verificata fuori campione: pagina Allocazione.")
     with st.expander("Composizione del punteggio", icon=":material/table:"):
         st.dataframe(pd.DataFrame([
             {"Valuta": ccy, "Forza": v["score"],
@@ -298,3 +305,67 @@ def page_currencies() -> None:
              **{k: None if p is None else round(p) for k, p in zip(("Tasso reale", "Crescita", "Momentum", "COT", "VIX"), v["parts"].values())}}
             for ccy, v in scores.items()
         ]), hide_index=True)
+
+
+# Strumento d'esempio per classe di asset (solo nomi, non e' un consiglio): azioni = ETF del paese; per gli USA la
+# pagina mostra anche i migliori della Classifica dentro la classe.
+EXAMPLE = {"Obbligazioni": "Titoli di Stato decennali", "Liquidità": "Liquidità a 3 mesi", "Oro": "Oro (es. GLD)"}
+CCY_NAMES = {"USD": "Dollaro USA", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen", "CAD": "Dollaro canadese",
+             "AUD": "Dollaro australiano", "CNY": "Renminbi", "INR": "Rupia indiana"}
+CLASS_GROUPS = {"Azioni": ("Settori USA", "Indici USA"), "Obbligazioni": ("Obbligazioni",), "Oro": ("Materie prime",)}
+
+
+def _alloc_rows(m: dict, key, names: dict, tickers: dict, gruppo: str, active: pd.Series | None) -> tuple[list[dict], pd.Timestamp]:
+    """Righe per ranking_html dall'ultima riga con punteggio. key(month) -> etichetta di riga del mese."""
+    s = m["score"].dropna(how="all")
+    month = al.months_of(s.index).max()
+    now, prev = s.loc[key(month)].dropna().sort_values(ascending=False), s.loc[key(month - pd.offsets.MonthBegin())]
+    w = m["weights"].iloc[-1]
+    rows = []
+    for item, sc in now.items():
+        contrib = {k: m["feats"][k].loc[key(month), item] * w[k] for k in m["feats"]}
+        hist = s.xs(key(month)[0], level=0)[item] if s.index.nlevels > 1 else s[item]
+        rows.append({"item": item, "ticker": tickers.get(item, item), "nome": names.get(item, item), "gruppo": gruppo, "punteggio": sc,
+                     "delta": sc - prev[item] if pd.notna(prev.get(item)) else None,
+                     "Tendenza": m["raw"]["Tendenza"].loc[key(month), item], "prob": m["prob"].loc[key(month), item],
+                     "attivo": bool(active is not None and active.get(item, False)), "storico": hist, "perche": why_text(contrib)})
+    return rows, month
+
+
+def _badge(name: str) -> str:
+    return ("<b style=\"color:var(--r-gold)\">Vantaggio verificato</b> fuori campione · " if al.EDGE[name]
+            else "<b style=\"color:var(--muted)\">Descrittiva</b>: nessun vantaggio dimostrato fuori campione · ") + al.VERIFICA[name]
+
+
+def page_allocation() -> None:
+    data = load_allocation()
+    if not data:
+        st.info("Nessun prezzo in cache.", icon=":material/database:")
+        st.stop()
+    pa, cl, fx = data["Paesi"], data["Classi di asset"], data["Valute"]
+    countries, month = _alloc_rows(pa, lambda mo: mo, {}, al.COUNTRY_ETF, "azioni", None)
+    best = countries[0]["nome"]
+    ui(hero_html(f"Allocazione di lungo periodo · fine {month_it(month)}", f"In testa: {best} · dentro il paese, il peso alle classi di asset",
+                 "Per PAC e investimenti fissi, orizzonte 6-12 mesi. Punteggio 1-100 relativo: 50 = metà classifica, 90 = "
+                 "meglio del 90% degli altri nello stesso mese, per probabilità di battere la media nei 6 mesi dopo. "
+                 "Più peso a chi sta in alto, meno peso a chi sta in basso: sono vantaggi statistici storici, non certezze."))
+    ui(ranking_html(countries, month, "Paesi", al.HORIZON, _badge("Paesi")))
+    area = st.segmented_control("Paese", al.AREAS, default=best, required=True, key="alloc_area", label_visibility="collapsed")
+    hold = hysteresis(cl["score"].xs(area, level=0).dropna(how="all"), al.ENTER, al.EXIT).iloc[-1]
+    tickers = {"Azioni": al.COUNTRY_ETF[area], "Obbligazioni": "10Y", "Liquidità": "3M", "Oro": "XAU"}
+    rows, _ = _alloc_rows(cl, lambda mo: (area, mo), EXAMPLE | {"Azioni": f"Azioni {area}"}, tickers, area, hold)
+    ui(ranking_html(rows, month, f"Classi di asset · {area}", al.HORIZON, _badge("Classi di asset")))
+    cls = rows[0]["item"]
+    if area == "USA" and cls in CLASS_GROUPS:
+        s = load_model()["score"].iloc[-1].dropna().sort_values(ascending=False)
+        pick = [t for t in s.index if UNIVERSE[t][1] in CLASS_GROUPS[cls]][:3]
+        if pick:
+            st.caption("Dentro la classe, i più alti della Classifica a 3 mesi: "
+                       + ", ".join(f"{UNIVERSE[t][0]} ({t}, {s[t]:.0f})" for t in pick) + ".")
+    ui(ranking_html(_alloc_rows(fx, lambda mo: mo, CCY_NAMES, {}, "valuta", None)[0], month, "Valute", al.HORIZON, _badge("Valute")))
+    st.caption("Solo informativo, non è consulenza. Si aggiorna a fine mese. Verifica (scripts/evaluate_allocation.py, "
+               "21/10/2026): pesi stimati solo sul passato, sviluppo e verifica a rotazione su quattro periodi dal 1991 al "
+               "2018 e test finale sul 2019-2026, tenuto da parte e usato una volta sola, contro 500 portafogli scelti a caso "
+               "e portafogli statici, senza costi. Solo le classi di asset hanno superato il test finale; paesi e valute si "
+               "leggono come descrizione del momento. Fonti: OCSE (fiducia, tassi), BIS (cambio reale), CFTC (COT), "
+               "Kenneth French e ETF (borse), FRED (cambi), datahub (oro).")

@@ -18,6 +18,8 @@ CONTRACTS = {  # nome -> cftc_contract_market_code
     "Yen": "097741",
     "Sterlina": "096742",
     "Dollaro (DXY)": "098662",
+    "Dollaro canadese": "090741",
+    "Dollaro australiano": "232741",
 }
 
 

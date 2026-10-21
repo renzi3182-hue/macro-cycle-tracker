@@ -46,7 +46,7 @@ def main() -> None:
     spy = px["SPY"].loc[days]
     r = spy.pct_change()
     d = pd.DataFrame({
-        "new": risk_score(comp), "old": risk_score(comp[OLD]),
+        "new": risk_score(comp), "five": risk_score(comp.drop(columns="Canarino")), "old": risk_score(comp[OLD]),
         "vol": r.rolling(FWD_DAYS).std().shift(-FWD_DAYS) * math.sqrt(252) * 100,
         "r21": spy.shift(-FWD_DAYS) / spy - 1,
         "calo": (spy.rolling(DD_DAYS).min().shift(-DD_DAYS) / spy - 1 < DD).astype(float),
@@ -58,7 +58,7 @@ def main() -> None:
     print(f"\nOgni componente contro volatilita' e rendimento SPY dei {FWD_DAYS} giorni dopo:")
     for c in comp:
         print(f"  {c:10s} vol {comp.loc[d.index, c].corr(d['vol']):+.2f}  r21 {comp.loc[d.index, c].corr(d['r21']):+.3f}")
-    for col, name in (("new", "Cinque componenti"), ("old", "Solo VIX, credito, ampiezza")):
+    for col, name in (("new", "Sei componenti"), ("five", "Cinque, senza canarino"), ("old", "Solo VIX, credito, ampiezza")):
         print(f"\n== {name}: corr vol {d[col].corr(d['vol']):+.3f}, corr r21 {d[col].corr(d['r21']):+.3f}")
         for per, sub in {"<2019": d.loc[:"2018-12"], ">=2019": d.loc["2019":]}.items():
             print(f"   {per}: corr vol {sub[col].corr(sub['vol']):+.3f}, corr r21 {sub[col].corr(sub['r21']):+.3f}, sedute {len(sub)}")
@@ -82,7 +82,8 @@ def main() -> None:
         print(f"  SPY se sopra media 200: {perf(nxt_r.loc[idx].where(trend.loc[idx], nxt_c.loc[idx]))}")
         print(f"  SPY se canarino calmo:  {perf(nxt_r.loc[idx].where(alarm.loc[idx] == 0, nxt_c.loc[idx]))}")
         if start == d.index[0]:
-            print(f"  SPY se punteggio > 40:  {perf(nxt_r.loc[idx].where(d['new'].reindex(idx) > 40, nxt_c.loc[idx]))}")
+            for col in ("new", "five", "old"):
+                print(f"  SPY se {col:4s} > 40:    {perf(nxt_r.loc[idx].where(d[col].reindex(idx) > 40, nxt_c.loc[idx]))}")
 
 
 if __name__ == "__main__":

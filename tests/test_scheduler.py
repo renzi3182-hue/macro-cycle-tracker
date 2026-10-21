@@ -34,11 +34,12 @@ def test_macro_only_skips_markets_and_keeps_their_failures(monkeypatch):
     monkeypatch.setattr(update_data.fetch_fred, "calls", {"tried": 0, "ok": 0})
     monkeypatch.setattr(update_data.cache, "read_meta", meta.get)
     monkeypatch.setattr(update_data.cache, "write_meta", meta.__setitem__)
-    for name in ("update_calendar", "update_market_context", "update_asset_prices", "update_intermarket"):
+    for name in ("update_calendar", "update_market_context", "update_asset_prices", "update_history", "update_intermarket", "update_allocation"):
         monkeypatch.setattr(update_data, name, lambda *a, name=name: calls.append(name))
     update_data.main(["--macro-only"])
     assert calls == ["update_calendar"]
     assert [f["indicator"] for f in json.loads(meta["fetch_failures"])] == ["vix"]  # USA si e' riprovata
     calls.clear()
     update_data.main([])
-    assert calls == ["update_calendar", "update_market_context", "update_asset_prices", "update_intermarket"]
+    assert calls == ["update_calendar", "update_market_context", "update_asset_prices", "update_history", "update_intermarket",
+                     "update_allocation"]

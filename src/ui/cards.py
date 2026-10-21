@@ -193,7 +193,7 @@ def asset_matrix_html(phases: dict[str, str | None]) -> str:
 
 def risk_explain_html(score: float, state: str, when: str, parts: list[tuple[str, str, float]], alarm: bool) -> str:
     """Spiega il punteggio Risk On/Off: la scala a cinque fasce con il segno sul valore, cosa misura e cosa non
-    misura, le cinque componenti e il canarino (fuori dal punteggio)."""
+    misura, le sei componenti e lo stato del canarino."""
     s = round(score)
     low = min(parts, key=lambda x: x[2])
     bands = "".join(f'<span class="{"on" if lab == state else ""}">{lo}<br>{escape(lab)}</span>'
@@ -205,13 +205,13 @@ def risk_explain_html(score: float, state: str, when: str, parts: list[tuple[str
         f'<div class="rscale"><div class="seg"><i style="background:var(--r-stag)"></i><i style="background:color-mix(in srgb,var(--r-stag) 45%,var(--raised))"></i>'
         f'<i style="background:var(--raised)"></i><i style="background:color-mix(in srgb,var(--r-gold) 45%,var(--raised))"></i><i style="background:var(--r-gold)"></i></div>'
         f'<b style="left:{s}%"></b></div><div class="rbands">{bands}</div>'
-        f'<p class="say"><b>{s}</b> è la media di cinque misure di calma dei mercati. Ognuna va da 0 (il momento più teso della '
+        f'<p class="say"><b>{s}</b> è la media di sei misure di calma dei mercati. Ognuna va da 0 (il momento più teso della '
         f'sua storia) a 100 (il più calmo): 50 è una giornata normale. Oggi: <b>{escape(state)}</b>. La misura più bassa '
         f'è <b>{escape(low[0].lower())}</b> ({low[2]:.0f}).</p>'
         '<p class="say">Dice <b>quanto può oscillare la borsa</b> nel mese dopo, non se salirà: dal 2012, sotto 20 l\'S&amp;P 500 '
-        'ha oscillato al 30% annuo, sopra 80 all\'11%.</p>'
+        'ha oscillato al 29% annuo, sopra 60 all\'11-13%.</p>'
         f'<div>{bar_rows_html(parts)}</div>'
-        f'<p class="note">Canarino {CANARY} {canary}. Non entra nel punteggio.</p></div>'
+        f'<p class="note">Canarino {CANARY} {canary}. È anche la sesta misura del punteggio.</p></div>'
     )
 
 
@@ -235,7 +235,8 @@ def area_hero_html(a: dict, sentence: str, markets: tuple[int, int] | None = Non
         ("Fase del ciclo", f'<span style="color:{phase_color(a["phase"])}">{escape(phase)}</span>'),
         ("Regime da", f'{month_it(a["regime_since"])}<br><span class="muted" style="font-size:13px;font-weight:400">{duration_it(a["regime_since"], end)}</span>'),
         ("Solidità macro", escape(a["confidence"])),
-        *([("Conferma mercati", f'{markets[0]} su {markets[1]}<br><span class="muted" style="font-size:13px;font-weight:400">asset tipici in salita</span>')]
+        *([("Conferma mercati", f'{markets[0] / markets[1]:.0%}<br><span class="muted" style="font-size:13px;font-weight:400">'
+                                f'asset tipici in salita ({markets[0]} su {markets[1]}): coerenza, non probabilità</span>')]
           if markets and markets[1] else []),
         ("Dati fino a", month_it(end)),
     ]
@@ -438,32 +439,54 @@ def score_color(s: float) -> str:
     return f"var(--{'r-gold' if s > STRONG else 'r-stag' if s <= WEAK else 'muted'})"
 
 
-def why_text(ranks: dict[str, int], n: int) -> str:
-    """Perche' del punteggio: posizione fra gli n asset nel pilastro migliore e in quello peggiore."""
-    (best, rb), (worst, rw) = sorted(ranks.items(), key=lambda kv: kv[1])[::len(ranks) - 1]
-    if rb == rw:
-        return f"{' e '.join(ranks).lower()} entrambi {rb}° su {n}"
-    return f"meglio in {best.lower()} ({rb}° su {n}) che in {worst.lower()} ({rw}°)"
+WHY_MIN = 0.01  # spinta minima (in log-odds) per nominare un pilastro
 
 
-def ranking_html(rows: list[dict], month: pd.Timestamp) -> str:
-    """rows: ticker, nome, gruppo, punteggio, delta (vs mese prima o None), Tendenza e Momentum (frazioni), storico (serie
-    mensile), perche' (testo di why_text)."""
-    head = ('<div class="arow th"><span>#</span><span>Asset</span><span class="opt">Ultimi 12 mesi</span>'
-            '<span class="r opt">Tendenza</span><span class="r opt">Mom. 12-1</span><span class="r">Punt.</span><span class="r">Var.</span></div>')
+def why_text(contrib: dict[str, float]) -> str:
+    """Perche' del punteggio: il pilastro che alza di piu' la probabilita' e quello che la abbassa di piu'
+    (contrib: peso * posizione, da score.model)."""
+    up, down = max(contrib, key=contrib.get), min(contrib, key=contrib.get)
+    parts = ([f"spinge {up.lower()}"] if contrib[up] > WHY_MIN else []) + ([f"frena {down.lower()}"] if contrib[down] < -WHY_MIN else [])
+    return " · ".join(parts) or "nessun pilastro si distingue"
+
+
+def weights_html(weights: dict[str, float], month: pd.Timestamp) -> str:
+    """Peso di ogni pilastro nella stima di oggi, in % del totale. Peso 0 = i dati non lo premiano."""
+    total = sum(weights.values()) or 1.0
+    rows = "".join(  # stesso markup di bar_rows_html, ma un solo colore: un peso basso non e' un segnale negativo
+        f'<div class="brow"><span>{escape(k)}</span><span class="mono">{w / total:.0%}</span>'
+        f'<small>{"escluso: nella storia non ha aiutato" if w <= 0 else ""}</small>'
+        f'<div class="track"><i style="width:{max(w, 0) / total:.0%};background:var(--accent)"></i></div></div>'
+        for k, w in weights.items())
+    return (f'<div class="si card"><div class="head"><h3>Quanto conta ogni pilastro</h3><span class="note">stima di '
+            f'{month_it(month)}</span></div><div>{rows}</div>'
+            '<p class="note">I pesi li decidono i dati: ogni anno si ristimano solo sul passato, su quanto ogni pilastro '
+            'ha anticipato chi batte la media a 3 mesi.</p></div>')
+
+
+ACTIVE = '<b style="color:var(--r-gold)">Segnale attivo</b> · '
+
+
+def ranking_html(rows: list[dict], month: pd.Timestamp, title: str = "Classifica", horizon: int = 3, note: str = "") -> str:
+    """rows: ticker, nome, gruppo, punteggio, delta (vs mese prima o None), Tendenza (frazione), prob (0-1), attivo
+    (segnale acceso), storico (serie mensile), perche' (testo di why_text). note: riga sotto il titolo."""
+    head = (f'<div class="arow th"><span>#</span><span>Asset</span><span class="opt">Ultimi 12 mesi</span>'
+            f'<span class="r opt">Tendenza</span><span class="r opt">Prob. {horizon}m</span><span class="r">Punt.</span><span class="r">Var.</span></div>')
     body = "".join(
         f'<div class="arow"><span class="mono muted">{i}</span>'
         f'<span style="min-width:0"><b style="font-weight:600">{escape(r["nome"])}</b> '
         f'<span class="mono muted" style="font-size:12px">{escape(r["ticker"])}<span class="opt"> · {escape(r["gruppo"])}</span></span>'
-        f'<small class="muted" style="display:block;font-size:12px;line-height:16px">{escape(r["perche"])}</small></span>'
+        f'<small class="muted" style="display:block;font-size:12px;line-height:16px">'
+        f'{ACTIVE if r["attivo"] else ""}{escape(r["perche"])}</small></span>'
         f'<span class="opt">{ribbon_html(r["storico"], score_color, 12, thin=True, ticks=False)}</span>'
-        f'<span class="mono r opt">{r["Tendenza"] * 100:+.1f}%</span><span class="mono r opt">{r["Momentum"] * 100:+.1f}%</span>'
+        f'<span class="mono r opt">{r["Tendenza"] * 100:+.1f}%</span><span class="mono r opt">{r["prob"] * 100:.0f}%</span>'
         f'<span class="r"><span class="chip tint mono" style="--c:{score_color(r["punteggio"])};font-weight:700">{r["punteggio"]:.0f}</span></span>'
         f'<span class="r" style="font-size:13px">{_signed(r["delta"]) if r["delta"] is not None else ""}</span></div>'
         for i, r in enumerate(rows, 1)
     )
-    return (f'<div class="si card"><div class="head"><h3>Classifica</h3><span class="note">punteggio di fine {month_it(month)}, 1-100</span></div>'
-            f'<div class="list">{head}{body}</div></div>')
+    sub = f'<p class="note">{note}</p>' if note else ""
+    return (f'<div class="si card"><div class="head"><h3>{escape(title)}</h3><span class="note">punteggio di fine {month_it(month)}, 1-100</span></div>'
+            f'{sub}<div class="list">{head}{body}</div></div>')
 
 
 def bands_html(table: pd.DataFrame, horizon: int, since: pd.Timestamp) -> str:

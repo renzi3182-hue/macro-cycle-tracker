@@ -49,6 +49,10 @@ MARKET_INFO = {
                  "Estremi spesso legati a sorprese della Bank of England; mercato più piccolo, estremi più rumorosi."),
     "Dollaro (DXY)": ("Future sull'indice del dollaro contro 6 valute (ICE).",
                       "Mercato sottile: meglio leggere il dollaro dal contrario di euro e yen."),
+    "Dollaro canadese": ("Future sul cambio CAD/USD (Chicago).",
+                         "Valuta legata al petrolio: gli estremi seguono spesso quelli del greggio."),
+    "Dollaro australiano": ("Future sul cambio AUD/USD (Chicago).",
+                            "Valuta del rischio e della Cina: molto long nelle fasi risk on, si scarica nei risk off."),
 }
 
 

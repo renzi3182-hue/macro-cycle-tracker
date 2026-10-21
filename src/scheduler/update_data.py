@@ -7,9 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.classify import cycle, intermarket, score
+from src.classify import allocation, cycle, intermarket, score
 from src.classify.assess import UNCERTAIN_PREFIX, assess
-from src.data import cache, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
+from src.data import cache, fetch_bis, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_french, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 MARKET_AREA = "Mercati"
 CALENDAR_AREA = "Calendario"
 FX_AREA = "Valute"
-SLOW_AREAS = {MARKET_AREA, FX_AREA, score.ASSET_AREA, intermarket.AREA}  # aggiornate solo nel run completo
+SLOW_AREAS = {MARKET_AREA, FX_AREA, score.ASSET_AREA, score.HISTORY_AREA, intermarket.AREA, allocation.AREA}  # aggiornate solo nel run completo
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 # Fetch falliti in questo run: mostrati in app (src/app.py), senza query string (puo' contenere api_key:
@@ -216,6 +216,21 @@ def update_asset_prices() -> None:
             _record_failure(score.ASSET_AREA, ticker, e)
 
 
+def update_history(fred_key: str) -> None:
+    """Serie lunghe per allungare lo storico del punteggio asset (score.PROXY, score.BOND_PROXY): rendimenti mensili
+    French dal 1926 e rendimenti dei Treasury FRED. Una fonte che fallisce non blocca l'altra."""
+    fetchers = {"french": fetch_french.fetch_french,
+                **{s: lambda s=s: {s: fetch_fred.fetch_level(s, fred_key)} for s in score.HISTORY_SERIES if s.startswith("GS")}}
+    for name, fetch_fn in fetchers.items():
+        try:
+            for indicator, series in fetch_fn().items():
+                if indicator in score.HISTORY_SERIES:
+                    cache.write_indicator_series(score.HISTORY_AREA, indicator, series)
+        except Exception as e:
+            logger.exception("storico %s: fetch fallito, salto e continuo", name)
+            _record_failure(score.HISTORY_AREA, name, e)
+
+
 def update_intermarket(fred_key: str) -> None:
     """Chiusure giornaliere degli ultimi anni per la pagina Intermarket (src/classify/intermarket.py): FRED dove
     esiste, Yahoo (rettificati) per ETF e rame. Una serie che fallisce non blocca le altre."""
@@ -227,6 +242,29 @@ def update_intermarket(fred_key: str) -> None:
         except Exception as e:
             logger.exception("intermarket %s: fetch fallito, salto e continuo", name)
             _record_failure(intermarket.AREA, name, e)
+
+
+def update_allocation() -> None:
+    """Serie per le classifiche di lungo periodo (src/classify/allocation.py): fiducia e tassi OCSE per area,
+    mercati per paese French, cambio reale BIS, oro mensile, Cina e India prima degli ETF (Yahoo). Una fonte che fallisce non blocca le altre."""
+    fetchers = {
+        **{f"{a}_{n}": lambda a=a, n=n: {f"{a}_{n}": fetch_oecd.fetch_sentiment(a, n)}
+           for a in fetch_oecd.MARKET_AREAS for n in fetch_oecd.SENTIMENT},
+        **{f"{a}_{n}": lambda a=a, n=n: {f"{a}_{n}": fetch_oecd.fetch_finmark(a, n)}
+           for a in fetch_oecd.MARKET_AREAS for n in fetch_oecd.FINMARK},
+        "french": fetch_french.fetch_countries,
+        "reer": lambda: {f"reer_{c}": s for c, s in fetch_bis.fetch_reer().items()},
+        "gold": lambda: {"gold": fetch_market.fetch_gold_monthly()},
+        **{t: lambda t=t, y=y: {t: fetch_market.fetch_yahoo(y, "max", "1mo", adjusted=True)} for t, y in allocation.YAHOO.items()},
+    }
+    for name, fetch_fn in fetchers.items():
+        try:
+            for indicator, series in fetch_fn().items():
+                if not series.empty:
+                    cache.write_indicator_series(allocation.AREA, indicator, series)
+        except Exception as e:
+            logger.exception("allocazione %s: fetch fallito, salto e continuo", name)
+            _record_failure(allocation.AREA, name, e)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -250,7 +288,9 @@ def main(argv: list[str] | None = None) -> None:
     else:
         update_market_context(fred_key)
         update_asset_prices()
+        update_history(fred_key)
         update_intermarket(fred_key)
+        update_allocation()
     cache.write_meta("updated_at", datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"))
     cache.write_meta("fetch_failures", json.dumps(FETCH_FAILURES))
     if fetch_fred.calls["tried"] and not fetch_fred.calls["ok"]:

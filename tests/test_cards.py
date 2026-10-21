@@ -59,9 +59,10 @@ def test_wave_dot_sits_on_the_quarter_of_the_phase():
     assert "<b" not in wave_html(None) and "<svg" not in wave_html("Espansione")
 
 
-def test_why_text_names_best_and_worst_pillar():
-    assert why_text({"Tendenza": 3, "Momentum": 15}, 28) == "meglio in tendenza (3° su 28) che in momentum (15°)"
-    assert why_text({"Tendenza": 4, "Momentum": 4}, 28) == "tendenza e momentum entrambi 4° su 28"
+def test_why_text_names_pillars_pushing_up_and_down():
+    assert why_text({"Tendenza": 0.2, "Momentum": 0.05, "Stagionalità": -0.1}) == "spinge tendenza · frena stagionalità"
+    assert why_text({"Tendenza": 0.2, "Momentum": 0.0}) == "spinge tendenza"
+    assert why_text({"Tendenza": 0.0, "Momentum": 0.0}) == "nessun pilastro si distingue"
 
 
 def test_rrg_html_lists_assets_entering_and_cooling():

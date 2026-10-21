@@ -25,7 +25,7 @@ CORE_AREAS = {"Australia"}
 CORE, HEADLINE = "_TXCP01_NRG", "_T"
 
 
-@lru_cache(maxsize=4)  # una sola chiamata per dataset e tutte le aree: l'API OCSE ha limiti di frequenza stretti
+@lru_cache(maxsize=8)  # una sola chiamata per dataset e tutte le aree: l'API OCSE ha limiti di frequenza stretti
 def _fetch(url: str, start: str) -> pd.DataFrame:
     resp = get_with_retry(
         url, source="oecd",
@@ -74,3 +74,31 @@ def fetch_industrial_production_yoy(area: str) -> pd.Series:
     df = _fetch(IP_URL.format(areas="+".join(IP_AREAS.values())), "1960-01")
     level = _to_series(df[df["REF_AREA"] == IP_AREAS[area]]).sort_index()
     return (level.pct_change(12, fill_method=None) * 100).dropna()
+
+
+# Fiducia di consumatori (CCICP) e imprese (BCICP), amplitude adjusted (media di lungo periodo = 100), e mercati
+# finanziari (decennale IRLT, interbancario 3 mesi IR3TIB).
+# Per l'allocazione di lungo periodo (src/classify/allocation.py). Qui l'Eurozona e' EA20, non G4E.
+# Verificato il 21/10/2026: fiducia dal 1985 (Cina 1990/2000, India 2012/2000, BCI Canada 1998), dati ad ago-set 2026.
+# Decennale dal 1985 (Giappone 1989, Italia 1991, India 2011, Cina 2014). Licenza OCSE CC BY 4.0.
+# Le copie FRED della fiducia (CSCICP03.../BSCICP03...) sono ferme a fine 2023.
+SENTIMENT_URL = BASE + "OECD.SDD.STES,DSD_STES@DF_CLI,/{areas}.M.CCICP+BCICP...AA...H"
+FINMARK_URL = BASE + "OECD.SDD.STES,DSD_STES@DF_FINMARK,/{areas}.M.IRLT+IR3TIB......."
+MARKET_AREAS = {**AREAS, "Eurozona": "EA20"}
+SENTIMENT = {"cci": "CCICP", "bci": "BCICP"}
+FINMARK = {"yield_10y": "IRLT", "rate_3m": "IR3TIB"}
+
+
+def _measure(url: str, area: str, measure: str) -> pd.Series:
+    df = _fetch(url.format(areas="+".join(MARKET_AREAS.values())), "1985-01")
+    return _to_series(df[(df["REF_AREA"] == MARKET_AREAS[area]) & (df["MEASURE"] == measure)]).sort_index()
+
+
+def fetch_sentiment(area: str, name: str) -> pd.Series:
+    """name: 'cci' (consumatori) o 'bci' (imprese)."""
+    return _measure(SENTIMENT_URL, area, SENTIMENT[name])
+
+
+def fetch_finmark(area: str, name: str) -> pd.Series:
+    """name: 'yield_10y' o 'rate_3m', % annuo."""
+    return _measure(FINMARK_URL, area, FINMARK[name])
