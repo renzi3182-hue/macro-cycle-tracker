@@ -29,8 +29,8 @@ WAVE = [2.0, 2.2, 1.9, 2.1] * 4  # PIL annuo che oscilla senza direzione per 4 a
 ACCEL = _q(WAVE + [2.3, 2.6, 2.9])
 DECEL = _q(WAVE + [1.8, 1.5, 1.2])
 N = 6 * 12
-HIGH = _m([3.5] * N, "2018-01-01")  # inflazione stabile sopra la soglia del 2,5%
-LOW = _m([1.0] * N, "2018-01-01")
+HIGH = _m([2.0] * (N - 6) + [2.2, 2.5, 2.8, 3.1, 3.4, 3.7], "2018-01-01")  # inflazione in accelerazione
+LOW = _m([3.0] * (N - 6) + [2.8, 2.5, 2.2, 1.9, 1.6, 1.3], "2018-01-01")  # inflazione in rallentamento
 
 
 @pytest.mark.parametrize(
@@ -52,14 +52,20 @@ def test_needs_enough_data():
 
 
 def test_growing_but_slower_is_slowdown():
-    # USA 10/2026: il PIL cresce ancora (2,7% -> 2,1%) ma rallenta; inflazione alta ma in calo -> Stagflazione (lettura di riferimento).
+    # USA 10/2026: il PIL cresce ancora (2,7% -> 2,1%) ma rallenta; inflazione alta ma in calo -> Deflazione per il
+    # libro, che guarda solo la direzione (l'app di riferimento diceva Stagflazione).
     gdp = _q(WAVE + [2.0, 2.7, 2.1])
     inflation = _m([2.5] * (N - 6) + [3.8, 4.2, 3.5, 3.3, 3.3, 3.3], "2018-01-01")
-    assert classify_regime(gdp, inflation, _m([2.5] * N, "2018-01-01")) == "Stagflazione"
+    assert classify_regime(gdp, inflation, _m([2.5] * N, "2018-01-01")) == "Deflazione"
+
+
+def test_high_but_flat_inflation_is_not_up():
+    # Il livello non conta: inflazione al 3,5% ferma da anni non e' in accelerazione.
+    assert classify_regime(ACCEL, _m([3.5] * N, "2018-01-01")) == "Goldilocks"
 
 
 def test_low_inflation_rising_counts_as_up():
-    # Reflazione = "inflazione in accelerazione": sale anche se sotto la soglia.
+    # Reflazione = "inflazione in accelerazione": sale anche se bassa.
     inflation = _m([1.0] * (N - 3) + [1.5, 1.8, 2.1], "2018-01-01")
     assert classify_regime(ACCEL, inflation) == "Reflazione"
 

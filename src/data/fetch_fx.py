@@ -2,10 +2,10 @@ import pandas as pd
 
 from src.data.fetch_fred import _fetch_series
 
-# Cambi FRED (H.10, giornalieri) e tassi a breve OECD (mensili) per le valute di src/classify/currency.py.
+# Cambi FRED (H.10, giornalieri) e tassi a breve OECD (mensili) per la classifica valute di src/classify/allocation.py.
 FX_SERIES = {"eurusd": "DEXUSEU", "gbpusd": "DEXUSUK", "usdjpy": "DEXJPUS", "usdcad": "DEXCAUS", "audusd": "DEXUSAL",
              "usdcny": "DEXCHUS", "usdinr": "DEXINUS",
-             "usddem": "EXGEUS", "usditl": "EXITUS"}  # marco e lira, mensili 1971-2001: prima dell'euro (allocation.py), non in currency.py
+             "usddem": "EXGEUS", "usditl": "EXITUS"}  # marco e lira, mensili 1971-2001: prima dell'euro
 RATE_SERIES = {
     "USD": "IRSTCI01USM156N",
     "EUR": "ECBDFR",

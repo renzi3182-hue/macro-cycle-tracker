@@ -10,8 +10,8 @@ def _px(**cols):
 
 
 def test_ticker_weights_map_classes_and_skip_unmapped():
-    tw, skipped = ticker_weights({"Azionario": 30, "Azionario growth": 30, "Cash": 20, "Credito corporate": 20})
-    assert tw == {"SPY": 0.75, "SHY": 0.25} and skipped == ["Credito corporate"]
+    tw, skipped = ticker_weights({"Azionario": 30, "Azionario growth": 30, "Cash": 20, "Credito corporate": 10, "Immobiliare": 10})
+    assert tw == {"SPY": 1 / 3, "IWF": 1 / 3, "BIL": 2 / 9, "LQD": 1 / 9} and skipped == ["Immobiliare"]
 
 
 def test_scenario_return_drawdown_and_missing_data():
@@ -24,11 +24,11 @@ def test_scenario_return_drawdown_and_missing_data():
 
 def test_trend_returns_move_to_cash_below_average():
     spy = [100.0 + i for i in range(12)] + [80.0, 70.0, 75.0]  # crolla dopo 12 mesi di salita
-    px = _px(SPY=spy, SHY=[100 * 1.001 ** i for i in range(15)])
+    px = _px(SPY=spy, BIL=[100 * 1.001 ** i for i in range(15)])
     rt, r = trend_returns({"SPY": 1.0}, px), portfolio_returns({"SPY": 1.0}, px)
     assert rt.iloc[:10].isna().all()  # media a 10 mesi non ancora disponibile il mese prima
     assert rt.iloc[12] == r.iloc[12]  # a fine mese 11 era sopra la media: il crollo si prende
-    assert round(rt.iloc[13], 6) == round(rt.iloc[14], 6) == 0.001  # poi in SHY
+    assert round(rt.iloc[13], 6) == round(rt.iloc[14], 6) == 0.001  # poi in cash (BIL)
 
 
 def test_summary_and_recovery():
@@ -60,3 +60,25 @@ def test_weekly_rrg_groups_exclude_benchmark():
     days = pd.bdate_range("2026-01-05", periods=10)
     wk = weekly_prices(pd.DataFrame({"SPY": range(10)}, index=days, dtype=float))
     assert list(wk["SPY"]) == [4.0, 9.0]  # ultima chiusura di ogni settimana
+
+
+def test_eur_returns_add_the_exchange_rate_move():
+    from src.classify.stress import eur_returns
+    idx = pd.date_range("2020-01-01", periods=4, freq="MS")
+    r = pd.Series([0.0, 0.0, 0.10, 0.10], index=idx)
+    usd_per_eur = pd.Series([1.00, 1.25, 1.25, 1.00], index=idx)  # il dollaro si indebolisce, poi si rafforza
+    out = eur_returns(r, usd_per_eur)
+    assert pd.isna(out.iloc[0])  # nessun cambio del mese prima
+    assert round(out.iloc[1], 6) == -0.2  # fermo in dollari, -20% in euro: un euro compra piu' dollari
+    assert round(out.iloc[2], 6) == 0.10  # cambio fermo: stesso rendimento
+    assert round(out.iloc[3], 6) == round(1.10 * 1.25 - 1, 6)  # dollaro piu' forte: guadagno in piu'
+    assert eur_returns(r, usd_per_eur.iloc[:2]).iloc[2:].isna().all()  # senza cambio niente rendimento in euro
+
+
+def test_common_window_keeps_only_the_last_unbroken_stretch():
+    from src.classify.stress import common_window
+    idx = pd.date_range("2020-01-01", periods=6, freq="MS")
+    r = pd.Series([0.1, 0.1, 0.1, 0.1, 0.1, 0.1], index=idx)
+    rt = pd.Series([0.1, None, 0.1, 0.1, 0.1, None], index=idx)  # buco a febbraio, ultimo mese mancante
+    assert list(common_window(r, rt)) == list(idx[2:5])
+    assert len(common_window(r, pd.Series(None, index=idx, dtype=float))) == 0

@@ -24,8 +24,10 @@ import pandas as pd
 
 from scripts.backtest_assets import asset_returns
 from src.classify.assess import USED_INPUTS, point_in_time_history
-from src.classify.intermarket import ALIGNED, MISALIGNED, PARTIAL, alignment, change, murphy_history, phase_label
-from src.classify.score import ASSET_AREA, HORIZON_MONTHS, UNIVERSE, complete_months, monthly_prices
+from src.classify.intermarket import (
+    ALIGNED, HORIZON_MONTHS, MISALIGNED, PARTIAL, alignment, change, murphy_history, phase_label,
+)
+from src.classify.score import ASSET_AREA, UNIVERSE, complete_months, monthly_prices
 from src.data import cache, fetch_market
 from src.scheduler.update_data import _load_dotenv
 

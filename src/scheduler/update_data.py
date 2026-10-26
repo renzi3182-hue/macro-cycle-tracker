@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.classify import allocation, cycle, intermarket, score
+from src.classify import allocation, cycle, intermarket, score, stress
 from src.classify.assess import UNCERTAIN_PREFIX, assess
 from src.data import cache, fetch_bis, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_french, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
@@ -207,8 +207,9 @@ def update_calendar(fred_key: str) -> None:
 
 
 def update_asset_prices() -> None:
-    """Chiusure mensili rettificate degli ETF del punteggio asset (src/classify/score.py). Un ticker che fallisce non blocca gli altri."""
-    for ticker in score.UNIVERSE:
+    """Chiusure mensili rettificate degli ETF del punteggio asset (src/classify/score.py) e di quelli che servono solo a
+    filtro di tendenza e stress test (stress.EXTRA_ETF). Un ticker che fallisce non blocca gli altri."""
+    for ticker in [*score.UNIVERSE, *stress.EXTRA_ETF]:
         try:
             cache.write_indicator_series(score.ASSET_AREA, ticker, fetch_market.fetch_yahoo(ticker, "max", "1mo", adjusted=True))
         except Exception as e:

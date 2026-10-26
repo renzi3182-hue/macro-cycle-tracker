@@ -10,6 +10,12 @@
 # con inflazione alta solo per il livello dei tassi.
 # Portafoglio per regime 2000-2026 (profilo Medio): 8.5%/anno contro 5.5% dell'All Weather statico, ma la
 # tabella e' stata scelta guardando questi dati: e' un'opinione guidata dai dati, non un vantaggio dimostrato.
+# 25/10/2026: tabella sostituita dalle liste del libro (sotto) e regime con l'inflazione solo dalla direzione. Stesso
+# backtest 2000-2026, profilo Medio: libro 7,5%/anno, volatilita' 11,8%, drawdown -35,7%; tabella di prima 8,6%,
+# 10,8%, -26,0%; All Weather 5,5%, 6,5%, -16,8%; 60/40 5,6%, 9,0%, -30,7%. Con il filtro di tendenza libro 7,7% e
+# -13,3%, tabella di prima 7,9% e -11,1%. Pesano materie prime in Stagflazione (ultime dei 5 asset, -1,1%/anno) e
+# azionario in Reflazione (ultimo, 3,7%/anno); nessuna differenza tra regimi e' significativa (|t| < 2 su azioni,
+# Treasury, oro, materie prime). Credito, indicizzate e dollaro non hanno serie lunghe e restano fuori dal test.
 #
 # Fonti (ricerca 28/09/2026): Bridgewater All Weather, Merrill Lynch Investment
 # Clock (Greetham, 2004), letteratura su correlazione azioni-obbligazioni.
@@ -25,12 +31,16 @@
 
 from src.classify.assess import label_regimes
 
+# Dal 25/10/2026 la tabella segue le liste long del cap. 7 del libro di riferimento (il libro prevale sui backtest
+# dell'app, scelta dell'utente): Goldilocks azionario e materie prime (fattori growth e momentum, obbligazioni short);
+# Reflazione azionario, materie prime, corporate bond e indicizzate (oro debole); Stagflazione materie prime, oro,
+# obbligazioni e azionario difensivo (value short); Deflazione obbligazioni, oro, dollaro, cash e azionario
+# difensivo/value. Le scadenze delle obbligazioni non sono nel libro: restano quelle di prima.
 ASSET_ALLOCATION = {
-    "Goldilocks": ["Azionario growth", "Materie prime", "Credito corporate"],
-    "Reflazione": ["Azionario", "Oro", "Materie prime", "Obbligazioni indicizzate all'inflazione"],
-    "Stagflazione": ["Obbligazioni governative medio termine", "Obbligazioni indicizzate all'inflazione", "Oro", "Cash",
-                     "Azionario value/difensivo"],
-    "Deflazione": ["Azionario difensivo", "Oro", "Obbligazioni governative lunga durata"],
+    "Goldilocks": ["Azionario growth", "Materie prime"],
+    "Reflazione": ["Azionario", "Materie prime", "Credito corporate", "Obbligazioni indicizzate all'inflazione"],
+    "Stagflazione": ["Materie prime", "Oro", "Obbligazioni governative medio termine", "Azionario difensivo"],
+    "Deflazione": ["Obbligazioni governative lunga durata", "Oro", "Dollaro americano", "Cash", "Azionario value/difensivo"],
 }
 
 # Fase del ciclo -> (asset da pesare di piu', asset da pesare di meno), dal libro di riferimento (cap. 6: fig. 6.12,
@@ -42,10 +52,14 @@ ASSET_ALLOCATION = {
 #   Rallentamento: oro 18,6% (t = 1,8), azionario 12,1%, Treasury 6,8%, materie prime 0,1%
 #   Recessione:    Treasury 14,3% (t = 1,9), oro 8,5%, azionario -3,2%, materie prime -14,6% (solo 31-67 mesi)
 # Direzioni coerenti col libro, ma come la tabella per regime nessun vantaggio dimostrato.
+# 25/10/2026, allineata al testo del cap. 6 sulle fasi: in Ripresa le obbligazioni "possono ottenere buoni risultati"
+# (tassi ancora bassi), quindi neutre e non piu' da pesare di meno; in Rallentamento le obbligazioni vanno bene,
+# quindi da pesare di piu' (la fig. 6.16 sul "rallentamento dell'espansione" dice il contrario, -4,1%: vale il testo
+# della fase). Stessi dati di sopra: Treasury 6,8% in Rallentamento (t = 0,8) e 5,1% in Ripresa (t = -0,4).
 PHASE_ASSETS = {
     "Espansione": (["Azionario {paese}", "Materie prime"], ["Titoli di Stato {paese}"]),
-    "Ripresa (sotto trend)": (["Azionario ciclico {paese}", "Materie prime"], ["Titoli di Stato {paese}"]),
-    "Rallentamento": (["Oro", "Azionario difensivo {paese}"], ["Materie prime"]),
+    "Ripresa (sotto trend)": (["Azionario ciclico {paese}", "Materie prime"], []),
+    "Rallentamento": (["Oro", "Azionario difensivo {paese}", "Titoli di Stato {paese}"], ["Materie prime"]),
     "Recessione": (["Titoli di Stato {paese}", "Oro"], ["Azionario {paese}", "Materie prime"]),
 }
 
@@ -113,13 +127,16 @@ LAZY_PORTFOLIOS = {
 
 # Filtro di tendenza (scripts/backtest_assets.py, 06/10/2026): un asset sotto la sua media a 10 mesi va in cash.
 # 2000-2026 su 4 portafogli: drawdown massimo -55/75%, rendimento -0,1/0,9 punti l'anno. Riduce il rischio, non
-# aggiunge rendimento. ETF di riferimento fra quelli del punteggio asset (src/classify/score.py); tutto
-# l'azionario usa SPY come nel backtest. Senza ETF (credito, cash) il peso resta com'e'.
+# aggiunge rendimento. ETF di riferimento fra quelli del punteggio asset (src/classify/score.py), piu' LQD e UUP
+# scaricati a parte (src/classify/stress.py, EXTRA_ETF) per non cambiare la classifica. Dal 25/10/2026 ogni stile
+# azionario ha il suo ETF invece di SPY: growth IWF, value IWD, difensivo XLP (prima necessita', nelle liste long del
+# libro per Stagflazione e Deflazione; USMV parte nel 2011 e toglierebbe 2008 e 2011 dallo stress test). Il cash non
+# ha filtro: e' dove il filtro sposta il peso.
 TREND_PROXY = {
-    "Azionario": "SPY", "Azionario growth": "SPY", "Azionario difensivo": "SPY", "Azionario value/difensivo": "SPY",
+    "Azionario": "SPY", "Azionario growth": "IWF", "Azionario difensivo": "XLP", "Azionario value/difensivo": "IWD",
     "Obbligazioni governative lunga durata": "TLT", "Obbligazioni governative medio termine": "IEF",
     "Obbligazioni medio termine": "IEF", "Obbligazioni indicizzate all'inflazione": "TIP",
-    "Oro": "GLD", "Materie prime": "DBC",
+    "Credito corporate": "LQD", "Dollaro americano": "UUP", "Oro": "GLD", "Materie prime": "DBC",
 }
 CASH = "Cash"
 
@@ -129,7 +146,9 @@ CASH = "Cash"
 # Canada e Australia senza azionario), il resto con TREND_PROXY (ETF quotati in USA). Verifica 2004-2026 su 9 aree
 # (scripts/evaluate_model.py, sezione Conferma dei mercati): NON dice se la lettura macro e' giusta. Con conferma
 # alta (almeno 2/3 degli asset in salita) il regime del momento coincide con quello a dati completi nel 49% dei
-# mesi, con conferma bassa (al massimo 1/3) nel 51%; resta uguale 3 mesi dopo nel 42% contro il 39%.
+# mesi, con conferma bassa (al massimo 1/3) nel 48%; resta uguale 3 mesi dopo nel 37% contro il 34% (rilanciata il
+# 25/10/2026 con credito LQD e dollaro UUP, 2441 mesi-area; prima di loro 49% e 48%, 37% e 36%; prima ancora, con la
+# soglia d'inflazione e la tabella di prima, 50% e 50%, 42% e 40%).
 # Si mostra come descrizione, non come affidabilita'.
 AREA_EQUITY = {"USA": "SPY", "Eurozona": "EZU", "Italia": "EWI", "UK": "EWU", "Giappone": "EWJ", "Canada": "EWC", "Cina": "MCHI", "Australia": "EWA", "India": "INDA"}
 

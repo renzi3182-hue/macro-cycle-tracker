@@ -14,10 +14,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import pandas as pd
 
-from src.classify.currency import CURRENCIES, PAIRS
 from src.data import cache, fetch_cot
 
 CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen"}
+CURRENCIES = list(CCY_COT)
+PAIRS = [("EUR", "USD"), ("GBP", "USD"), ("USD", "JPY"), ("EUR", "GBP"), ("EUR", "JPY"), ("GBP", "JPY")]
 GROUPS = ["Asset manager", "Hedge fund", "Dealer"]
 HORIZONS = [3, 6, 12]
 LAG_DAYS = 3

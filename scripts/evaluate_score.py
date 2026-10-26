@@ -1,14 +1,15 @@
 """Verifica del punteggio asset (src/classify/score.py): un punteggio alto anticipa rendimenti migliori?
 
 Il punteggio di fine mese t usa solo prezzi fino a t e pesi stimati solo su esiti gia' noti (walk-forward).
-Si misura il rendimento dei 3 mesi successivi contro la media equipesata degli asset disponibili.
+Si misura il rendimento dei mesi successivi (orizzonte di score.py, o --orizzonte N: taratura e verifica sullo stesso
+orizzonte) contro la media equipesata degli asset disponibili.
 Stampa:
-1. per fascia di punteggio: casi, extra-rendimento mediano e medio a 3 mesi, % di volte sopra la media, per il
+1. per fascia di punteggio: casi, extra-rendimento mediano e medio sull'orizzonte, % di volte sopra la media, per il
    punteggio e per la prima versione (tendenza e momentum a pesi uguali), sugli stessi mesi e asset;
 2. IC (correlazione di rango punteggio -> extra-rendimento) per pilastro e totale, in due sottoperiodi;
 3. taratura: probabilita' prevista contro frequenza realizzata, e i pesi stimati per decennio;
 4. portafoglio dei migliori N, ribilanciato ogni mese, contro pesi uguali, SPY e 60/40 (niente costi).
-Uso, da root del monorepo: .venv/Scripts/python code/macro-cycle-tracker/scripts/evaluate_score.py
+Uso, da root del monorepo: .venv/Scripts/python code/macro-cycle-tracker/scripts/evaluate_score.py [--orizzonte 6]
 (legge data/cache.db; se mancano prezzi o serie lunghe li scarica, le serie FRED con FRED_API_KEY)
 """
 import sys
@@ -16,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import argparse
 import math
 import os
 
@@ -23,7 +25,7 @@ import pandas as pd
 
 from src.classify.assess import USED_INPUTS, assess
 from src.classify.score import (
-    ASSET_AREA, ENTER, EXIT, HISTORY_AREA, HISTORY_SERIES, HORIZON_MONTHS as HORIZON, MIN_ASSETS, UNIVERSE, band_table,
+    ASSET_AREA, ENTER, EXIT, HISTORY_AREA, HISTORY_SERIES, HORIZON_MONTHS, MIN_ASSETS, UNIVERSE, band_table,
     complete_months, extended_prices, forward_excess, hysteresis, macro, model, monthly_prices, pillars, proxy_returns,
     seasonality,
 )
@@ -32,6 +34,7 @@ from src.scheduler.update_data import _load_dotenv, update_asset_prices, update_
 
 SPLIT = "2014-01-01"  # due sottoperiodi di ~12 anni
 TOP_N = 5
+HORIZON = HORIZON_MONTHS  # sostituito da --orizzonte
 
 
 def load_prices() -> pd.DataFrame:
@@ -59,7 +62,7 @@ def first_version(px: pd.DataFrame) -> pd.DataFrame:
 
 
 def ic(signal: pd.DataFrame, excess: pd.DataFrame) -> tuple[float, float, int]:
-    """IC medio mensile e t-stat. I rendimenti a 3 mesi si sovrappongono: t calcolato su n/HORIZON mesi indipendenti."""
+    """IC medio mensile e t-stat. I rendimenti a HORIZON mesi si sovrappongono: t calcolato su n/HORIZON mesi indipendenti."""
     both = signal.notna() & excess.notna()
     # Spearman = Pearson sui ranghi (senza scipy)
     by_month = signal.where(both).rank(axis=1).corrwith(excess.where(both).rank(axis=1), axis=1).dropna()
@@ -75,24 +78,29 @@ def perf(r: pd.Series) -> dict:
 
 
 def main() -> None:
+    global HORIZON
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--orizzonte", type=int, default=HORIZON_MONTHS, help="mesi dell'extra-rendimento da prevedere")
+    HORIZON = parser.parse_args().orizzonte
     px = load_prices()
     proxies, regime = load_inputs()
-    m = model(px, proxies, regime)
+    m = model(px, proxies, regime, HORIZON)
     old = first_version(px)
     both = m["score"].notna() & old.notna()
     s, old = m["score"].where(both), old.where(both)
-    excess = forward_excess(px, s)
+    excess = forward_excess(px, s, HORIZON)
     start = s.dropna(how="all").index[0]
     ext = extended_prices(px, proxies)
     print(f"Universo {px.shape[1]} ETF, storico esteso da {ext.index[0]:%Y-%m}, punteggi da {start:%Y-%m} "
           f"a {s.index[-1]:%Y-%m}, orizzonte {HORIZON} mesi\n")
 
     for name, sc in (("Punteggio", s), ("Prima versione", old)):
-        print(f"{name}: extra-rendimento a 3 mesi contro la media dell'universo, per fascia (%):")
+        print(f"{name}: extra-rendimento a {HORIZON} mesi contro la media dell'universo, per fascia (%):")
         print(band_table(sc, excess).round(2).to_string(), "\n")
 
-    print("IC (Spearman mensile -> extra-rendimento a 3 mesi; t > 2 = probabilmente non casuale):")
-    raw = {**pillars(px), "Stagionalità": seasonality(ext).reindex(px.index), "Macro": macro(ext, regime).reindex(px.index)}
+    print(f"IC (Spearman mensile -> extra-rendimento a {HORIZON} mesi; t > 2 = probabilmente non casuale):")
+    raw = {**pillars(px), "Stagionalità": seasonality(ext, HORIZON).reindex(px.index),
+           "Macro": macro(ext, regime, HORIZON).reindex(px.index)}
     for name, sig in {**{k: v.where(both) for k, v in raw.items()}, "Punteggio": s, "Prima vers.": old}.items():
         parts = [f"{label} IC {mu:+.3f} t {t:+.1f} ({n} mesi)"
                  for label, (mu, t, n) in (("tutto", ic(sig, excess)), (f"<{SPLIT[:4]}", ic(sig.loc[:SPLIT], excess.loc[:SPLIT])),

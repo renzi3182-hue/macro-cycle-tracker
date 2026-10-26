@@ -131,6 +131,7 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
         "growth_state": last["growth"],
         "inflation_state": last["inflation"],
         "inflation_level": last["inflation_level"],
+        "inflation_change": last["inflation_score"],
         "positions": (xg, xi),
         "probabilities": probs,
         "inflation_prob": probs["Reflazione"] + probs["Stagflazione"],  # unico asse prevedibile, la crescita e' ~50%

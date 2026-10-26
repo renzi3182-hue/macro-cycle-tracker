@@ -44,7 +44,8 @@ def test_confirmation_uses_country_equity_and_skips_assets_without_etf():
     from src.config.asset_allocation import confirmation
     above = {"EZU": True, "GLD": False, "DBC": True, "TIP": True, "SPY": False}
     assert confirmation("Reflazione", above, "EZU") == [
-        ("Azionario", "EZU", True), ("Oro", "GLD", False), ("Materie prime", "DBC", True),
-        ("Obbligazioni indicizzate all'inflazione", "TIP", True)]
-    assert [t for _, t, _ in confirmation("Reflazione", above, None)] == ["GLD", "DBC", "TIP"]  # paese senza ETF azionario
+        ("Azionario", "EZU", True), ("Materie prime", "DBC", True), ("Obbligazioni indicizzate all'inflazione", "TIP", True)]
+    assert [t for _, t, _ in confirmation("Reflazione", above, None)] == ["DBC", "TIP"]  # paese senza ETF azionario
+    assert [t for _, t, _ in confirmation("Stagflazione", above, None)] == ["DBC", "GLD"]  # IEF senza dato, nessun azionario
     assert confirmation("Goldilocks", {}, "SPY") == []
+    assert ("Credito corporate", "LQD", False) in confirmation("Reflazione", {**above, "LQD": False}, "EZU")

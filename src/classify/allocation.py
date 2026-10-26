@@ -41,6 +41,19 @@ HOLDOUT_START = "2019-01-01"
 # - Valute: finestre IC +0.262 (t 3.5), quasi tutto dal carry; finale IC +0.063 (t 0.5), migliori 2 2,5%/anno contro
 #   1,3% a pesi uguali e 2,9% del solo dollaro, battono l'87% dei portafogli a caso (p 0.13). Il vantaggio delle
 #   finestre non regge dopo il 2019: descrittiva.
+# Un solo punteggio valute (25/10/2026): tolta la forza 1-100 della pagina Valute (crescita del PIL contro la media
+# 10 anni, momentum 12 mesi del cambio, VIX, pesi fissi scelti guardando 1999-2026), che poteva contraddire questa
+# classifica (correlazione di rango media +0.26 nello stesso mese). Confronto con la stessa misura, IC fra le 8 valute
+# nelle finestre di verifica; il periodo finale si riporta e non decide. Script tolto con la pagina, nella storia git:
+# scripts/compare_currency_scores.py al commit c619e14 (si lancia da quel commit, usa src/classify/currency.py).
+#   IC                        finestre forza / classifica       finale 2019+ forza / classifica
+#   Cambio + tasso, 6 mesi    +0.044 t 0.5 / +0.262 t 3.5       -0.098 t -0.9 / +0.062 t 0.5
+#   Cambio + tasso, 12 mesi   +0.038 t 0.3 / +0.305 t 3.0       -0.052 t -0.3 / +0.108 t 0.7
+#   Solo cambio, 6 mesi       +0.059 t 0.7 / +0.115 t 1.4       -0.114 t -1.1 / -0.085 t -0.7
+#   Solo cambio, 12 mesi      +0.111 t 1.0 / +0.118 t 1.0       -0.082 t -0.6 / -0.129 t -0.8
+#   Migliori 2 nelle finestre (cambio + tasso, senza costi): forza 3,7% l'anno (meglio del 5% dei portafogli a caso),
+#   classifica 8,8% (99%), pesi uguali 5,8%; nel finale -0,6% (5%), 2,5% (87%), 1,3%.
+# Tenuta la classifica: meglio o pari su ogni misura delle finestre. Resta descrittiva (finale t 0.5).
 # Varianti: pilastri e segni decisi prima, una sola versione per classifica. Sui paesi provate nelle finestre 4 varianti
 # con meno pilastri (IC fra +0.006 e +0.071, tutte con t sotto 1): rumore, tenuta la versione completa.
 EDGE = {"Paesi": False, "Classi di asset": True, "Valute": False}
@@ -274,7 +287,7 @@ def load(read, asset_px: pd.DataFrame, history_mkt: pd.Series, today: pd.Timesta
         "grid": grid,
         "fx": fx_usd_per_local(read, grid),
         "equity_usd": equity_usd_returns(read, asset_px, history_mkt, grid),
-        "rate": per_area("rate_3m").combine_first(policy),  # 3 mesi OCSE, se manca il tasso a breve di currency.py
+        "rate": per_area("rate_3m").combine_first(policy),  # 3 mesi OCSE, se manca il tasso a breve di fetch_fx.py
         "yield_10y": per_area("yield_10y"),
         "cci": per_area("cci", SURVEY_LAG), "bci": per_area("bci", SURVEY_LAG),
         "inflation": _grid({a: read(a, "inflation_yoy") for a in AREAS}, SURVEY_LAG, grid),

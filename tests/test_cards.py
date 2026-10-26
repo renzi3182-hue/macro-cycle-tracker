@@ -75,12 +75,18 @@ def test_rrg_html_lists_assets_entering_and_cooling():
 
 def test_today_blocks_cover_every_phase_and_asset():
     from src.config.asset_allocation import PHASE_ASSETS
-    from src.ui.cards import asset_matrix_html, cycle_wave_html, risk_explain_html
+    from src.classify.opportunities import best, cells
+    from src.ui.cards import cycle_wave_html, opportunity_map_html, risk_explain_html
     from src.ui.theme import PHASE_VARS
     assert set(PHASE_ASSETS) == set(PHASE_VARS)
     phases = {"Italia": "Recessione", "USA": "Ripresa (sotto trend)", "Cina": None}
-    m = asset_matrix_html(phases)
-    assert m.count("▲") == 4 and m.count("▼") == 3 and "▲ ciclico" in m and "n/d" in m  # Cina senza fase: riga vuota
+    score = pd.Series({"Azioni": 100.0, "Obbligazioni": 75.0, "Liquidità": 25.0, "Oro": 50.0})
+    prob, trend = score / 200, pd.Series({"Azioni": 0.1, "Obbligazioni": -0.1, "Liquidità": 0.0, "Oro": 0.2})
+    grid = {a: cells(score, prob, trend, ph) for a, ph in phases.items()}
+    m = opportunity_map_html(grid, best(grid), phases, pd.Timestamp("2026-09-01"))
+    # Italia in Recessione: titoli di Stato e oro su, azioni giu'; USA in Ripresa: azioni su; Cina senza fase: n/d
+    assert m.count('<b style="color:var(--r-gold)">▲') == 3 and m.count('<b style="color:var(--r-stag)">▼') == 1 and "n/d" in m
+    assert "Descrittivo" in m and "fine settembre 2026" in m and "#" not in m.replace("&#x27;", "")
     w = cycle_wave_html(phases)
     assert w.count('class="wl') == 2 and "Recessione · 1" in w and "{paese}" not in w
     r = risk_explain_html(61.4, "Risk On", "14/10/2026", [("Calma in borsa", "x", 66), ("Voglia di spendere", "y", 13)], True)
@@ -93,3 +99,44 @@ def test_relations_one_row_each_with_state_color_and_no_svg():
                            ("Rame", float("nan"), 0.1, "n/d", "z")], "16/10/2026")
     assert html.count('class="row"') == 3 and "−0,45" in html and "norma −0,30" in html and "var(--r-stag)" in html
     assert "n/d" in html and "<svg" not in html
+
+
+def test_plain_words_come_from_the_axes():
+    from src.ui.cards import axes_phrase, label_phrase
+    assert axes_phrase("up", "down") == "crescita accelera, inflazione rallenta"
+    assert label_phrase("Goldilocks") == "crescita accelera, inflazione rallenta"
+    assert label_phrase("Stagflazione") == "crescita rallenta, inflazione accelera"
+    # i due regimi di "Incerto" differiscono su un asse solo: quello e' al confine
+    assert label_phrase("Incerto: Stagflazione / Deflazione") == "crescita rallenta, inflazione al confine"
+    assert label_phrase("Incerto: Reflazione / Stagflazione") == "crescita al confine, inflazione accelera"
+
+
+def test_uncertain_note_names_the_axis_near_the_threshold():
+    from src.classify.assess import uncertain_pair
+    from src.ui.cards import uncertain_note
+    pair = uncertain_pair("down", "down", xg=-2.0, xi=-0.1)  # inflazione appena sotto la soglia
+    a = {"regime": "Deflazione", "regime_label": "Incerto: {} / {}".format(*pair), "growth_state": "down", "inflation_state": "down"}
+    note = uncertain_note(a)
+    assert "l'inflazione rallenta di poco" in note and "accelerasse" in note and note.endswith("diventerebbe Stagflazione.")
+    assert uncertain_note({**a, "regime_label": "Deflazione"}) == ""
+
+
+def test_regimes_html_puts_the_phrase_before_the_regime_name():
+    from src.ui.cards import regimes_html
+    areas = {"USA": {"regime_label": "Deflazione"}, "UK": {"regime_label": "Goldilocks"},
+             "Italia": {"regime_label": "Deflazione"}, "India": {"regime_label": "Incerto: Reflazione / Stagflazione"}}
+    html = regimes_html(areas)
+    assert html.index("Crescita rallenta, inflazione rallenta") < html.index("regime Deflazione")
+    assert html.index("Goldilocks") < html.index("Deflazione") < html.index("Incerto")  # netti nell'ordine di REGIMES, poi incerti
+    assert "USA, Italia" in html and "al confine" in html and "#" not in html
+
+
+def test_currency_card_shows_score_position_and_reliability():
+    from src.ui.cards import currency_html, reliability_html
+    row = {"item": "EUR", "nome": "Euro", "punteggio": 88.0, "prob": 0.57, "Tendenza": -0.012, "perche": "spinge carry"}
+    html = currency_html(row, 2, 8, pd.Timestamp("2026-09-01"), reliability_html("currencies"))
+    assert ">88<" in html and "2ª su 8 valute" in html and "in euro" in html and "57%" in html and "−1,2%" in html
+    import re
+    assert "Descrittivo" in html and not re.search(r"#[0-9A-Fa-f]{3,6}\b", html)  # colori solo da variabili CSS
+    usd = currency_html({**row, "item": "USD", "nome": "Dollaro USA"}, 1, 8, pd.Timestamp("2026-09-01"), "")
+    assert "in dollari" in usd

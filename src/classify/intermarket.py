@@ -3,7 +3,7 @@ import math
 import pandas as pd
 
 from src.classify.cycle import RECOVERY_BELOW_TREND
-from src.classify.score import HORIZON_MONTHS, UNIVERSE, pillars
+from src.classify.score import UNIVERSE, pillars
 
 # Intermarket (11/10/2026), capitolo 5 del libro di riferimento (basato su John Murphy). Nel libro e' un
 # controllo: i mercati devono confermare lo scenario macro; se non lo fanno si riduce il rischio, si opera solo dove
@@ -80,6 +80,9 @@ MISALIGNED_TEXT = ("Se i mercati non confermano lo scenario macro: ridurre il ri
                    "c'è vantaggio statistico, preferire strumenti meno volatili.")
 
 EDGE_MIN_CASES, EDGE_MIN_T, EDGE_TOP = 30, 2.0, 3  # "cosa ha funzionato": in evidenza solo con t > 2 e 30 casi
+# Extra-rendimento della verifica (scripts/evaluate_intermarket.py) a 3 mesi, come la Classifica fino al 26/10/2026:
+# i numeri in spec.md sono a 3 mesi. La Classifica ora guarda a 6 (score.HORIZON_MONTHS).
+HORIZON_MONTHS = 3
 CORR_DOUBLE_RISK = 0.7  # due posizioni piu' correlate di cosi' (120 giorni) = rischio doppio
 
 
@@ -201,7 +204,7 @@ def same_situation(regime: pd.Series, murphy: pd.Series, now_regime: str, now_ph
 
 
 def edge_table(excess: pd.DataFrame, months: pd.Index) -> pd.DataFrame:
-    """Extra-rendimento a HORIZON_MONTHS mesi (score.forward_excess) nei mesi indicati, per ticker: casi, media e
+    """Extra-rendimento a HORIZON_MONTHS mesi (score.forward_excess con horizon=HORIZON_MONTHS) nei mesi indicati, per ticker: casi, media e
     mediana (%), % sopra la media, t. Finestre sovrapposte: il t usa casi / HORIZON_MONTHS osservazioni indipendenti."""
     x = excess.loc[excess.index.intersection(months)]
     n = x.count()

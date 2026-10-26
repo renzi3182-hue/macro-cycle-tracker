@@ -17,12 +17,13 @@ GROWTH_CHANGE_MONTHS = 3  # un trimestre: il PIL trimestrale riportato a mensile
 GROWTH_BAND = 0.0  # niente zona neutra: accelera o rallenta, come l'app di riferimento
 GROWTH_SCALE = 0.4  # per indicatori e solidita': z della variazione che vale "1" sulla scala dell'asse
 
-# Inflazione "alta" se la media a 3 mesi di totale + core e' sopra il 2,5% OPPURE se il totale (media 3 mesi)
-# sale rispetto ai 3 mesi prima. Nel libro di riferimento: Reflazione = "inflazione in accelerazione", Stagflazione = "inflazione
-# in aumento". Solo variazione: 11/14 letture (Europa Q1 2024 sbagliata); con il livello 13/14.
+# Inflazione "alta" se il CPI totale (media 3 mesi) sale rispetto ai 3 mesi prima: conta solo la direzione, come nel
+# cap. 7 del libro di riferimento (scelta dell'utente del 25/10/2026: quando libro e app di riferimento divergono vale
+# il libro). Fino al 25/10/2026 era alta anche con la media di totale + core sopra il 2,5%: 15/29 letture note contro
+# 18/29 di ora (il libro 2023-2024 da 3/13 a 9/13, la dashboard dell'app di riferimento 2026Q3 da 3/5 a 1/5);
+# numeri e costi in spec.md. Il core resta solo nel livello mostrato in pagina.
 INFLATION_INPUTS = ("inflation_yoy", "core_inflation_yoy")
-INFLATION_HIGH_LEVEL = 2.5
-INFLATION_HIGH = 0.0  # punteggio = max(livello - 2,5, variazione 3 mesi), punti %
+INFLATION_HIGH = 0.0  # punteggio = variazione 3 mesi della media 3 mesi, punti %
 INFLATION_LOW = 0.0
 INFLATION_SCALE = 0.5  # come GROWTH_SCALE, in punti %
 
@@ -35,9 +36,10 @@ MIN_SCALE_MONTHS = 24  # sotto questi punti la deviazione standard usa tutto il 
 # sezione Calibrazione). Crescita: l'ultimo PIL pubblicato non dice nulla sul trimestre dopo (peso ~0, e' gia'
 # passato un trimestre); qualcosa dice l'attivita' mensile (produzione industriale, CLI dove manca), quindi la
 # probabilita' resta vicina al 50% e puo' favorire un regime diverso dall'etichetta. Inflazione: persistente,
-# lo stato a dati completi e' quello in tempo reale nell'88% dei mesi. Pesi senza intercetta (50% sulla soglia).
+# lo stato a dati completi e' quello in tempo reale nell'84% dei mesi dal 2015 (88% con la soglia del 2,5%, tolta il
+# 25/10/2026). Pesi senza intercetta (50% sulla soglia).
 PROB_ACTIVITY_WEIGHT = 0.24  # per unita' di z della variazione 3 mesi dell'attivita'
-PROB_INFLATION_WEIGHT = 5.9  # per punto % del punteggio d'inflazione
+PROB_INFLATION_WEIGHT = 4.2  # per punto % del punteggio d'inflazione (stimato 4,21 sul 2000-2014, 4,15 su tutto)
 
 REGIMES = ["Goldilocks", "Reflazione", "Stagflazione", "Deflazione"]
 
@@ -60,11 +62,10 @@ def inflation_level(headline: pd.Series, core: pd.Series | None = None) -> pd.Se
     return pd.concat(parts, axis=1).mean(axis=1)
 
 
-def inflation_score(headline: pd.Series, core: pd.Series | None = None) -> pd.Series:
-    """Sopra 0 = inflazione alta o in salita (vedi INFLATION_HIGH_LEVEL)."""
+def inflation_score(headline: pd.Series) -> pd.Series:
+    """Sopra 0 = inflazione in salita: media 3 mesi del CPI totale contro i 3 mesi prima, in punti %."""
     h = monthly(headline).rolling(GROWTH_CHANGE_MONTHS).mean()
-    level = inflation_level(headline, core).rolling(GROWTH_CHANGE_MONTHS).mean()
-    return pd.concat([level - INFLATION_HIGH_LEVEL, h - h.shift(GROWTH_CHANGE_MONTHS)], axis=1).dropna().max(axis=1)
+    return (h - h.shift(GROWTH_CHANGE_MONTHS)).dropna()
 
 
 def axis_states(score: pd.Series, high: float, low: float, confirm: int = CONFIRM_MONTHS) -> pd.Series:
@@ -89,6 +90,10 @@ def regime_name(growth_state: str, inflation_state: str) -> str:
     if growth_state == "up":
         return "Reflazione" if inflation_state == "up" else "Goldilocks"
     return "Stagflazione" if inflation_state == "up" else "Deflazione"
+
+
+AXIS_STATES = ("up", "down")
+REGIME_AXES = {regime_name(g, i): (g, i) for g in AXIS_STATES for i in AXIS_STATES}  # "Goldilocks" -> ("up", "down")
 
 
 def axis_positions(g_z: float, i_score: float) -> tuple[float, float]:
@@ -125,7 +130,7 @@ def probabilities(activity: float | None, i_score: float) -> dict:
 def regime_history(growth: pd.Series, headline: pd.Series, core: pd.Series | None = None) -> pd.DataFrame:
     """Regime per mese con i due assi. growth: PIL annuo (o CLI); headline/core: inflazione annua.
     Gli assi hanno date diverse: l'ultimo stato noto di un asse resta valido finche' non arriva il nuovo."""
-    gz, isc = growth_z(growth), inflation_score(headline, core)
+    gz, isc = growth_z(growth), inflation_score(headline)
     if gz.empty or isc.empty:
         raise ValueError(f"servono almeno {GROWTH_CHANGE_MONTHS + 1} mesi di crescita e inflazione")
     df = pd.DataFrame({

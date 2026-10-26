@@ -53,6 +53,10 @@ _CSS = """
 .si .two { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .si .chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 999px; font-size: 13px; font-weight: 500; background: var(--raised); color: var(--fg); white-space: nowrap; }
 .si .chip.tint { background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
+/* affidabilita' delle letture (cards.badge_html): Verificato, Teoria, Descrittivo */
+.si .rel { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; line-height: 17px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); background: color-mix(in srgb, var(--c) 10%, transparent); white-space: nowrap; vertical-align: middle; }
+.si .rel-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.si .card h3 .rel { margin-left: 6px; }
 .si .note { font-size: 13px; line-height: 19px; color: var(--muted); }
 
 /* hero */
@@ -60,6 +64,7 @@ _CSS = """
 .si .hero h1 { font-size: clamp(32px, 4.6vw, 52px); line-height: 1.05; font-weight: 800; letter-spacing: -0.035em; }
 .si .hero .lead { font-size: 17px; line-height: 26px; color: var(--muted); max-width: 760px; }
 .si .hero .lead b { color: var(--fg); font-weight: 600; }
+.si h2.sec { font-size: 24px; line-height: 30px; font-weight: 800; letter-spacing: -0.02em; padding-top: 12px; }
 
 /* tile di un'area */
 .si a.tile { text-decoration: none; color: inherit; transition: transform .18s ease, border-color .18s ease; }
@@ -106,7 +111,8 @@ _CSS = """
 .si .mxg { display: grid; grid-template-columns: minmax(84px, 1fr) minmax(130px, 1.2fr) repeat(4, minmax(96px, 1fr)); gap: 6px 8px;
   align-items: center; font-size: 14px; min-width: 620px; }
 .si .mx { height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: var(--raised); }
-.si .mx[style] { background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
+.si .mx.opp { gap: 8px; font-size: 15px; }
+.si .mx.opp .dot { width: 8px; height: 8px; }
 .si .rscale { position: relative; padding-top: 6px; }
 .si .rscale b { position: absolute; top: 0; width: 4px; height: 22px; margin-left: -2px; border-radius: 2px; background: var(--fg); box-shadow: 0 0 0 3px var(--surface); }
 .si .rbands { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; font-size: 11px; line-height: 14px; color: var(--muted); }
@@ -169,7 +175,7 @@ __DONUT_TIPS__
 .si .wrow { display: grid; grid-template-columns: 10px minmax(0, 1.4fr) minmax(40px, 1fr) 44px 36px; align-items: center; gap: 12px; min-height: 34px; font-size: 14px; }
 .si .sw { width: 10px; height: 10px; border-radius: 3px; }
 
-/* calendario, eventi, valute, COT */
+/* calendario, eventi, COT */
 .si .ev-next { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .si .ev-next .d { width: 58px; height: 58px; border-radius: 14px; background: var(--accent); color: var(--on-accent); display: flex; flex-direction: column; align-items: center; justify-content: center; font: 500 24px/1 'DM Mono', monospace; flex: none; }
 .si .ev-next .d small { font: 600 11px 'Plus Jakarta Sans', sans-serif; margin-top: 2px; }
@@ -184,11 +190,6 @@ __DONUT_TIPS__
 .si .div::before { content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 16px; background: var(--muted); }
 .si .div i { position: absolute; top: 0; height: 10px; background: var(--muted); }
 .si .cot { display: grid; grid-template-columns: minmax(84px, 1fr) minmax(60px, 2fr) 56px 44px; gap: 12px; align-items: center; font-size: 14px; }
-.si .srow { display: grid; grid-template-columns: 22px 52px minmax(0, 1fr) 40px; gap: 12px; align-items: center; min-height: 40px; }
-.si .pairs { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-.si .pair { padding: 16px; border-radius: 14px; background: var(--raised); display: flex; flex-direction: column; gap: 8px; }
-.si .scale { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--r-stag) 0 40%, var(--line) 40% 60%, var(--r-gold) 60%); }
-.si .scale i { position: absolute; top: -4px; width: 3px; height: 14px; border-radius: 2px; background: var(--fg); }
 .si .arow { display: grid; grid-template-columns: 22px minmax(0, 1.8fr) minmax(70px, 1fr) 62px 62px 52px 32px; gap: 12px; align-items: center; min-height: 44px; font-size: 14px; border-bottom: 1px solid var(--line); }
 .si .arow:last-child { border-bottom: 0; }
 
@@ -202,6 +203,9 @@ __DONUT_TIPS__
 .si .mtx td.n { color: var(--muted); }
 .si .mtx td.brk { background: color-mix(in srgb, var(--r-stag) 16%, transparent); color: var(--r-stag); font-weight: 500; }
 .si .mtx tr.top td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+/* equivalenti UCITS (cards.ucits_html): testo a sinistra che va a capo, solo l'ISIN in colonna fissa */
+.si .mtx.ucits th, .si .mtx.ucits td { text-align: left; font-family: inherit; white-space: normal; vertical-align: top; }
+.si .mtx.ucits td.isin { font-family: 'DM Mono', monospace; white-space: nowrap; }
 .si .arow.th { min-height: 28px; font-size: 12px; color: var(--muted); }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -228,6 +232,7 @@ __DONUT_TIPS__
   .si .mxg > b { color: var(--c); }
   .si .mxg .eyebrow { font-size: 9px; letter-spacing: .02em; }
   .si .mx { height: auto; min-height: 34px; padding: 4px 2px; font-size: 11px; line-height: 1.2; text-align: center; }
+  .si .mx.opp { gap: 4px; font-size: 12px; }
 }
 """
 

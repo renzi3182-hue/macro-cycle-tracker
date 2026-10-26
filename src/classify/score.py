@@ -2,23 +2,38 @@ import numpy as np
 import pandas as pd
 
 # Punteggio asset 1-100 a cinque pilastri (19/10/2026), struttura dell'app di riferimento: Tendenza, Momentum, Rischio,
-# Stagionalita', Macro. Il punteggio e' tarato sulla probabilita' di battere la media degli asset nei 3 mesi successivi.
-# Differenza voluta dall'app di riferimento: la taratura e' walk-forward. Ogni mese una regressione logistica stima i pesi
-# dei pilastri solo sui casi gia' conclusi (esito a 3 mesi noto), e i pesi non sono scelti a mano. Un pilastro inutile
+# Stagionalita', Macro. Il punteggio e' tarato sulla probabilita' di battere la media degli asset nei 6 mesi successivi
+# (3 fino al 26/10/2026, vedi sotto). Differenza voluta dall'app di riferimento: la taratura e' walk-forward. Ogni mese una
+# regressione logistica stima i pesi dei pilastri solo sui casi gia' conclusi (esito a 6 mesi noto), e i pesi non sono
+# scelti a mano. Un pilastro inutile
 # prende un peso vicino a zero da solo; i pesi di oggi si vedono nella pagina Classifica.
 # - Tendenza: prezzo contro la media mobile a 10 mesi (Faber 2007).
 # - Momentum: rendimento 12 mesi escluso l'ultimo (Jegadeesh-Titman 1993; Moskowitz-Ooi-Pedersen 2012).
 # - Rischio: volatilita' 12 mesi, bassa = punteggio del pilastro alto. Il peso lo decide la regressione: fra classi di
 #   asset diverse esce negativo (gli asset piu' volatili hanno battuto la media), come gia' visto nella prima versione.
-# - Stagionalita': extra-rendimento medio dell'asset negli stessi 3 mesi di calendario degli anni passati (Heston-Sadka
+# - Stagionalita': extra-rendimento medio dell'asset negli stessi 6 mesi di calendario degli anni passati (Heston-Sadka
 #   2008), almeno 10 anni di storia.
-# - Macro: extra-rendimento medio a 3 mesi dell'asset nei mesi passati con lo stesso regime USA di oggi. Il regime e'
+# - Macro: extra-rendimento medio a 6 mesi dell'asset nei mesi passati con lo stesso regime USA di oggi. Il regime e'
 #   spostato di MACRO_LAG_MONTHS mesi per il ritardo di pubblicazione del PIL; usa pero' i dati rivisti, non quelli
 #   dell'epoca (stesso limite di scripts/backtest_assets.py).
 # Storico esteso: prima della nascita di ogni ETF si usano i rendimenti di serie gratuite piu' lunghe (PROXY): mercato
 # e settori USA dalla Kenneth French Data Library (dal 1926), Treasury da rendimenti FRED con un'approssimazione per
 # duration. La regressione si addestra cosi' su ~90 anni invece di ~25; la verifica e il punteggio mostrato restano
 # solo sui mesi con il prezzo vero dell'ETF.
+# Orizzonte 6 mesi (26/10/2026): un solo orizzonte nell'app, 6-12 mesi come l'Allocazione. Prova con
+# scripts/evaluate_score.py --orizzonte 6, stesse regole walk-forward (pesi ristimati ogni 12 mesi solo su esiti a 6 mesi
+# gia' noti), cache del 25/10/2026, 32 ETF, punteggi 1999-12 -> 2026-09. Regge: IC con t sopra 2, positivo nei due
+# sottoperiodi, fasce in ordine, migliori 5 sopra pesi uguali. Prima (3 mesi) -> dopo (6 mesi), ognuno sul suo orizzonte:
+#   IC totale +0.080 (t 2.6) -> +0.119 (t 2.8); <2014 +0.056 (t 1.2) -> +0.091 (t 1.4); >=2014 +0.108 (t 2.8) -> +0.152 (t 2.7)
+#   fasce, extra-rendimento mediano: 1-20 -1,05% -> -2,48%; 81-100 +0,60% -> +1,28%
+#   taratura: prevista 55-60% -> realizzata 54,3% (prima 54,3%); sotto 40% -> 36,8% (prima 45,5%)
+#   migliori 5 ribilanciati ogni mese 2002-07 -> 2026-08, senza costi: 14,2%/anno, drawdown -27,7% -> 13,3%, -24,3%
+#   (pesi uguali 9,6% e -43,6%, SPY 11,2% e -50,8%); segnale attivo (entra 80, esce 60) 12,6% e -25,5% -> 11,4% e -26,7%
+#   pesi di oggi: Tendenza 0,58, Momentum 0,21, Stagionalita' 0,32, Rischio e Macro 0
+# Confronto alla pari sull'extra-rendimento a 6 mesi, stessi mesi: tarato a 3 mesi IC +0.100 (t 2.4), tarato a 6 mesi
+# +0.118 (t 2.7); sui 3 mesi il tarato a 6 non perde (+0.093 contro +0.082). Variante a 12 mesi provata e non adottata
+# (l'orizzonte scelto e' 6): IC +0.123 (t 2.1) sui 12 mesi, ma >=2014 t 1.7 e migliori 5 11,7%/anno.
+# Il resto di questo commento descrive la versione a 3 mesi.
 # Verifica (scripts/evaluate_score.py, 19/10/2026, 32 ETF, 1999-2026, stessi mesi e asset della prima versione):
 # IC +0.081 (t 2.7) contro +0.075 (t 2.2); <2014 +0.056 contro +0.062, >=2014 +0.111 contro +0.088. Fasce in ordine
 # (1-20 -1,10% mediano, 81-100 +0,55%; prima -0,58% e +0,75%): separa meglio gli asset da evitare, un po' peggio i
@@ -43,7 +58,7 @@ SEASONAL_MIN_YEARS = 10
 MACRO_LAG_MONTHS = 4  # PIL del trimestre pubblicato circa un mese dopo la fine: 4 mesi dall'inizio del trimestre
 MACRO_MIN_CASES = 24  # mesi passati con lo stesso regime, sotto questi il pilastro e' neutro
 MIN_ASSETS = 8  # sotto questi asset con tendenza e momentum, un mese non ha classifica
-HORIZON_MONTHS = 3  # orizzonte della taratura e della verifica: extra-rendimento nei 3 mesi successivi
+HORIZON_MONTHS = 6  # orizzonte della taratura e della verifica: extra-rendimento nei 6 mesi successivi
 MIN_TRAIN_MONTHS = 120  # mesi di storia (esiti noti) prima della prima stima
 REFIT_MONTHS = 12  # i pesi si ristimano ogni 12 mesi: piu' spesso cambia poco e rallenta l'app
 L2 = 1.0  # piccola penalita' sui pesi: stime stabili con pilastri correlati (tendenza e momentum)
@@ -126,29 +141,31 @@ def extended_prices(px: pd.DataFrame, proxies: pd.DataFrame | None) -> pd.DataFr
     return (1 + r.fillna(0)).cumprod().where(started)
 
 
-def forward_excess(px: pd.DataFrame, s: pd.DataFrame) -> pd.DataFrame:
-    """Rendimento dei HORIZON_MONTHS mesi successivi meno la media dell'universo, dove c'e' un punteggio."""
-    fwd = px.shift(-HORIZON_MONTHS) / px - 1
+def forward_excess(px: pd.DataFrame, s: pd.DataFrame, horizon: int = HORIZON_MONTHS) -> pd.DataFrame:
+    """Rendimento dei `horizon` mesi successivi meno la media dell'universo, dove c'e' un punteggio. Solo le colonne
+    di s: px puo' avere anche ETF fuori dal punteggio (stress.EXTRA_ETF), che non devono entrare nella media."""
+    px = px[s.columns]
+    fwd = px.shift(-horizon) / px - 1
     return fwd.sub(fwd.mean(axis=1), axis=0).where(s.notna())
 
 
-def seasonality(px: pd.DataFrame) -> pd.DataFrame:
-    """Extra-rendimento medio (contro la media degli asset) nei HORIZON_MONTHS mesi di calendario dopo il mese t,
+def seasonality(px: pd.DataFrame, horizon: int = HORIZON_MONTHS) -> pd.DataFrame:
+    """Extra-rendimento medio (contro la media degli asset) nei `horizon` mesi di calendario dopo il mese t,
     sugli anni gia' passati. NaN con meno di SEASONAL_MIN_YEARS anni."""
     r = px.pct_change(fill_method=None)
     ex = r.sub(r.mean(axis=1), axis=0)
     out = pd.DataFrame(np.nan, index=px.index, columns=px.columns)
     for m in range(1, 13):
-        ahead = [(m + k - 1) % 12 + 1 for k in range(1, HORIZON_MONTHS + 1)]
+        ahead = [(m + k - 1) % 12 + 1 for k in range(1, horizon + 1)]
         sel = ex[ex.index.month.isin(ahead)]
         at = px.index[px.index.month == m]
         total, n = sel.cumsum().reindex(at, method="ffill"), sel.notna().cumsum().reindex(at, method="ffill")
-        out.loc[at] = (total / n * HORIZON_MONTHS).where(n >= SEASONAL_MIN_YEARS * HORIZON_MONTHS).values
+        out.loc[at] = (total / n * horizon).where(n >= SEASONAL_MIN_YEARS * horizon).values
     return out
 
 
-def macro(px: pd.DataFrame, regime: pd.Series | None) -> pd.DataFrame:
-    """Extra-rendimento medio a HORIZON_MONTHS mesi dell'asset nei mesi passati (esito gia' noto) con lo stesso regime
+def macro(px: pd.DataFrame, regime: pd.Series | None, horizon: int = HORIZON_MONTHS) -> pd.DataFrame:
+    """Extra-rendimento medio a `horizon` mesi dell'asset nei mesi passati (esito gia' noto) con lo stesso regime
     di oggi. regime: etichetta mensile USA (assess()["history"]["regime"])."""
     out = pd.DataFrame(np.nan, index=px.index, columns=px.columns)
     if regime is None or regime.empty:
@@ -156,8 +173,8 @@ def macro(px: pd.DataFrame, regime: pd.Series | None) -> pd.DataFrame:
     reg = regime.copy()
     reg.index = reg.index.to_period("M").to_timestamp()
     reg = reg[~reg.index.duplicated(keep="last")].reindex(px.index).ffill().shift(MACRO_LAG_MONTHS)
-    fwd = px.shift(-HORIZON_MONTHS) / px - 1
-    known, reg_known = fwd.sub(fwd.mean(axis=1), axis=0).shift(HORIZON_MONTHS), reg.shift(HORIZON_MONTHS)
+    fwd = px.shift(-horizon) / px - 1
+    known, reg_known = fwd.sub(fwd.mean(axis=1), axis=0).shift(horizon), reg.shift(horizon)
     for name in reg.dropna().unique():
         same = known.where(reg_known == name, axis=0)
         n = same.notna().cumsum()
@@ -190,18 +207,19 @@ def _fit(x: np.ndarray, y: np.ndarray, w: np.ndarray) -> np.ndarray:
         active &= ~negative
 
 
-def model(px: pd.DataFrame, proxies: pd.DataFrame | None = None, regime: pd.Series | None = None) -> dict:
+def model(px: pd.DataFrame, proxies: pd.DataFrame | None = None, regime: pd.Series | None = None,
+          horizon: int = HORIZON_MONTHS) -> dict:
     """Punteggio a cinque pilastri tarato walk-forward. px: prezzi mensili degli ETF (mesi chiusi); proxies:
     proxy_returns(); regime: regime USA mensile. Ritorna, sui mesi di px:
     score 1-100 (percentile della probabilita' fra gli asset del mese), prob (probabilita' 0-1 di battere la media a
-    HORIZON_MONTHS mesi), contrib (per pilastro: peso * posizione, la spinta sulla probabilita'), weights (pesi per
+    `horizon` mesi), contrib (per pilastro: peso * posizione, la spinta sulla probabilita'), weights (pesi per
     mese di stima). NaN per asset senza tendenza e momentum o mesi con meno di MIN_ASSETS asset o di storia."""
     ext = extended_prices(px, proxies)
-    raw = {**pillars(ext), "Stagionalità": seasonality(ext), "Macro": macro(ext, regime)}
+    raw = {**pillars(ext), "Stagionalità": seasonality(ext, horizon), "Macro": macro(ext, regime, horizon)}
     valid = raw["Tendenza"].notna() & raw["Momentum"].notna()
     ranks = {k: (raw[k].rank(axis=1, pct=True) - 0.5).fillna(0).where(valid) for k in PILLARS}  # mancante = neutro
     feats = np.stack([ranks[k].values for k in PILLARS], axis=-1)
-    fwd = ext.shift(-HORIZON_MONTHS) / ext - 1
+    fwd = ext.shift(-horizon) / ext - 1
     fwd = fwd.sub(fwd.mean(axis=1), axis=0).where(valid)
     y = np.where(fwd.notna(), (fwd > 0).astype(float), np.nan)
     month_ok = valid.sum(axis=1).values >= MIN_ASSETS
@@ -209,7 +227,7 @@ def model(px: pd.DataFrame, proxies: pd.DataFrame | None = None, regime: pd.Seri
     weights, w, last_fit = {}, np.zeros(len(PILLARS) + 1), None
     for i in np.flatnonzero(month_ok):
         if last_fit is None or i - last_fit >= REFIT_MONTHS:
-            known = slice(0, i - HORIZON_MONTHS + 1)  # a fine mese i l'esito e' noto fino al mese i - HORIZON
+            known = slice(0, i - horizon + 1)  # a fine mese i l'esito e' noto fino al mese i - horizon
             x, t = feats[known].reshape(-1, len(PILLARS)), y[known].reshape(-1)
             ok = ~np.isnan(x).any(axis=1) & ~np.isnan(t)
             if month_ok[known].sum() < MIN_TRAIN_MONTHS:

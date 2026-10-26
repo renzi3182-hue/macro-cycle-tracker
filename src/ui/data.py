@@ -5,6 +5,7 @@ import streamlit as st
 from src.classify import allocation
 from src.classify.assess import USED_INPUTS, assess
 from src.classify.score import ASSET_AREA, HISTORY_AREA, HISTORY_SERIES, UNIVERSE, complete_months, model, monthly_prices, proxy_returns
+from src.classify.stress import EXTRA_ETF
 from src.data import cache
 
 
@@ -25,7 +26,8 @@ def spark(ser: pd.Series, n: int = 24) -> list[float] | None:
 @st.cache_data
 def load_model() -> dict:
     """Prezzi mensili a mese chiuso (px) e punteggio a cinque pilastri (src/classify/score.py: score, prob, contrib,
-    weights), solo mesi con una classifica. Senza serie lunghe o regime USA il modello usa solo gli ETF."""
+    weights), solo mesi con una classifica. Senza serie lunghe o regime USA il modello usa solo gli ETF. px ha anche
+    gli ETF fuori dal punteggio (EXTRA_ETF, colonne vuote se mancano in cache) per filtro di tendenza e stress test."""
     px = monthly_prices({t: load_indicator(ASSET_AREA, t) for t in UNIVERSE})
     if px.empty:
         return {"px": px, "score": px}
@@ -34,8 +36,16 @@ def load_model() -> dict:
     usa = assess("USA", {n: load_indicator("USA", n) for n in USED_INPUTS})
     m = model(px, proxies, usa["history"]["regime"] if usa else None)
     keep = m["score"].notna().any(axis=1)
-    return {"px": px, **{k: v[keep] for k, v in m.items() if k in ("score", "prob")},
-            "contrib": {k: v[keep] for k, v in m["contrib"].items()}, "weights": m["weights"]}
+    extra = monthly_prices({t: load_indicator(ASSET_AREA, t) for t in EXTRA_ETF}).reindex(index=px.index, columns=EXTRA_ETF)
+    return {"px": px.join(extra), **{k: v[keep] for k, v in m.items() if k in ("score", "prob")},
+            "contrib": {k: v[keep] for k, v in m["contrib"].items()}, "weights": m["weights"],
+            "usa_regime": usa["regime"] if usa else None}  # regime USA di oggi, per le frecce dei settori nella Classifica
+
+
+@st.cache_data
+def load_usd_per_eur() -> pd.Series:
+    """Dollari per euro a fine mese sui mesi dei prezzi di load_model (prima del 1999 il marco), per il Portafoglio in euro."""
+    return allocation.fx_usd_per_local(load_indicator, load_model()["px"].index)["Eurozona"]
 
 
 def load_scores() -> tuple[pd.DataFrame, pd.DataFrame]:

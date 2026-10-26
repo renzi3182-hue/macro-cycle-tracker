@@ -62,13 +62,12 @@ In locale, facoltativo, con Windows Task Scheduler (modifica di sistema, da fare
 .venv\Scripts\python scripts/backtest_nber.py            # segnali di recessione USA vs date NBER
 .venv\Scripts\python scripts/backtest_leading_intl.py    # anticipatori fuori USA vs rallentamenti OCSE
 .venv\Scripts\python scripts/backtest_assets.py          # regime -> rendimenti asset
-.venv\Scripts\python scripts/backtest_currency.py        # punteggio valute (legge la cache)
 .venv\Scripts\python scripts/evaluate_intermarket.py    # fase di Murphy e allineamento macro/mercati dal 2000
 ```
 
 ## Pagine
 
-Oggi (pagina iniziale: fase del ciclo e asset per area, nervosismo e tendenza). Macro: Aree (regime mese per mese e fase del ciclo come punto sull'onda), Metodo. Mercati: Classifica, Mercati (VIX, MOVE, inflazione attesa, prossimi eventi, le quattro relazioni intermarket del libro), COT report, Valute, Calendario. Strumenti: Portafoglio, Size Monte Carlo, Interesse composto.
+Cinque voci principali: Oggi (pagina iniziale: tre numeri, cosa è cambiato dal mese scorso, tendenza, fase del ciclo, crescita e inflazione per paese, mappa delle occasioni, nervosismo), Il mio paese (classi di asset del paese, la sua valuta, regime mese per mese e fase del ciclo come punto sull'onda), Asset (classifica degli asset), Portafoglio, Metodo. Menu Avanzato: COT report, Calendario, Mercati (VIX, MOVE, inflazione attesa, prossimi eventi, le quattro relazioni intermarket del libro), Allocazione (classifica dei paesi e delle valute; la pagina Valute con la forza 1-100 è stata tolta il 25/10/2026). Il calcolatore di interesse composto è passato in Money Tracker (25/10/2026); Size Monte Carlo è stato tolto (serve al trading, non all'allocazione).
 
 ## Stato deploy
 

@@ -18,7 +18,8 @@ regime -29% -> -11%) e la volatilita' di ~30%, il rendimento cala di 0,1-0,9 pun
 filtro rende anche di piu' (60/40 3,5% -> 5,6%), dal 2014 costa 1-3 punti l'anno: protegge nei crolli lunghi
 (2001-02, 2008), perde nei rimbalzi veloci. ~8 cambi entra/esci l'anno sommando i 4 asset.
 Il portafoglio per regime (9,1% contro 5,5% dell'All Weather) usa la tabella riallineata il 03/10 su questi stessi
-dati: risultato in-sample, non una prova di vantaggio.
+dati: risultato in-sample, non una prova di vantaggio. Dal 25/10/2026 la tabella viene dal libro (non tarata qui):
+7,5% l'anno con drawdown -35,7%, contro 8,6% e -26,0% della tabella di prima con lo stesso regime.
 Uso: py -3.12 scripts/backtest_assets.py   (serve FRED_API_KEY in .env)
 """
 import sys
@@ -47,6 +48,7 @@ TESTABLE = {
     "Obbligazioni governative lunga durata": "Treasury 10Y", "Obbligazioni lunga durata": "Treasury 10Y",
     "Obbligazioni medio termine": "Treasury 10Y", "Obbligazioni governative medio termine": "Treasury 10Y",
     "Oro": "Oro", "Materie prime": "Materie prime", "Cash": "Cash",
+    "Dollaro americano": "Cash",  # per chi investe in dollari, tenere dollari = T-bill
 }
 
 

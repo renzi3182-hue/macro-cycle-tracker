@@ -1,4 +1,5 @@
-"""Pagine del gruppo Mercati: Classifica, Allocazione, Mercati, COT report, Valute, Calendario."""
+"""Pagine del gruppo Mercati: Classifica, Allocazione, Mercati, COT report, Calendario; e la parte di Il mio paese
+sulle classi di asset e la valuta (country_allocation)."""
 import math
 
 import altair as alt
@@ -7,24 +8,22 @@ import streamlit as st
 
 from src.classify import allocation as al
 from src.classify import intermarket as im
-from src.classify.currency import CURRENCIES, FX_QUOTES, PAIRS, cot_component, growth_gap, momentum_returns, pair_view, strength_score, vix_component
 from src.classify.positioning import percentile_rank, zscore
 from src.classify.rrg import GROUPS, MOMENTUM_WEEKS, TREND_WEEKS, quadrant, rrg, weekly_prices
-from src.classify.score import ENTER, EXIT, HORIZON_MONTHS, PILLARS, STRONG, UNIVERSE, WEAK, band_table, forward_excess, hysteresis, pillars
+from src.classify.score import HORIZON_MONTHS, PILLARS, UNIVERSE, hysteresis, pillars
 from src.config import cot_guide
+from src.config.sector_regime import sector_arrows
 from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.ui.cards import (
-    bands_html, calendar_html, cot_groups_html, events_html, hero_html, month_it, pairs_html, ranking_html, relations_html,
-    rrg_html, strength_html, weights_html, why_text,
+    calendar_html, cot_groups_html, currency_html, events_html, hero_html, label_phrase, month_it, ranking_html, relations_html,
+    reliability_html,
+    rrg_html, ucits_html, weights_html, why_text,
 )
 from src.ui.data import load_allocation, load_indicator, load_model, spark, ui
 from src.ui.theme import hex_color
 
 IMPACT_LABELS_IT = {"Alto": "High", "Medio": "Medium", "Basso": "Low", "Festivo": "Holiday"}
-CCY_COT = {"USD": "Dollaro (DXY)", "EUR": "Euro", "GBP": "Sterlina", "JPY": "Yen", "CAD": "Dollaro canadese",
-           "AUD": "Dollaro australiano"}  # CNY, INR senza future CFTC
-CCY_AREA = {"USD": "USA", "EUR": "Eurozona", "GBP": "UK", "JPY": "Giappone", "CAD": "Canada", "AUD": "Australia", "CNY": "Cina", "INR": "India"}
 
 
 @st.cache_data
@@ -33,34 +32,11 @@ def load_events() -> list[dict]:
 
 
 
-def last_value(area: str, indicator: str) -> float | None:
-    s = load_indicator(area, indicator)
-    return None if s.empty else float(s.iloc[-1])
-
-
-
 @st.cache_data
 def load_weekly() -> tuple[pd.DataFrame, pd.Timestamp | None]:
     """Chiusure settimanali degli ETF (rotazione, src/classify/rrg.py) e data dell'ultima chiusura giornaliera."""
     daily = pd.DataFrame({t: load_indicator(im.AREA, t) for t in UNIVERSE})
     return (daily, None) if daily.empty else (weekly_prices(daily), daily.index[-1])
-
-
-
-def currency_scores() -> dict[str, dict]:
-    mom = momentum_returns({n: load_indicator("Valute", n) for n in FX_QUOTES})
-    vix = load_indicator("Mercati", "vix")
-    vix_pct = None if vix.empty else percentile_rank(vix)
-    out = {}
-    for ccy in CURRENCIES:
-        cot = load_indicator("Mercati", f"cot_{CCY_COT[ccy]}") if ccy in CCY_COT else pd.Series(dtype=float)
-        rate, infl = last_value("Valute", f"rate_{ccy}"), last_value(CCY_AREA[ccy], "inflation_yoy")
-        real = None if rate is None or infl is None else rate - infl
-        res = strength_score(real, growth_gap(load_indicator(CCY_AREA[ccy], "growth_yoy")), mom.get(ccy),
-                             cot_component(None if cot.empty else percentile_rank(cot.tail(COT_WEEKS))), vix_component(ccy, vix_pct))
-        res["real_rate"], res["rate"], res["inflation"] = real, rate, infl
-        out[ccy] = res
-    return out
 
 
 
@@ -89,20 +65,24 @@ def page_ranking() -> None:
     on = [UNIVERSE[t][0] for t in now.index if active[t]]
     ui(hero_html(f"Classifica asset · fine {month_it(month)}", "In testa: " + ", ".join(UNIVERSE[t][0] for t in now.index[:3]),
                  f"Punteggio 1-100 = posizione fra {len(now)} ETF per probabilità di battere la media degli asset nei "
-                 f"{HORIZON_MONTHS} mesi dopo, stimata da cinque pilastri: {', '.join(PILLARS).lower()}. Segnale attivo sopra "
-                 f"{ENTER}, si spegne sotto {EXIT}: <b>{', '.join(on) or 'nessuno'}</b>."))
+                 f"{HORIZON_MONTHS} mesi dopo, stimata da cinque pilastri: {', '.join(PILLARS).lower()}. Segnale attivo "
+                 f"(punteggio alto e stabile): <b>{', '.join(on) or 'nessuno'}</b>."))
     groups = ["Tutti", *dict.fromkeys(g for _, g in UNIVERSE.values())]
     group = st.segmented_control("Gruppo", groups, default="Tutti", required=True, key="group", label_visibility="collapsed")
-    rows = [{"ticker": t, "nome": UNIVERSE[t][0], "gruppo": UNIVERSE[t][1], "punteggio": sc,
+    usa_regime = m["usa_regime"]
+    arrows = sector_arrows(usa_regime)
+    rows = [{"ticker": t, "nome": UNIVERSE[t][0], "gruppo": UNIVERSE[t][1], "punteggio": sc, "freccia": arrows.get(t),
              "delta": sc - prev[t] if pd.notna(prev.get(t)) else None, "Tendenza": trend[t], "prob": m["prob"].loc[month, t],
              "attivo": bool(active[t]), "storico": s[t], "perche": why_text({k: c.loc[month, t] for k, c in m["contrib"].items()})}
             for t, sc in now.items() if group == "Tutti" or UNIVERSE[t][1] == group]
     col_r, col_e = st.columns([8, 4])
     with col_r:
-        ui(ranking_html(rows, month))
+        sectors = group in ("Tutti", "Settori USA") and arrows
+        ui(ranking_html(rows, month, note=reliability_html("ranking") + (reliability_html(
+            "sector_regime", f"▲▼ accanto ai settori USA: regime USA di oggi, {label_phrase(usa_regime)} ({usa_regime}).")
+            if sectors else "")))
     with col_e:
         ui(weights_html(m["weights"].iloc[-1][PILLARS].to_dict(), m["weights"].index[-1]))
-        ui(bands_html(band_table(s, forward_excess(px, s)), HORIZON_MONTHS, s.index[0]))
         wk, last_day = load_weekly()
         if not wk.empty:
             rot = st.segmented_control("Rotazione", list(GROUPS), default="Settori USA", required=True, key="rot",
@@ -112,11 +92,10 @@ def page_ranking() -> None:
                      for t in ratio.index.intersection(mom.index)]
             if items:
                 ui(rrg_html(items, f"Rotazione · {rot}", f"settimanale, al {last_day:%d/%m/%Y}"))
-    st.caption(f"Solo informativo, non è consulenza. Si aggiorna a fine mese. Verde sopra {STRONG}, rosso fino a {WEAK}. "
-               "Verifica 2002-2026 senza costi, con pesi stimati solo sul passato (scripts/evaluate_score.py, 19/10/2026): "
-               "i 5 migliori ribilanciati ogni mese 14,2% l'anno con drawdown massimo −28%, S&P 500 11,2% e −51%; segnale attivo "
-               f"(entra sopra {ENTER}, esce sotto {EXIT}) 12,4% e −26%. La probabilità è tarata: quando dice 55-60% l'asset ha "
-               "battuto la media il 54% delle volte. Il vantaggio è piccolo e sta più nel ridurre le perdite che nel rendimento.")
+    with st.expander("Dall'Italia: equivalenti UCITS di questi ETF", icon=":material/euro:"):
+        ui(ucits_html([r["ticker"] for r in rows], {t: n for t, (n, _) in UNIVERSE.items()}))
+    st.caption("Solo informativo, non è consulenza. Si aggiorna a fine mese. Verde = parte alta della classifica, rosso = "
+               "parte bassa. Verifica, soglie e cosa ha voluto dire ogni fascia di punteggio nella sezione Metodo.")
 
 
 
@@ -176,7 +155,8 @@ def page_cot(mode: str) -> None:
     last = max(s.index[-1] for s in series.values())
     ui(hero_html(f"COT report · CFTC, dato del {last:%d/%m/%Y}", "Chi è posizionato dove",
                  "Ogni venerdì la CFTC pubblica le posizioni sui future al martedì precedente. Quando gli speculatori "
-                 "sono tutti dalla stessa parte il mercato è <b>affollato</b>: basta poco per una ricopertura violenta."))
+                 "sono tutti dalla stessa parte il mercato è <b>affollato</b>: basta poco per una ricopertura violenta.")
+       + reliability_html("cot"))
 
     stats = {}
     for m, s in series.items():
@@ -189,7 +169,7 @@ def page_cot(mode: str) -> None:
                       help=f"Speculatori long meno short in % dell'open interest. Variazione settimana: {chg:+.1f} punti.")
 
     market = st.pills("Mercato", list(series), default=next(iter(series)), key="cot_market", bind="query-params",
-                      selection_mode="single", required=True, label_visibility="collapsed")
+                      selection_mode="single", required=True, label_visibility="collapsed") or next(iter(series))
     net, chg, pct, label, color = stats[market]
     what, reading = cot_guide.MARKET_INFO[market]
     s = series[market]
@@ -256,7 +236,7 @@ def page_cot(mode: str) -> None:
             "produttori si muovono piano e per motivi strutturali (coperture, mandati).\n"
             "- **Cerca le divergenze.** Prezzo ai massimi con speculatori che riducono il long = rally meno sostenuto.\n"
             "- **Ritardo di 3 giorni.** Il dato è del martedì e esce il venerdì: nelle settimane volatili è già vecchio.\n"
-            "- **Verificato qui.** Nel backtest delle valute (1999-2026) il COT non ha migliorato la previsione a 6-12 mesi."
+            "- **Verificato qui.** Nella classifica delle valute (pagina Allocazione) il COT da solo non anticipa i 6 mesi dopo."
         )
     st.caption("Fonte: CFTC (Legacy per gli speculatori, TFF e Disaggregated per le categorie). Solo informativo, non è consulenza.")
 
@@ -278,35 +258,6 @@ def page_calendar() -> None:
                "Atteso = consenso, prec. = dato precedente.")
 
 
-def page_currencies() -> None:
-    scores = currency_scores()
-    if all(v["score"] is None for v in scores.values()):
-        st.info("Nessun dato valute in cache.", icon=":material/database:")
-        st.stop()
-    pairs = []
-    for base, quote in PAIRS:
-        if scores[base]["score"] is not None and scores[quote]["score"] is not None:
-            pv = pair_view(scores[base]["score"], scores[quote]["score"])
-            pairs.append({"Coppia": f"{base}/{quote}", "Punteggio": pv["score"], "Segnale": pv["label"]})
-    col_s, col_p = st.columns(2)
-    with col_s:
-        ui(strength_html({ccy: v["score"] for ccy, v in scores.items()}))
-    with col_p:
-        ui(pairs_html(pairs))
-    st.caption("Solo informativo, orizzonte 6-12 mesi. Forza 1-100 = crescita del PIL contro la media 10 anni del paese, momentum 12 mesi del cambio e VIX "
-               "(risk-off favorisce JPY/USD). Tasso reale e COT mostrati ma con peso 0% (backtest 1999-2026). Classifica delle "
-               "valute con carry, cambio reale e COT, verificata fuori campione: pagina Allocazione.")
-    with st.expander("Composizione del punteggio", icon=":material/table:"):
-        st.dataframe(pd.DataFrame([
-            {"Valuta": ccy, "Forza": v["score"],
-             "Tasso breve %": None if v["rate"] is None else round(v["rate"], 2),
-             "Inflazione %": None if v["inflation"] is None else round(v["inflation"], 2),
-             "Tasso reale %": None if v["real_rate"] is None else round(v["real_rate"], 2),
-             **{k: None if p is None else round(p) for k, p in zip(("Tasso reale", "Crescita", "Momentum", "COT", "VIX"), v["parts"].values())}}
-            for ccy, v in scores.items()
-        ]), hide_index=True)
-
-
 # Strumento d'esempio per classe di asset (solo nomi, non e' un consiglio): azioni = ETF del paese; per gli USA la
 # pagina mostra anche i migliori della Classifica dentro la classe.
 EXAMPLE = {"Obbligazioni": "Titoli di Stato decennali", "Liquidità": "Liquidità a 3 mesi", "Oro": "Oro (es. GLD)"}
@@ -318,8 +269,11 @@ CLASS_GROUPS = {"Azioni": ("Settori USA", "Indici USA"), "Obbligazioni": ("Obbli
 def _alloc_rows(m: dict, key, names: dict, tickers: dict, gruppo: str, active: pd.Series | None) -> tuple[list[dict], pd.Timestamp]:
     """Righe per ranking_html dall'ultima riga con punteggio. key(month) -> etichetta di riga del mese."""
     s = m["score"].dropna(how="all")
-    month = al.months_of(s.index).max()
-    now, prev = s.loc[key(month)].dropna().sort_values(ascending=False), s.loc[key(month - pd.offsets.MonthBegin())]
+    # ultimo mese con una riga per questa chiave: un paese con dati in ritardo non ha la riga del mese piu' recente
+    month = max(mo for mo in al.months_of(s.index).unique() if key(mo) in s.index)
+    before = key(month - pd.offsets.MonthBegin())
+    now = s.loc[key(month)].dropna().sort_values(ascending=False)
+    prev = s.loc[before] if before in s.index else pd.Series(dtype=float)
     w = m["weights"].iloc[-1]
     rows = []
     for item, sc in now.items():
@@ -332,9 +286,38 @@ def _alloc_rows(m: dict, key, names: dict, tickers: dict, gruppo: str, active: p
     return rows, month
 
 
+# Classifica dell'Allocazione -> lettura di src/config/reliability.py (etichetta coerente con al.EDGE: test in test_reliability)
+ALLOC_READING = {"Paesi": "countries", "Classi di asset": "asset_classes", "Valute": "currencies"}
+
+
 def _badge(name: str) -> str:
-    return ("<b style=\"color:var(--r-gold)\">Vantaggio verificato</b> fuori campione · " if al.EDGE[name]
-            else "<b style=\"color:var(--muted)\">Descrittiva</b>: nessun vantaggio dimostrato fuori campione · ") + al.VERIFICA[name]
+    return reliability_html(ALLOC_READING[name])
+
+
+def country_allocation(area: str) -> str | None:
+    """Pagina Il mio paese: classi di asset del paese (classifica verificata) e la sua valuta nella classifica delle
+    valute (descrittiva, il punteggio scelto il 25/10/2026). Ritorna la classe in testa, None senza dati."""
+    data = load_allocation()
+    if not data:
+        st.info("Nessun prezzo in cache per le classi di asset.", icon=":material/database:")
+        return None
+    cl, fx = data["Classi di asset"], data["Valute"]
+    hold = hysteresis(cl["score"].xs(area, level=0).dropna(how="all"), al.ENTER, al.EXIT).iloc[-1]
+    tickers = {"Azioni": al.COUNTRY_ETF[area], "Obbligazioni": "10Y", "Liquidità": "3M", "Oro": "XAU"}
+    rows, month = _alloc_rows(cl, lambda mo: (area, mo), EXAMPLE | {"Azioni": f"Azioni {area}"}, tickers, area, hold)
+    ui(ranking_html(rows, month, f"Classi di asset · {area}", al.HORIZON, _badge("Classi di asset")))
+    cls = rows[0]["item"]
+    if area == "USA" and cls in CLASS_GROUPS:
+        s = load_model()["score"].iloc[-1].dropna().sort_values(ascending=False)
+        pick = [t for t in s.index if UNIVERSE[t][1] in CLASS_GROUPS[cls]][:3]
+        if pick:
+            st.caption("Dentro la classe, i più alti della Classifica: "
+                       + ", ".join(f"{UNIVERSE[t][0]} ({t}, {s[t]:.0f})" for t in pick) + ".")
+    currencies, _ = _alloc_rows(fx, lambda mo: mo, CCY_NAMES, {}, "valuta", None)
+    pos = next((i for i, r in enumerate(currencies, 1) if r["item"] == al.CCY[area]), None)
+    if pos:
+        ui(currency_html(currencies[pos - 1], pos, len(currencies), month, _badge("Valute")))
+    return rows[0]["nome"]
 
 
 def page_allocation() -> None:
@@ -342,30 +325,16 @@ def page_allocation() -> None:
     if not data:
         st.info("Nessun prezzo in cache.", icon=":material/database:")
         st.stop()
-    pa, cl, fx = data["Paesi"], data["Classi di asset"], data["Valute"]
+    pa, fx = data["Paesi"], data["Valute"]
     countries, month = _alloc_rows(pa, lambda mo: mo, {}, al.COUNTRY_ETF, "azioni", None)
     best = countries[0]["nome"]
-    ui(hero_html(f"Allocazione di lungo periodo · fine {month_it(month)}", f"In testa: {best} · dentro il paese, il peso alle classi di asset",
+    ui(hero_html(f"Allocazione di lungo periodo · fine {month_it(month)}", f"In testa: {best}",
                  "Per PAC e investimenti fissi, orizzonte 6-12 mesi. Punteggio 1-100 relativo: 50 = metà classifica, 90 = "
                  "meglio del 90% degli altri nello stesso mese, per probabilità di battere la media nei 6 mesi dopo. "
-                 "Più peso a chi sta in alto, meno peso a chi sta in basso: sono vantaggi statistici storici, non certezze."))
+                 "Più peso a chi sta in alto, meno peso a chi sta in basso: sono vantaggi statistici storici, non certezze. "
+                 "Le classi di asset di ogni paese sono nella pagina <b>Il mio paese</b>."))
     ui(ranking_html(countries, month, "Paesi", al.HORIZON, _badge("Paesi")))
-    area = st.segmented_control("Paese", al.AREAS, default=best, required=True, key="alloc_area", label_visibility="collapsed")
-    hold = hysteresis(cl["score"].xs(area, level=0).dropna(how="all"), al.ENTER, al.EXIT).iloc[-1]
-    tickers = {"Azioni": al.COUNTRY_ETF[area], "Obbligazioni": "10Y", "Liquidità": "3M", "Oro": "XAU"}
-    rows, _ = _alloc_rows(cl, lambda mo: (area, mo), EXAMPLE | {"Azioni": f"Azioni {area}"}, tickers, area, hold)
-    ui(ranking_html(rows, month, f"Classi di asset · {area}", al.HORIZON, _badge("Classi di asset")))
-    cls = rows[0]["item"]
-    if area == "USA" and cls in CLASS_GROUPS:
-        s = load_model()["score"].iloc[-1].dropna().sort_values(ascending=False)
-        pick = [t for t in s.index if UNIVERSE[t][1] in CLASS_GROUPS[cls]][:3]
-        if pick:
-            st.caption("Dentro la classe, i più alti della Classifica a 3 mesi: "
-                       + ", ".join(f"{UNIVERSE[t][0]} ({t}, {s[t]:.0f})" for t in pick) + ".")
     ui(ranking_html(_alloc_rows(fx, lambda mo: mo, CCY_NAMES, {}, "valuta", None)[0], month, "Valute", al.HORIZON, _badge("Valute")))
-    st.caption("Solo informativo, non è consulenza. Si aggiorna a fine mese. Verifica (scripts/evaluate_allocation.py, "
-               "21/10/2026): pesi stimati solo sul passato, sviluppo e verifica a rotazione su quattro periodi dal 1991 al "
-               "2018 e test finale sul 2019-2026, tenuto da parte e usato una volta sola, contro 500 portafogli scelti a caso "
-               "e portafogli statici, senza costi. Solo le classi di asset hanno superato il test finale; paesi e valute si "
-               "leggono come descrizione del momento. Fonti: OCSE (fiducia, tassi), BIS (cambio reale), CFTC (COT), "
-               "Kenneth French e ETF (borse), FRED (cambi), datahub (oro).")
+    st.caption("Solo informativo, non è consulenza. Si aggiorna a fine mese. Come è stata verificata nella sezione Metodo. "
+               "Fonti: OCSE (fiducia, tassi), BIS (cambio reale), CFTC (COT), Kenneth French e ETF (borse), FRED (cambi), "
+               "datahub (oro).")

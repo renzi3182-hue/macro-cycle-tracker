@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 
 from src.classify.score import (
-    MIN_ASSETS, MIN_TRAIN_MONTHS, complete_months, extended_prices, hysteresis, model, monthly_prices, scores,
+    HORIZON_MONTHS, MIN_ASSETS, MIN_TRAIN_MONTHS, complete_months, extended_prices, forward_excess, hysteresis, model,
+    monthly_prices, scores,
 )
 
 
@@ -69,3 +70,14 @@ def test_complete_months_drops_month_in_progress():
     assert len(complete_months(px, pd.Timestamp("2020-04-01"))) == 3
     periods = px.set_axis(px.index.to_period("M"))  # rendimenti di scripts/backtest_assets.py
     assert complete_months(periods, pd.Timestamp("2020-03-15")).index[-1] == pd.Period("2020-02", "M")
+
+
+def test_forward_excess_on_the_score_horizon():
+    px = _noisy(MIN_ASSETS, 30)
+    s = pd.DataFrame(1.0, index=px.index, columns=px.columns)
+    fwd = px.iloc[HORIZON_MONTHS] / px.iloc[0] - 1
+    pd.testing.assert_series_equal(forward_excess(px, s).iloc[0], fwd - fwd.mean(), check_names=False)
+    assert HORIZON_MONTHS == 6  # un solo orizzonte nell'app, come l'Allocazione (allocation.HORIZON)
+    assert forward_excess(px, s, 3).iloc[-3:].isna().all().all() and forward_excess(px, s).iloc[-6:].isna().all().all()
+    # un ETF fuori dal punteggio (come BIL in load_model) non entra nella media
+    pd.testing.assert_frame_equal(forward_excess(px.assign(BIL=1.0), s), forward_excess(px, s))

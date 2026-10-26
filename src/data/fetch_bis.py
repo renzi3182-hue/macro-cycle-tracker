@@ -1,5 +1,5 @@
 """BIS (Banca dei Regolamenti Internazionali, statistiche gratuite, riuso con citazione "Fonte: BIS"): cambio
-effettivo reale (REER, paniere ampio, 1994 = inizio) per le 8 valute di src/classify/currency.py. Serve al pilastro
+effettivo reale (REER, paniere ampio, 1994 = inizio) per le 8 valute dell'app. Serve al pilastro
 Valore della classifica valute (src/classify/allocation.py): una valuta sopra la sua media di lungo periodo e' cara."""
 import io
 
