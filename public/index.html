@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Soft Investing · Macro Cycle Tracker</title>
+<meta name="theme-color" content="#0F1720">
+<link rel="icon" href="/logo-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"
+        integrity="sha384-OK7vELvjHdhUFi31JYioPIcRHTROLdcDa6ZsNWgvgLaKj+9JqhU0Ad8g4wz3CXjA" crossorigin="anonymous"></script>
+<style>
+/* Token del design system Soft Glass: stessi valori di src/ui/theme.py. I blocchi .si arrivano con il loro CSS in site.json. */
+:root {
+  --bg: #0F1720; --surface: #172330; --raised: #1E2D3D; --fg: #EAF2F5; --muted: #8FA6B2; --line: #25384A;
+  --accent: #5EEAD4; --on-accent: #062B26; --r-gold: #7BE0A4; --r-defl: #8AB4FF; --r-refl: #FFC878; --r-stag: #FF9DA7;
+  --shadow: 0 8px 24px rgba(0,0,0,.35); color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #F3F8F8; --surface: #FFFFFF; --raised: #E6F0F1; --fg: #0F1720; --muted: #4F6472; --line: #D3E2E6;
+    --accent: #0A7F70; --on-accent: #FFFFFF; --r-gold: #177A4D; --r-defl: #2F6DB5; --r-refl: #8F5A05; --r-stag: #C0394B;
+    --shadow: 0 4px 16px rgba(15,23,32,.08); color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 "Plus Jakarta Sans", system-ui, sans-serif; }
+a { color: var(--accent); }
+main { max-width: 1240px; margin: 0 auto; padding: 0 16px 96px; }
+main > * + *, #page > * + *, [data-when] > * + *, .cols > div > * + * { margin-top: 16px; }
+.hidden, [data-when].off { display: none !important; }
+
+header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line); }
+header .in { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 16px; }
+header .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.03em; font-size: 17px; color: var(--fg); text-decoration: none; flex: none; }
+header .brand img { width: 30px; height: 30px; }
+nav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; align-items: center; }
+nav a, nav summary { color: var(--muted); text-decoration: none; padding: 7px 12px; border-radius: 10px; white-space: nowrap; font-weight: 500; cursor: pointer; }
+nav a:hover, nav summary:hover { color: var(--fg); background: var(--raised); }
+nav a.on { color: var(--fg); background: var(--raised); font-weight: 600; }
+nav details { position: relative; }
+nav summary { list-style: none; }
+nav summary::-webkit-details-marker { display: none; }
+nav details[open] summary, nav details.on summary { color: var(--fg); }
+#more { position: fixed; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 180px; z-index: 20; }
+.fresh { font-size: 13px; color: var(--muted); margin-top: 12px; }
+.fresh i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 2px; max-width: 100%; }
+.seg button { font: inherit; border: 0; background: transparent; padding: 6px 13px; border-radius: 9px; white-space: nowrap; color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--raised); color: var(--fg); font-weight: 600; }
+.seg.multi button.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+.toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; width: fit-content; }
+.toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
+.lbl { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+.cols { display: grid; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr) !important; } }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: var(--shadow); }
+.box > * + * { margin-top: 12px; }
+.box .box { box-shadow: none; }
+.prose p, .prose ul { margin: 0 0 10px; } .prose ul { padding-left: 20px; } .prose h3, h3.h { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+.prose code { font-family: "DM Mono", monospace; font-size: 13px; }
+.cap { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.cap b { color: var(--fg); font-weight: 600; }
+.notice { margin: 12px 0 0; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  background: var(--surface); font-size: 14px; }
+.notice.warn { border-left-color: var(--r-refl); }
+details.box summary { cursor: pointer; font-weight: 600; }
+pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; background: var(--raised); padding: 12px; border-radius: 12px; }
+.metrics { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.metric { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.metric .k { font-size: 13px; color: var(--muted); }
+.metric .v { font: 500 26px/1.2 "DM Mono", monospace; letter-spacing: -.02em; }
+.metric .d { font-size: 13px; }
+.metric .spark { width: 100%; height: 34px; margin-top: 6px; }
+.lwc { height: 300px; margin-top: 8px; }
+.loading { color: var(--muted); padding: 40px 0; }
+
+/* stress test: posizioni modificabili */
+.edit { width: 100%; border-collapse: collapse; font-size: 14px; }
+.edit th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 4px; }
+.edit td { padding: 3px 4px; border-top: 1px solid var(--line); }
+.edit select, .edit input { font: inherit; color: var(--fg); background: var(--raised); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; width: 100%; }
+.edit input { font-family: "DM Mono", monospace; text-align: right; width: 84px; }
+.edit button, .btn { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 9px; padding: 5px 10px; cursor: pointer; }
+.edit button:hover, .btn:hover { color: var(--fg); }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <a class="brand" href="/" data-link><img id="logo" src="/logo-mark.svg" alt=""> Soft Investing</a>
+  <nav id="nav"></nav>
+</div></header>
+<main>
+  <div class="fresh" id="fresh"></div>
+  <div id="warnings"></div>
+  <div id="page"><p class="loading">Carico i dati…</p></div>
+</main>
+<div id="more" class="hidden"></div>
+<script>
+"use strict";
+// Pagine come nell'app Streamlit: cinque voci in alto, il resto in "Avanzato". Vecchi indirizzi portano alla pagina nuova.
+const MAIN = [["oggi", "Oggi"], ["paese", "Il mio paese"], ["asset", "Asset"], ["portafoglio", "Portafoglio"], ["metodo", "Metodo"]];
+const MORE = [["cot", "COT report"], ["calendario", "Calendario"], ["mercati", "Mercati"], ["allocazione", "Allocazione"]];
+const OLD = { aree: "paese", classifica: "asset", valute: "allocazione", "": "oggi" };
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+let DATA = null;
+const filters = {};  // filtri del calendario, solo per questa visita (come in Streamlit)
+
+const dark = matchMedia("(prefers-color-scheme: dark)");
+const token = name => getComputedStyle(document.documentElement).getPropertyValue("--" + name).trim();
+function setLogo() { $("#logo").src = dark.matches ? "/logo-mark.svg" : "/logo-mark-light.svg"; }
+
+function pageName() {
+  const p = location.pathname.replace(/^\/|\/$/g, "");
+  return OLD[p] ?? ([...MAIN, ...MORE].some(([k]) => k === p) ? p : "oggi");
+}
+function params() { return new URLSearchParams(location.search); }
+
+function renderNav() {
+  const cur = pageName();
+  const inMore = MORE.some(([k]) => k === cur);
+  $("#nav").innerHTML = MAIN.map(([k, t]) => `<a href="/${k}" data-link class="${k === cur ? "on" : ""}">${t}</a>`).join("")
+    + `<a href="#" id="moreBtn" class="${inMore ? "on" : ""}">Avanzato ▾</a>`;
+  $("#more").innerHTML = MORE.map(([k, t]) => `<a href="/${k}" data-link class="${k === cur ? "on" : ""}" style="padding:8px 12px">${t}</a>`).join("");
+}
+
+function go(url, replace = false) {
+  history[replace ? "replaceState" : "pushState"](null, "", url);
+  route();
+}
+
+document.addEventListener("click", e => {
+  const more = $("#more");
+  if (e.target.id === "moreBtn") {
+    e.preventDefault();
+    const r = e.target.getBoundingClientRect();
+    more.style.top = r.bottom + 6 + "px"; more.style.left = Math.min(r.left, innerWidth - 200) + "px";
+    more.classList.toggle("hidden");
+    return;
+  }
+  more.classList.add("hidden");
+  const a = e.target.closest("a[href]");
+  if (!a || a.target === "_blank" || e.metaKey || e.ctrlKey) return;
+  const href = a.getAttribute("href");
+  if (href.startsWith("#")) return;  // ancora nella pagina (es. #cosa-vuol-dire)
+  const url = new URL(href, location.origin + "/");
+  if (url.origin !== location.origin) return;
+  e.preventDefault();
+  go(url.pathname);
+  scrollTo(0, 0);
+});
+addEventListener("popstate", route);
+
+// --- varianti: blocchi data-when="nome=valore;nome=valore", scelte nei .seg[data-switch] e checkbox[data-switch] ---
+function state(page) {
+  const p = params(), s = {};
+  $$("[data-switch]", page).forEach(el => {
+    const name = el.dataset.switch;
+    if (el.type === "checkbox") s[name] = p.get(name) === "1" && !el.disabled ? "1" : "0";
+    else {
+      const ok = [...el.querySelectorAll("button")].map(b => b.dataset.value);
+      s[name] = ok.includes(p.get(name)) ? p.get(name) : el.dataset.default;  // valore sconosciuto nell'URL: predefinito
+    }
+  });
+  return s;
+}
+
+function applyState(page) {
+  const s = state(page);
+  $$("[data-switch]", page).forEach(el => {
+    if (el.type === "checkbox") el.checked = s[el.dataset.switch] === "1";
+    else el.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.value === s[el.dataset.switch]));
+  });
+  $$("[data-when]", page).forEach(el => {
+    const ok = el.dataset.when.split(";").every(c => { const [k, v] = c.split("="); return s[k] === v; });
+    el.classList.toggle("off", !ok);
+  });
+  drawCharts(page);
+  if ($("#lab", page)) lab.update(s);
+}
+
+function setParam(name, value) {
+  const p = params();
+  p.set(name, value);
+  history.replaceState(null, "", location.pathname + "?" + p);
+  applyState($("#page"));
+}
+
+document.addEventListener("click", e => {
+  const b = e.target.closest(".seg button");
+  if (!b) return;
+  const seg = b.parentElement;
+  if (seg.dataset.switch) setParam(seg.dataset.switch, b.dataset.value);
+  if (seg.dataset.filter) {
+    const set = filters[seg.dataset.filter];
+    set.has(b.dataset.value) ? set.delete(b.dataset.value) : set.add(b.dataset.value);
+    applyFilters($("#page"));
+  }
+});
+document.addEventListener("change", e => {
+  if (e.target.matches("input[type=checkbox][data-switch]")) setParam(e.target.dataset.switch, e.target.checked ? "1" : "0");
+});
+
+// --- calendario: scelta multipla di valute e impatto sulle righe di calendar_html ---
+function applyFilters(page) {
+  $$(".seg[data-filter]", page).forEach(seg => {
+    const name = seg.dataset.filter;
+    filters[name] ??= new Set(seg.dataset.default.split(",").filter(Boolean));
+    seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", filters[name].has(b.dataset.value)));
+  });
+  const cal = $("#calendar", page);
+  if (!cal) return;
+  let shown = 0;
+  $$(".row", cal).forEach(r => {
+    const ok = filters.ccy.has(r.dataset.ccy) && filters.impact.has(r.dataset.impact);
+    r.classList.toggle("hidden", !ok);
+    shown += ok;
+  });
+  $$("h4", cal).forEach(h => {  // giorno senza righe visibili: via anche il titolo
+    let n = h.nextElementSibling, any = false;
+    while (n && n.tagName !== "H4") { any ||= !n.classList.contains("hidden"); n = n.nextElementSibling; }
+    h.classList.toggle("hidden", !any);
+  });
+  let empty = $(".empty", cal);
+  if (!empty) { empty = document.createElement("p"); empty.className = "note empty"; empty.textContent = "Nessun evento con questi filtri."; $(".list", cal).append(empty); }
+  empty.classList.toggle("hidden", shown > 0);
+}
+
+// --- grafici (Lightweight Charts, come renderLightweightCharts nell'app) ---
+function lineChart(el, spec) {
+  el.innerHTML = "";
+  el.style.height = (spec.height || 300) + "px";
+  const chart = LightweightCharts.createChart(el, {
+    autoSize: true,
+    layout: { background: { type: "solid", color: "transparent" }, textColor: token("muted"), fontFamily: "DM Mono, monospace" },
+    grid: { vertLines: { visible: false }, horzLines: { color: token("line") } },
+    rightPriceScale: { visible: true, borderVisible: false }, leftPriceScale: { visible: false, borderVisible: false },
+    timeScale: { borderVisible: false, rightOffset: 6 }, crosshair: { mode: 0 },
+  });
+  for (const s of spec.series) {
+    const color = token(s.tok);
+    const opt = { lineWidth: 2, priceLineVisible: false, lastValueVisible: true };
+    const ser = s.type === "area"
+      ? chart.addAreaSeries({ ...opt, lineColor: color, topColor: color + "40", bottomColor: color + "08" })
+      : chart.addLineSeries({ ...opt, color });
+    ser.setData(s.data.map(([time, value]) => ({ time, value })));
+    for (const l of spec.lines || [])
+      ser.createPriceLine({ price: l.value, color: token(l.tok), lineWidth: 1, lineStyle: l.title ? 2 : 0, axisLabelVisible: !!l.title, title: l.title });
+  }
+  chart.timeScale().fitContent();
+}
+
+function drawCharts(page) {
+  $$("[data-chart]", page).forEach(el => {
+    if (el.dataset.drawn || el.offsetParent === null) return;  // solo quelli visibili: serve la larghezza
+    el.dataset.drawn = "1";
+    lineChart(el, DATA.charts[el.dataset.chart]);
+  });
+}
+
+// --- stress test del Portafoglio: src/classify/stress.py rifatto nel browser ---
+const MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+const monthIt = (ym, short = false) => { const [y, m] = ym.split("-"); const n = MONTHS[+m - 1]; return `${short ? n.slice(0, 3) : n} ${y}`; };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" }[c]));
+const signed = (x, d = 0) => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(d).replace(".", ",");
+const pctIt = (x, d = 0) => signed(x * 100, d) + "%";
+const money = v => Math.round(v).toLocaleString("en-US").replace(/,/g, ".");
+const monthsIt = n => n === null ? "non ancora" : n === 0 ? "subito" : `${n} ${n === 1 ? "mese" : "mesi"}`;
+
+const stress = {
+  tickerWeights(weights, proxy) {
+    const out = {}, skipped = [];
+    for (const [asset, w] of Object.entries(weights)) {
+      if (!(w > 0)) continue;
+      if (proxy[asset]) out[proxy[asset]] = (out[proxy[asset]] || 0) + w; else skipped.push(asset);
+    }
+    const tot = Object.values(out).reduce((a, b) => a + b, 0);
+    for (const t in out) out[t] /= tot;
+    return [tot ? out : {}, skipped];
+  },
+  ret(p) { return p.map((v, i) => i && v !== null && p[i - 1] !== null ? v / p[i - 1] - 1 : null); },
+  combine(tw, cols) {  // somma pesata, null se manca anche un solo ETF
+    const n = cols[0].length;
+    return Array.from({ length: n }, (_, i) => {
+      let s = 0;
+      for (let j = 0; j < cols.length; j++) { if (cols[j][i] === null) return null; s += tw[j] * cols[j][i]; }
+      return s;
+    });
+  },
+  portfolio(tw, S) { const t = Object.keys(tw); return this.combine(t.map(k => tw[k]), t.map(k => this.ret(S.px[k]))); },
+  trend(tw, S) {  // sotto la media a N mesi a fine mese: in cash (BIL) il mese dopo
+    const t = Object.keys(tw), N = S.trend_months, cash = this.ret(S.px[S.cash]);
+    const cols = t.map(k => {
+      const p = S.px[k], r = this.ret(p);
+      return p.map((_, i) => {
+        if (i < N) return null;
+        let s = 0;
+        for (let j = i - N; j < i; j++) { if (p[j] === null) return null; s += p[j]; }
+        return p[i - 1] > s / N ? r[i] : cash[i];
+      });
+    });
+    return this.combine(t.map(k => tw[k]), cols);
+  },
+  eur(r, fx) { return r.map((v, i) => v === null || !i || fx[i] === null || fx[i - 1] === null ? null : (1 + v) * fx[i - 1] / fx[i] - 1); },
+  commonWindow(...series) {  // indici dell'ultimo tratto consecutivo in cui tutte le serie hanno un valore
+    const ok = series[0].map((_, i) => series.every(s => s[i] !== null));
+    let end = ok.lastIndexOf(true);
+    if (end < 0) return [];
+    let start = end;
+    while (start > 0 && ok[start - 1]) start--;
+    return [start, end];
+  },
+  summary(r, months) {
+    if (r.length < 24) return null;
+    let w = 1, peak = 1, dd = 0, run = 0, under = 0;
+    for (const x of r) {
+      w *= 1 + x; peak = Math.max(peak, w);
+      dd = Math.min(dd, w / peak - 1);
+      run = w < peak ? run + 1 : 0; under = Math.max(under, run);
+    }
+    return { start: months[0], final: w, cagr: w ** (12 / r.length) - 1, dd, under };
+  },
+  scenario(r, months, a, b) {
+    const i0 = months.indexOf(a), i1 = months.indexOf(b);
+    if (i0 < 0 || i1 < 0) return null;
+    const w = r.slice(i0, i1 + 1);
+    if (w.some(x => x === null)) return null;
+    let v = 1, peak = 1, dd = 0;
+    for (const x of w) { v *= 1 + x; peak = Math.max(peak, v); dd = Math.min(dd, v / peak - 1); }
+    return [v - 1, dd];
+  },
+  recovery(r, months, a, b) {
+    const i0 = months.indexOf(a);
+    const idx = [], wealth = [];
+    let v = 1;
+    for (let i = Math.max(i0, 0); i < r.length; i++) if (r[i] !== null) { v *= 1 + r[i]; wealth.push(v); idx.push(months[i]); }
+    const nCrisis = idx.filter(m => m <= b).length;
+    if (!nCrisis) return 0;
+    const crisis = wealth.slice(0, nCrisis), low = Math.min(...crisis);
+    if (low >= 1) return 0;
+    const iLow = crisis.indexOf(low);
+    for (let i = iLow; i < wealth.length; i++) if (wealth[i] >= 1) return i + 1;
+    return null;
+  },
+  monteCarlo(r, mc) {  // ricampiona i mesi storici; generatore con seme fisso, la banda non cambia a ogni modifica
+    r = r.filter(x => x !== null);
+    if (r.length < 60) return null;
+    let seed = 0;
+    const rand = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const finals = new Float64Array(mc.runs);
+    for (let k = 0; k < mc.runs; k++) {
+      let v = 100;
+      for (let j = 0; j < mc.years * 12; j++) v *= 1 + r[Math.floor(rand() * r.length)];
+      finals[k] = v;
+    }
+    finals.sort();
+    const pct = p => { const x = (finals.length - 1) * p / 100, lo = Math.floor(x); return finals[lo] + (finals[Math.min(lo + 1, finals.length - 1)] - finals[lo]) * (x - lo); };
+    return { 5: pct(5), 50: pct(50), 95: pct(95) };
+  },
+};
+
+// Testi uguali a lab_html e stress_html di src/ui/cards.py
+function labHtml(plain, trend, unit) {
+  const cols = [["Senza filtro", plain], ...(trend ? [["Con filtro di tendenza", trend]] : [])];
+  const rows = [["Oggi avresti", x => `${money(10000 * x.final)} ${unit}`], ["Guadagno medio all'anno", x => pctIt(x.cagr, 1)],
+    ["Calo peggiore", x => pctIt(x.dd)], ["Attesa più lunga per tornare in pari", x => x.under === 0 ? "mai sotto" : monthsIt(x.under)]];
+  let verdict = "";
+  if (trend) {
+    const diff = (trend.cagr - plain.cagr) * 100;
+    verdict = `<p>Il filtro ha reso <b>${Math.abs(diff).toFixed(1).replace(".", ",")} punti l'anno ${diff >= 0 ? "in più" : "in meno"}</b>`
+      + ` e ha portato il calo peggiore da <b class="mono">${pctIt(plain.dd)}</b> a <b class="mono">${pctIt(trend.dd)}</b>.</p>`;
+  }
+  return `<div class="si card"><div class="head"><h3>Come sarebbe andata</h3><span class="note">da ${monthIt(plain.start, true)} a oggi</span></div>`
+    + `<p>Se a ${monthIt(plain.start)} avessi messo <b>10.000 ${unit}</b> nel portafoglio qui a fianco:</p>`
+    + `<div class="tbl"><table class="mtx"><tr><th></th>${cols.map(([n]) => `<th>${n}</th>`).join("")}</tr>`
+    + rows.map(([label, f]) => `<tr><td>${label}</td>${cols.map(([, x]) => `<td>${f(x)}</td>`).join("")}</tr>`).join("") + `</table></div>${verdict}`
+    + `<p class="note">Calo peggiore = quanto sei sceso, al massimo, da un picco. Attesa più lunga = il periodo più lungo passato `
+    + `sotto un picco prima di superarlo. Il grafico sotto segue 100 ${unit} nel tempo. Ribilanciamento ogni mese, ETF in dollari`
+    + (unit === "€" ? ", convertiti in euro senza copertura del cambio" : "")
+    + `, senza costi né tasse; il filtro sposta in cash (BIL, T-bill a 1-3 mesi) ogni ETF sotto la sua media a 10 mesi.</p></div>`;
+}
+
+function stressHtml(rows, mc, years, skipped, unit) {
+  const back = n => n === null ? "non ancora in pari" : n === 0 ? "mai sotto la partenza" : `in pari dopo ${monthsIt(n)}`;
+  const cell = (x, bold) => !x ? '<td class="n">nessun dato</td>'
+    : `<td${bold ? ` style="color:var(--${x[0] >= 0 ? "r-gold" : "r-stag"})"` : ""}>${pctIt(x[0])}<br><span class="muted" style="font-size:11px">${back(x[2])}</span></td>`;
+  const body = rows.map(([name, period, p, t, s]) => `<tr><td>${esc(name)}<br><span class="muted" style="font-size:12px">${esc(period)}</span></td>${cell(p, true)}${cell(t, true)}${cell(s)}</tr>`).join("");
+  let worst = null;
+  for (const [name, , p, t] of rows) if (p && t && (!worst || p[0] < worst[1][0])) worst = [name, p, t];
+  const ex = worst ? `<p>Esempio, ${esc(worst[0].toLowerCase())}: con 10.000 ${unit} saresti arrivato a <b class="mono">${money(10000 * (1 + worst[1][0]))} ${unit}</b> `
+    + `senza filtro e a <b class="mono">${money(10000 * (1 + worst[2][0]))} ${unit}</b> con il filtro.</p>` : "";
+  const band = mc ? `<p>Guardando avanti, fra ${years} anni 100 ${unit} potrebbero diventare circa <b class="mono">${mc[50].toFixed(0)}</b>: `
+    + `<b class="mono">${mc[5].toFixed(0)}</b> se va molto male, <b class="mono">${mc[95].toFixed(0)}</b> se va molto bene.</p>` : "";
+  const note = skipped.length ? ` Esclusi perché senza ETF: ${esc(skipped.join(", "))}.` : "";
+  return `<div class="si card"><div class="head"><h3>Grandi crolli</h3><span class="note">cosa sarebbe successo ai tuoi soldi</span></div>`
+    + `<p>Le ${rows.length} grandi discese della borsa dal 2007. Per ognuna: <b>quanto avresti perso o guadagnato</b> (sopra) e <b>dopo quanto `
+    + `tempo saresti tornato alla cifra di partenza</b> (sotto).</p>`
+    + `<div class="tbl"><table class="mtx"><tr><th></th><th>Il tuo portafoglio</th><th>Con filtro di tendenza</th><th>Solo borsa USA</th></tr>${body}</table></div>${ex}${band}`
+    + `<p class="note">Con filtro di tendenza = vendi ciò che scende sotto la sua media a 10 mesi e lo ricompri quando torna sopra: `
+    + `aiuta nei crolli lunghi, nei rimbalzi veloci ti fa ricomprare tardi. Solo borsa USA = tutto nell'S&amp;P 500. `
+    + `Nessun dato = qualche fondo non esisteva ancora. Ogni classe usa il suo ETF (azionario = SPY, growth = IWF, `
+    + `value = IWD, difensivo = XLP, credito = LQD, dollaro = UUP, cash = BIL), ribilanciamento mensile, niente costi. La stima a 10 anni rimescola i mesi passati del portafoglio: `
+    + `il passato non garantisce il futuro.${note}</p></div>`;
+}
+
+const lab = {
+  profile: null, rows: [],
+  update(s) {
+    const S = DATA.stress;
+    const changed = s.risk !== this.profile;
+    if (changed) {  // come st.data_editor: cambiando profilo si riparte dai suoi pesi
+      this.profile = s.risk;
+      this.rows = Object.entries(S.bases[s.risk]).map(([a, w]) => ({ asset: a, w }));
+    }
+    const ccy = ["Dollari", "Euro"].includes(params().get("valuta")) ? params().get("valuta") : "Dollari";
+    if (!$("#lab .edit")) this.skeleton(); else if (changed) this.table(); else if (ccy === this.ccy) return;
+    this.ccy = ccy;
+    $$("#labCcy button").forEach(b => b.classList.toggle("on", b.dataset.value === ccy));
+    this.compute();
+  },
+  skeleton() {
+    const S = DATA.stress;
+    $("#lab").innerHTML = `<div class="cols" style="grid-template-columns:minmax(0,5fr) minmax(0,7fr)"><div class="box">
+      <b>Le tue posizioni</b><table class="edit"><thead><tr><th>Asset</th><th>Peso %</th><th></th></tr></thead><tbody></tbody></table>
+      <button type="button" class="btn" id="labAdd">+ Aggiungi riga</button>
+      <p class="cap">Parte dall'allocazione qui sopra senza filtro: cambia pesi o aggiungi righe. I pesi si riportano a 100. Il filtro si confronta nel backtest.</p>
+      <p class="lbl">Valuta dei risultati</p><div class="seg" id="labCcy"><button type="button" data-value="Dollari">Dollari</button><button type="button" data-value="Euro">Euro</button></div>
+      <p class="cap">Euro = per chi investe dall'Italia in ETF in dollari senza copertura del cambio (cambio EUR/USD, prima del 1999 il marco). Segnali e filtro restano calcolati in dollari.</p>
+      </div><div id="labOut"></div></div><div id="labStress"></div>`;
+    $("#labAdd").onclick = () => { this.rows.push({ asset: S.assets[0], w: 0 }); this.table(); this.compute(); };
+    $("#labCcy").onclick = e => { const b = e.target.closest("button"); if (b) { const p = params(); p.set("valuta", b.dataset.value); history.replaceState(null, "", "?" + p); this.update(state($("#page"))); } };
+    $("#lab tbody").addEventListener("input", e => {
+      const i = +e.target.closest("tr").dataset.i;
+      if (e.target.tagName === "SELECT") this.rows[i].asset = e.target.value;
+      else this.rows[i].w = e.target.value === "" ? null : Math.min(100, Math.max(0, +e.target.value));
+      this.compute();
+    });
+    $("#lab tbody").addEventListener("click", e => {
+      if (!e.target.matches("button")) return;
+      this.rows.splice(+e.target.closest("tr").dataset.i, 1); this.table(); this.compute();
+    });
+    this.table();
+  },
+  table() {
+    const S = DATA.stress;
+    $("#lab tbody").innerHTML = this.rows.map((r, i) => `<tr data-i="${i}"><td><select aria-label="Asset">${S.assets.map(a => `<option${a === r.asset ? " selected" : ""}>${esc(a)}</option>`).join("")}</select></td>`
+      + `<td><input type="number" min="0" max="100" step="1" aria-label="Peso %" value="${r.w ?? ""}"></td><td><button type="button" aria-label="Togli riga">✕</button></td></tr>`).join("");
+  },
+  compute() {
+    const S = DATA.stress, out = $("#labOut"), st = $("#labStress");
+    const grouped = {};  // come groupby("Asset"): asset in ordine alfabetico, pesi sommati, righe vuote ignorate
+    for (const r of this.rows) if (r.asset && r.w !== null && !isNaN(r.w)) grouped[r.asset] = (grouped[r.asset] || 0) + r.w;
+    const sorted = Object.fromEntries(Object.keys(grouped).sort().map(k => [k, grouped[k]]));
+    const [tw, skipped] = stress.tickerWeights(sorted, S.proxy);
+    if (!Object.keys(tw).length) { out.innerHTML = '<p class="notice">Inserisci almeno una posizione con un ETF di riferimento.</p>'; st.innerHTML = ""; return; }
+    let r = stress.portfolio(tw, S), rt = stress.trend(tw, S), spy = stress.ret(S.px.SPY), unit = "$";
+    if (this.ccy === "Euro") [r, rt, spy, unit] = [stress.eur(r, S.usd_per_eur), stress.eur(rt, S.usd_per_eur), stress.eur(spy, S.usd_per_eur), "€"];
+    let cw = stress.commonWindow(r, rt);
+    const slice = (x, w) => w.length ? x.slice(w[0], w[1] + 1) : [];
+    let plain = stress.summary(slice(r, cw), slice(S.months, cw)), filtered = stress.summary(slice(rt, cw), slice(S.months, cw));
+    if (!plain) {  // il filtro non ha un tratto abbastanza lungo (manca BIL): solo il portafoglio
+      cw = stress.commonWindow(r);
+      plain = stress.summary(slice(r, cw), slice(S.months, cw)); filtered = null;
+    }
+    out.innerHTML = "";
+    if (plain) {
+      const curve = x => { let v = 100; return slice(x, cw).map((y, i) => [slice(S.months, cw)[i] + "-01", +(v *= 1 + y).toFixed(2)]); };
+      const series = [{ label: "Senza filtro", tok: "r-defl", data: curve(r) }, ...(filtered ? [{ label: "Con filtro", tok: "r-refl", data: curve(rt) }] : [])];
+      out.innerHTML = labHtml(plain, filtered, unit) + '<div class="si" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">'
+        + series.map(s => `<span class="chip"><i class="dot" style="background:var(--${s.tok})"></i>${s.label}</span>`).join("") + '</div><div class="lwc"></div>';
+      lineChart($(".lwc", out), { height: 240, series });
+    }
+    const crisis = (x, a, b) => { const sc = stress.scenario(x, S.months, a, b); return sc ? [...sc, stress.recovery(x, S.months, a, b)] : null; };
+    const rows = S.scenarios.map(([name, period, a, b]) => [name, period, crisis(r, a, b), crisis(rt, a, b), crisis(spy, a, b)]);
+    st.innerHTML = stressHtml(rows, stress.monteCarlo(r, S.mc), S.mc.years, skipped, unit)
+      + S.ucits.head + Object.keys(tw).map(t => S.ucits.rows[t] || "").join("") + S.ucits.tail;
+  },
+};
+
+// --- pagina ---
+function route() {
+  const name = pageName();
+  const path = location.pathname.replace(/^\/|\/$/g, "");
+  if (OLD[path] !== undefined && path) history.replaceState(null, "", "/" + OLD[path] + location.search);
+  renderNav();
+  document.title = [...MAIN, ...MORE].find(([k]) => k === name)[1] + " · Soft Investing";
+  if (!DATA) return;
+  const page = $("#page");
+  page.innerHTML = DATA.pages[name];
+  lab.profile = null;
+  applyFilters(page);
+  applyState(page);
+  if (location.hash) $(location.hash)?.scrollIntoView();
+}
+
+function freshness() {
+  if (!DATA.updated_at) return;
+  const t = new Date(DATA.updated_at);
+  const fresh = Date.now() - t < 6 * 3600e3;
+  const f = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(t);
+  const p = Object.fromEntries(f.map(x => [x.type, x.value]));
+  $("#fresh").innerHTML = `<i style="background:var(--${fresh ? "r-gold" : "r-refl"})"></i>Dati aggiornati il ${p.day}/${p.month} alle ${p.hour}:${p.minute}`;
+}
+
+async function load() {
+  setLogo();
+  renderNav();
+  try {
+    const res = await fetch("/data/site.json", { cache: "no-cache", signal: AbortSignal.timeout(20000) });
+    if (!res.ok) throw new Error(res.status);
+    DATA = await res.json();
+  } catch (e) {
+    $("#page").innerHTML = `<p class="notice warn">Dati non disponibili (${esc(e.message)}). Riprova fra qualche minuto.</p>`;
+    return;
+  }
+  const style = document.createElement("style");
+  style.textContent = DATA.css;
+  document.head.append(style);
+  $("#warnings").innerHTML = DATA.warnings;
+  freshness();
+  route();
+}
+dark.addEventListener("change", () => { setLogo(); if (DATA) route(); });  // i grafici leggono i colori del tema
+load();
+</script>
+</body>
+</html>

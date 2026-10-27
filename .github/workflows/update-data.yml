@@ -1,5 +1,6 @@
 # Aggiorna la cache dei dati e la pubblica come asset della release `data-latest`: l'app la scarica da li'
 # (src/data/sync.py). Nessun commit della cache: il repo non cresce. Il primo run parte da workflow_dispatch.
+# Poi esporta il sito statico (src/scheduler/export_site.py) sul branch site-data, letto dal sito su Vercel.
 # Secret richiesti nel repo: FRED_API_KEY, ESTAT_APP_ID.
 name: update-data
 
@@ -42,6 +43,18 @@ jobs:
         run: |
           gh release view data-latest >/dev/null 2>&1 || gh release create data-latest --title "Dati" --notes "Cache aggiornata automaticamente da update-data."
           gh release upload data-latest data/cache.db --clobber
+      - name: Esporta il sito statico
+        if: ${{ !cancelled() && steps.update.outcome != 'skipped' }}
+        run: python -m src.scheduler.export_site
+      - name: Pubblica i dati del sito sul branch site-data
+        # un solo commit, sovrascritto a ogni run: il repo non cresce. Vercel legge il file da qui (vercel.json)
+        if: ${{ !cancelled() && steps.update.outcome != 'skipped' }}
+        working-directory: public/data
+        run: |
+          git init -q -b site-data
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git add -f site.json && git commit -qm "Dati del sito"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site-data
       - name: Tieni vivo lo schedule (GitHub lo disattiva dopo 60 giorni senza attivita')
         run: |
           if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 3888000 ]; then

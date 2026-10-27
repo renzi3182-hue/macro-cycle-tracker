@@ -113,10 +113,19 @@ EVENTS_KEEP_DAYS = 14
 
 
 def write_events(events: list[dict], now: pd.Timestamp | None = None, db_path: Path = DB_PATH) -> None:
-    """Upsert degli eventi del calendario; tiene gli ultimi EVENTS_KEEP_DAYS giorni (il feed copre solo la settimana in corso)."""
+    """Upsert degli eventi del calendario; tiene gli ultimi EVENTS_KEEP_DAYS giorni (il feed copre solo la settimana in corso).
+    Il feed sposta gli eventi senza orario certo (spesso i dati cinesi) da un giorno all'altro: dentro il periodo che copre
+    il feed è la fonte unica, quindi lì le righe vecchie si cancellano prima, altrimenti lo stesso evento resta più volte."""
     cutoff = ((now or pd.Timestamp.now(tz="UTC")) - pd.Timedelta(days=EVENTS_KEEP_DAYS)).isoformat()
     rows = [(e["date"], e["country"], e["title"], e["impact"], e["forecast"], e["previous"]) for e in events]
     with get_connection(db_path) as conn:
+        if rows:  # settimane intere del feed: domenica-sabato, ora di New York come Forex Factory
+            first = pd.Timestamp(min(r[0] for r in rows)).tz_convert("America/New_York").normalize()
+            last = pd.Timestamp(max(r[0] for r in rows)).tz_convert("America/New_York").normalize()
+            start = first - pd.Timedelta(days=(first.weekday() + 1) % 7)
+            end = last + pd.Timedelta(days=7 - (last.weekday() + 1) % 7)
+            conn.execute("DELETE FROM events WHERE date >= ? AND date < ?",
+                         (start.tz_convert("UTC").isoformat(), end.tz_convert("UTC").isoformat()))
         conn.executemany("INSERT OR REPLACE INTO events VALUES (?, ?, ?, ?, ?, ?)", rows)
         conn.execute("DELETE FROM events WHERE date < ?", (cutoff,))
 

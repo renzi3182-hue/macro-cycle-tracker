@@ -1,0 +1,3 @@
+# site.json lo scrive src/scheduler/export_site.py: in locale per l'anteprima, in CI va sul branch site-data (mai nel repo)
+*
+!.gitignore

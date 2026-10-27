@@ -681,9 +681,11 @@ def calendar_html(events: list[dict], tz: str = "Europe/Rome", today: pd.Timesta
         for local, e in rows:
             values = " · ".join(f"{label} <b>{escape(v)}</b>" for label, v in (("atteso", e["forecast"]), ("prec.", e["previous"])) if v)
             out.append(
-                f'<div class="row{" holiday" if e["impact"] == "Holiday" else ""}"><span class="mono">{local:%H:%M}</span>'
+                # data-*: filtri del sito statico (public/index.html), che riceve tutti gli eventi e nasconde le righe
+                f'<div class="row{" holiday" if e["impact"] == "Holiday" else ""}" data-ccy="{escape(e["country"])}" '
+                f'data-impact="{escape(IMPACT_LABELS.get(e["impact"], e["impact"]))}"><span class="mono">{local:%H:%M}</span>'
                 f'<span class="chip" style="padding:2px 8px;font-size:12px">{escape(e["country"])}</span>'
-                f'<i class="dot" style="background:var(--{IMPACT_VARS.get(e["impact"], "muted")})" title="Impatto {IMPACT_LABELS.get(e["impact"], e["impact"])}"></i>'
+                f'<i class="dot" style="background:var(--{IMPACT_VARS.get(e["impact"], "muted")})" title="Impatto {escape(IMPACT_LABELS.get(e["impact"], e["impact"]))}"></i>'
                 f'<span>{escape(e["title"])}</span><span class="v">{values}</span></div>'
             )
     return f'<div class="si card cal"><div class="list">{"".join(out)}</div></div>'

@@ -56,6 +56,22 @@ def test_events_cache_roundtrip_prunes_old(tmp_path):
     assert [r["date"] for r in rows] == [new["date"]]
 
 
+def test_events_moved_by_the_feed_are_not_duplicated(tmp_path):
+    import pandas as pd
+
+    from src.data import cache
+
+    db = tmp_path / "t.db"
+    now = pd.Timestamp("2026-10-19", tz="UTC")
+    first = {**FF_EVENT, "date": "2026-10-19T06:02:00+00:00"}
+    other = {**FF_EVENT, "title": "CPI", "date": "2026-10-23T12:30:00+00:00"}
+    cache.write_events([first, other], now=now, db_path=db)
+    moved = {**first, "date": "2026-10-20T09:10:00+00:00"}  # il feed sposta l'evento senza orario certo
+    cache.write_events([moved, other], now=now, db_path=db)
+    rows = cache.read_events(db_path=db)
+    assert [(r["date"], r["title"]) for r in rows] == [(moved["date"], moved["title"]), (other["date"], "CPI")]
+
+
 def test_calendar_html_groups_by_local_day_and_escapes():
     import pandas as pd
 
