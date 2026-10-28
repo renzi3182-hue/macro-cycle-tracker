@@ -1,4 +1,4 @@
-# Vercel serve solo la pagina statica: senza il resto (requirements.txt, src/app.py) non scambia il repo per un'app Python
+# Vercel serve solo la pagina statica: senza il resto (requirements.txt, src/) non scambia il repo per un'app Python
 /*
 !/public
 !/vercel.json

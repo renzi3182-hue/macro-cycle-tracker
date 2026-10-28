@@ -31,5 +31,5 @@ def test_change_and_rows_and_card():
     assert [g for g, _ in groups] == [g for g, _ in monitor.SERIES]
     claims = next(r for _, rows in groups for r in rows if r["name"].startswith("Richieste"))
     html = monitor_html(groups, pd.Series([40.0, 45.0, 50.0, 60.0], pd.date_range("2026-07-01", periods=4, freq="MS")))
-    assert claims["sign"] == -1 and "Cruscotto USA" in html and "<b>60%</b>" in html and "Tre mesi prima era il 40%" in html
+    assert claims["sign"] == -1 and "Cruscotto USA" in html and "<b>60%</b>" in html and "3 mesi prima era il 40%" in html
     assert monitor.rows({}) == []

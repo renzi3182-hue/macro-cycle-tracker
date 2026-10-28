@@ -9,6 +9,7 @@ import pandas as pd
 
 from src.classify.assess import label_regimes, run_start
 from src.classify.cycle import PHASES
+from src.classify.monitor import DIFFUSION_ALARM, LOOKBACK_MONTHS
 from src.classify.opportunities import CLASS_NAMES, sentence as opp_sentence
 from src.classify.regime import REGIME_AXES, REGIMES
 from src.classify.risk import BOOK_CANARIES, CANARY, CANARY_LEVELS, CANARY_RISK_OFF, LABELS as RISK_LABELS
@@ -321,7 +322,7 @@ def _book_canary(book: dict | None) -> str:
     return (f'<p class="note">Canarino a cinque ETF ({", ".join(BOOK_CANARIES)}), al {book["date"]:%d/%m}: livello '
             f'<b style="color:var(--{color})">{lv}/5, {escape(CANARY_LEVELS[lv - 1])}</b>'
             f'{f" (momentum negativo: {neg})" if neg else ", tutti in salita"}. Conta quanti dei cinque salgono su '
-            f'1-12 mesi: 1-3 risk off, 4-5 risk on. Descrittivo: aggiunto al filtro di tendenza, dal 2019 ha ridotto i cali '
+            f'1-12 mesi: 1-{CANARY_RISK_OFF} risk off, {CANARY_RISK_OFF + 1}-5 risk on. Descrittivo: aggiunto al filtro di tendenza, dal 2019 ha ridotto i cali '
             f'ma tolto 3,6 punti di rendimento l\'anno.</p>')
 
 
@@ -519,7 +520,7 @@ def liquidity_html(rows: list[dict]) -> str:
     return (f'<div class="si card"><div class="head"><h3>Liquidità e Fed: quanto pesa il regime USA</h3><span class="note">USA</span></div>'
             f'{reliability_html("liquidity")}<div class="list">{_signal_rows(rows)}</div>'
             '<p class="note">Crescita e inflazione dicono il regime, liquidità e politica della Fed quanto è profondo. Quattro '
-            'fattori lo aggravano: PIL annuo sceso di almeno 1 punto in un trimestre, inflazione sopra il 2%, liquidità in calo '
+            'fattori lo aggravano: PIL annuo sceso di almeno 1 punto in un trimestre, inflazione sopra il 2% (sotto il 2% in Deflazione), liquidità in calo '
             'su 6 mesi, tasso reale della Fed sopra 1 punto. Il dot plot è la mediana delle previsioni dei membri della Fed, '
             'aggiornata 4 volte l\'anno.</p></div>')
 
@@ -567,9 +568,9 @@ def monitor_html(groups: list[tuple[str, list[dict]]], diffusion: pd.Series) -> 
             for r in rows) for g, rows in groups)
     d = diffusion.dropna()
     head = ("" if d.empty else
-            f'<p class="say">Delle serie che hanno un verso, <b>{d.iloc[-1]:.0f}%</b> sta meglio di 3 mesi fa '
-            f'({"sotto la metà: economia che rallenta" if d.iloc[-1] < 50 else "più della metà: economia che regge"}). '
-            f'Tre mesi prima era il {d.iloc[-4]:.0f}%.</p>' if len(d) > 3 else "")
+            f'<p class="say">Delle serie che hanno un verso, <b>{d.iloc[-1]:.0f}%</b> sta meglio di {LOOKBACK_MONTHS} mesi fa '
+            f'({"sotto la metà: economia che rallenta" if d.iloc[-1] < DIFFUSION_ALARM else "più della metà: economia che regge"}). '
+            f'{LOOKBACK_MONTHS} mesi prima era il {d.iloc[-1 - LOOKBACK_MONTHS]:.0f}%.</p>' if len(d) > LOOKBACK_MONTHS else "")
     return (f'<div class="si card"><div class="head"><h3>Cruscotto USA: {n} serie mese per mese</h3><span class="note">USA</span></div>'
             f'{reliability_html("monitor")}{head}'
             f'<details><summary style="cursor:pointer;font-size:13px">Tutte le serie</summary><div class="tbl"><table class="mtx">'

@@ -9,7 +9,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.classify import allocation, cycle, intermarket, monitor, risk, score, stress
+from src.classify import allocation, cycle, intermarket, monitor, pricing, risk, score, stress
 from src.classify.assess import UNCERTAIN_PREFIX, assess
 from src.data import cache, fetch_bis, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_french, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 MARKET_AREA = "Mercati"
 CALENDAR_AREA = "Calendario"
 FX_AREA = "Valute"
-FUTURES_AREA = "Futures"  # curva di oggi per contratto: indice = mese di scadenza
+FUTURES_AREA = pricing.FUTURES_AREA  # curva di oggi per contratto: indice = mese di scadenza
 SLOW_AREAS = {MARKET_AREA, FX_AREA, FUTURES_AREA, score.ASSET_AREA, score.HISTORY_AREA, intermarket.AREA, allocation.AREA}  # aggiornate solo nel run completo
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 

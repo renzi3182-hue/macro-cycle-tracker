@@ -55,6 +55,7 @@ def fetch_skew() -> pd.Series:
 PUT_CALL_HISTORY_URL = "https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/equitypc.csv"
 PUT_CALL_DAILY_URL = "https://cdn.cboe.com/data/us/options/market_statistics/daily/{date}_daily_options"
 PUT_CALL_MAX_DAYS = 300  # sedute scaricate per run: il primo riempimento dal 2019 si completa in ~6 run serali
+PUT_CALL_RECHECK_DAYS = 14  # si rileggono le sedute senza dato delle ultime 2 settimane: un 403 passeggero non lascia buchi
 
 
 def fetch_put_call(cached: pd.Series) -> pd.Series:
@@ -66,7 +67,8 @@ def fetch_put_call(cached: pd.Series) -> pd.Series:
         rows = [r for r in rows if len(r) == 5 and r[0][:1].isdigit()]
         s = pd.Series([float(r[4]) for r in rows], index=pd.to_datetime([r[0] for r in rows], format="%m/%d/%Y"))
     new = {}
-    for day in pd.bdate_range(s.index[-1] + pd.Timedelta(days=1), pd.Timestamp.today().normalize())[:PUT_CALL_MAX_DAYS]:
+    days = pd.bdate_range(s.index[-1] - pd.Timedelta(days=PUT_CALL_RECHECK_DAYS), pd.Timestamp.today().normalize())
+    for day in days.difference(s.index)[:PUT_CALL_MAX_DAYS]:
         try:
             resp = get_with_retry(PUT_CALL_DAILY_URL.format(date=f"{day:%Y-%m-%d}"), source="cboe", timeout=30)
             value = next((r["value"] for r in resp.json()["ratios"] if r["name"] == "EQUITY PUT/CALL RATIO"), None)
@@ -78,7 +80,7 @@ def fetch_put_call(cached: pd.Series) -> pd.Series:
             break
         if value is not None:  # giorno senza rapporto azionario: saltato, non butta via gli altri
             new[day] = float(value)
-    return pd.concat([s, pd.Series(new, dtype=float)]).sort_index()
+    return pd.concat([s, pd.Series(new, dtype=float)]).sort_index() if new else s
 
 
 # Curve dei futures: Yahoo ha solo i contratti non ancora scaduti, quindi niente storico della forma della curva.
@@ -99,8 +101,8 @@ def fetch_futures_curve(root: str, exchange: str, today: pd.Timestamp | None = N
         m = start + pd.DateOffset(months=i)
         try:
             s = fetch_yahoo(f"{root}{MONTH_CODES[m.month - 1]}{m:%y}.{exchange}", "1mo")
-        except requests.exceptions.HTTPError:
-            continue  # contratto che Yahoo non ha
+        except (requests.exceptions.HTTPError, KeyError, TypeError, IndexError):
+            continue  # contratto che Yahoo non ha, o quotato ma senza scambi (risposta senza prezzi)
         if not s.empty and (today - s.index[-1]).days <= STALE_DAYS:
             out[m] = s.iloc[-1]
     return pd.Series(out, dtype=float)

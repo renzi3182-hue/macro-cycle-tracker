@@ -27,9 +27,12 @@ def test_factors_and_intensity():
     inflation = pd.Series(2.5, idx)
     liq = pd.Series([1.0, 1.0, 1.0, 1.0, 1.0, -0.5, -0.5], idx)
     real = pd.Series(0.5, idx)
-    last = liquidity.factors(growth, inflation, liq, real).iloc[-1]
-    assert last.to_dict() == {"PIL in calo forte": 1.0, "Inflazione sopra il 2%": 1.0, "Liquidità in calo": 1.0,
-                              "Politica restrittiva": 0.0}
+    f = liquidity.factors(growth, inflation, liq, real)
+    assert f[liquidity.columns("Stagflazione")].iloc[-1].to_dict() == {
+        "PIL in calo forte": 1.0, "Inflazione sopra il 2%": 1.0, "Liquidità in calo": 1.0, "Politica restrittiva": 0.0}
+    # in Deflazione aggrava l'inflazione sotto il 2%: al 2,5% il fattore e' spento (libro: debole vicino al 2%)
+    assert f[liquidity.columns("Deflazione")].iloc[-1].to_dict() == {
+        "PIL in calo forte": 1.0, "Inflazione sotto il 2%": 0.0, "Liquidità in calo": 1.0, "Politica restrittiva": 0.0}
     assert liquidity.intensity("Stagflazione", 3) == "forte"
     assert liquidity.intensity("Deflazione", 2) == "media"
     assert liquidity.intensity("Deflazione", 1) == "debole"
@@ -61,12 +64,15 @@ def test_rows_and_card():
          "dots": pd.Series([3.875, 3.375], pd.to_datetime(["2026-01-01", "2027-01-01"])),
          "curve": pd.Series([96.125, 96.375], pd.to_datetime(["2026-12-01", "2027-12-01"])),
          "fed_funds": pd.Series(3.0, idx), "growth": pd.Series(2.0, idx), "inflation": pd.Series(3.0, idx),
-         "core": pd.Series(2.5, idx)}
+         "core": pd.Series(2.5, idx), "fed_path": pd.Series([-0.3], [pd.Timestamp("2026-10-01")])}
     rows = liquidity.rows(d, "Stagflazione")
     names = [r["name"] for r in rows]
     assert names[0] == "Intensità del regime USA: Stagflazione" and rows[0]["state"] == "media"  # inflazione + liquidita'
     fed_2027 = next(r for r in rows if r["name"].startswith("Tassi Fed a fine 2027"))
     assert fed_2027["state"] == "mercato più rigido della Fed"  # 3,625% contro 3,375%
+    assert fed_2027["date"] == pd.Timestamp("2026-10-01")  # data dell'ultima curva letta, non quella del tasso Fed
+    # stessi dati in Deflazione: l'inflazione al 3% non aggrava, resta solo la liquidita'
+    assert liquidity.rows(d, "Deflazione")[0]["state"] == "debole"
     html = liquidity_html(rows)
     assert "Liquidità e Fed" in html and "dot plot" in html
     assert liquidity.rows({k: pd.Series(dtype=float) for k in d}, None) == []

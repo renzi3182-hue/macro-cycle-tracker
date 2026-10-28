@@ -8,10 +8,12 @@ di allora: nel backtest le revisioni restano un look-ahead.
 """
 import pandas as pd
 
+from src.classify.assess import PUBLICATION_LAG_MONTHS
+
 AREA = "Cruscotto USA"
 LOOKBACK_MONTHS = 3  # direzione: ultimo dato contro quello di 3 mesi prima (un trimestre per le serie trimestrali)
 DIFFUSION_ALARM = 50  # allarme sotto meta' delle serie in miglioramento, scelto prima del backtest
-QUARTERLY_LAG = 4  # mesi fra l'inizio del trimestre e la pubblicazione, come il PIL in assess.PUBLICATION_LAG_MONTHS
+QUARTERLY_LAG = PUBLICATION_LAG_MONTHS["growth_yoy"]  # mesi fra l'inizio del trimestre e la pubblicazione, come il PIL
 # (chiave, ID FRED, nome, verso: 1 = salire e' buono per l'economia, -1 = cattivo, 0 = neutro; unita': "pt" = la
 # variazione si legge in punti, "%" = in percentuale; trimestrale)
 SERIES = [

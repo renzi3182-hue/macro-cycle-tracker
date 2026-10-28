@@ -29,7 +29,7 @@ import pandas as pd
 
 from src.classify.assess import USED_INPUTS, lagged, point_in_time_history
 from src.classify import monitor
-from src.classify.liquidity import STRONG_FACTORS, factors, intensity, liquidity_change, real_rate
+from src.classify.liquidity import STRONG_FACTORS, columns, factors, intensity, liquidity_change, real_rate
 from src.classify.pricing import ALARM_PCT, PUT_CALL_DAYS, alarms
 from src.classify.risk import BOOK_CANARIES, CANARY_RISK_OFF, canary_level, momentum_13612w
 from src.classify.score import ASSET_AREA, TREND_MONTHS, complete_months, monthly_prices
@@ -52,7 +52,8 @@ def main() -> None:
                 liquidity_change(m("Mercati", "net_liquidity")),
                 real_rate(lagged(m("USA", "fed_funds"), "fed_funds"), lagged(usa["core_inflation_yoy"], "core_inflation_yoy")))
     regime = point_in_time_history("USA", usa)["regime"]
-    n = f.sum(axis=1).where(f.notna().all(axis=1))
+    n = pd.Series([f.loc[d, columns(r)].sum() if f.loc[d].notna().all() else None
+                   for d, r in zip(f.index, regime.reindex(f.index))], index=f.index, dtype=float)
     strong = pd.Series([intensity(r, k) == "forte" if pd.notna(k) else None for r, k in zip(regime.reindex(n.index), n)],
                        index=n.index, dtype=object)
     liq = pd.DataFrame({"Liquidità in calo": f["Liquidità in calo"], "Politica restrittiva": f["Politica restrittiva"],

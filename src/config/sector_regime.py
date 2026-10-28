@@ -40,7 +40,8 @@ INTENSITY_NOTES = {
                     "tutto negativo tranne le utilities.",
     "Deflazione": "Debole (PIL che si contrae di poco, inflazione vicino al 2%, politica meno rigida): tutti positivi, in "
                   "testa salute, utilities, prima necessità e immobiliare. Media: positivi solo prima necessità, salute e "
-                  "utilities, energia e immobiliare i peggiori.",
+                  "utilities, energia e immobiliare i peggiori. Forte (inflazione sotto il 2%): il libro non la descrive a "
+                  "parte, vale la lettura media.",
 }
 
 

@@ -28,6 +28,8 @@ def test_fetch_futures_curve_skips_missing_and_stale(requests_mock):
     requests_mock.get(url("CLV26.NYM"), **_yahoo(pd.Timestamp("2026-09-20"), 70.0))  # scaduto: prezzo vecchio
     requests_mock.get(url("CLX26.NYM"), **_yahoo(today, 101.0))
     requests_mock.get(url("CLX27.NYM"), **_yahoo(today, 82.0))
+    requests_mock.get(url("CLZ26.NYM"), json={"chart": {"result": [{"indicators": {"quote": [{}]}}]}})  # senza scambi
+    requests_mock.get(url("CLF27.NYM"), json={"chart": {"result": None}})
     curve = fetch_market.fetch_futures_curve("CL", "NYM", today)
     assert curve.to_dict() == {pd.Timestamp("2026-11-01"): 101.0, pd.Timestamp("2027-11-01"): 82.0}
 
@@ -36,6 +38,7 @@ def test_fetch_put_call_appends_missing_days_and_skips_403(requests_mock, monkey
     monkeypatch.setattr(fetch_market.pd.Timestamp, "today", classmethod(lambda cls: pd.Timestamp("2026-10-28")))
     cached = pd.Series([0.6], index=[pd.Timestamp("2026-10-23")])
     url = lambda d: fetch_market.PUT_CALL_DAILY_URL.format(date=d)
+    requests_mock.get(re.compile(r".*cboe.*"), status_code=403)  # sedute prima della cache ricontrollate: festivi
     body = lambda v: {"json": {"ratios": [{"name": "TOTAL PUT/CALL RATIO", "value": "1.0"},
                                           {"name": "EQUITY PUT/CALL RATIO", "value": v}]}}
     requests_mock.get(url("2026-10-26"), **body("0.55"))
@@ -50,11 +53,23 @@ def test_fetch_put_call_keeps_days_read_before_an_error(requests_mock, monkeypat
     monkeypatch.setattr(fetch_market.pd.Timestamp, "today", classmethod(lambda cls: pd.Timestamp("2026-10-28")))
     cached = pd.Series([0.6], index=[pd.Timestamp("2026-10-23")])
     url = lambda d: fetch_market.PUT_CALL_DAILY_URL.format(date=d)
+    requests_mock.get(re.compile(r".*cboe.*"), status_code=403)  # sedute prima della cache ricontrollate: festivi
     requests_mock.get(url("2026-10-26"), json={"ratios": [{"name": "EQUITY PUT/CALL RATIO", "value": "0.55"}]})
     requests_mock.get(url("2026-10-27"), json={"ratios": [{"name": "TOTAL PUT/CALL RATIO", "value": "1.0"}]})
     requests_mock.get(url("2026-10-28"), status_code=404)
     s = fetch_market.fetch_put_call(cached)
     assert s.to_dict() == {pd.Timestamp("2026-10-23"): 0.6, pd.Timestamp("2026-10-26"): 0.55}
+
+def test_fetch_put_call_rereads_a_day_skipped_by_a_passing_403(requests_mock, monkeypatch):
+    monkeypatch.setattr(fetch_market.pd.Timestamp, "today", classmethod(lambda cls: pd.Timestamp("2026-10-28")))
+    cached = pd.Series([0.6, 0.65], index=pd.to_datetime(["2026-10-23", "2026-10-27"]))  # il 26 era andato in 403
+    url = lambda d: fetch_market.PUT_CALL_DAILY_URL.format(date=d)
+    requests_mock.get(re.compile(r".*cboe.*"), status_code=403)  # sedute piu' vecchie gia' in cache: non richieste
+    requests_mock.get(url("2026-10-26"), json={"ratios": [{"name": "EQUITY PUT/CALL RATIO", "value": "0.55"}]})
+    s = fetch_market.fetch_put_call(cached)
+    assert s[pd.Timestamp("2026-10-26")] == 0.55 and s.index.is_monotonic_increasing
+    assert isinstance(fetch_market.fetch_put_call(s).index, pd.DatetimeIndex)  # niente di nuovo: indice resta di date
+
 
 def test_alarms_are_point_in_time_and_nan_without_history():
     days = pd.bdate_range("2000-01-03", periods=1400)

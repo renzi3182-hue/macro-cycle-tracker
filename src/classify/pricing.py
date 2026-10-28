@@ -20,6 +20,10 @@ CALM_PCT = 20
 PUT_CALL_DAYS = 10  # il put/call giornaliero e' rumoroso: media di due settimane
 CHANGE_DAYS = 63  # rame/oro e dollaro: variazione dei 3 mesi
 FUTURES_AREA = "Futures"
+CURVE_INVERTED, CURVE_FLAT = 0, 0.5  # curva 10a-3m: sotto 0 invertita (allarme), sotto 0,5 punti piatta
+VIX_STRUCTURE_ALARM, VIX_STRUCTURE_RISING = 1, 0.9  # VIX/VIX3M: sopra 1 paura sul breve (allarme), sopra 0,9 in salita
+FED_MOVE = 0.25  # futures sui Fed Funds: una mossa della Fed prezzata = tagli o rialzi
+FUTURES_FLAT = 2  # curva dei futures entro +-2% l'anno = piatta
 
 
 def load(read) -> dict[str, pd.Series]:
@@ -44,8 +48,8 @@ def alarms(d: dict[str, pd.Series]) -> pd.DataFrame:
     structure = (d["vix"] / d["vix3m"]).dropna()
     return pd.DataFrame({
         "Credito": _flag(credit >= ALARM_PCT, credit),
-        "Curva": _flag(d["curve"] < 0, d["curve"]),
-        "Struttura VIX": _flag(structure > 1, structure),
+        "Curva": _flag(d["curve"] < CURVE_INVERTED, d["curve"]),
+        "Struttura VIX": _flag(structure > VIX_STRUCTURE_ALARM, structure),
         "SKEW": _flag(skew >= ALARM_PCT, skew),
         "Put/call": _flag(put_call >= ALARM_PCT, put_call),
     }).ffill(limit=FILL_DAYS)
@@ -86,7 +90,7 @@ def rows(d: dict[str, pd.Series]) -> list[dict]:
 
     if not (s := d["curve"].dropna()).empty:
         v = s.iloc[-1]
-        state, tone = ("invertita", "r-stag") if v < 0 else ("piatta", "r-refl") if v < 0.5 else ("normale", "r-gold")
+        state, tone = ("invertita", "r-stag") if v < CURVE_INVERTED else ("piatta", "r-refl") if v < CURVE_FLAT else ("normale", "r-gold")
         add("curve", "Curva dei tassi USA 10 anni − 3 mesi", s, f"{_num(v, 2, True)} pt", state, tone, None,
             "Sotto zero il mercato si aspetta tassi più bassi in futuro: negli USA è arrivata prima di ogni recessione dal "
             "1970, con mesi o anni di anticipo e qualche falso allarme.")
@@ -100,14 +104,14 @@ def rows(d: dict[str, pd.Series]) -> list[dict]:
             "Inflazione media che il mercato dei titoli indicizzati prezza dal quinto al decimo anno. Vicino al 2-2,5% = ancorata.")
     if not (s := d["fut_fed_funds"].dropna()).empty:
         v = s.iloc[-1]
-        state = "tagli" if v <= -0.25 else "rialzi" if v >= 0.25 else "tassi fermi"
+        state = "tagli" if v <= -FED_MOVE else "rialzi" if v >= FED_MOVE else "tassi fermi"
         add("fed", "Tassi Fed attesi fra 12 mesi (futures)", s, f"{_num(v, 2, True)} pt", state,
-            "r-defl" if v <= -0.25 else "r-refl" if v >= 0.25 else "muted", None,
+            "r-defl" if v <= -FED_MOVE else "r-refl" if v >= FED_MOVE else "muted", None,
             f"Differenza fra il tasso implicito nei futures sui Fed Funds a 12 mesi e quello del primo contratto: "
-            f"{_num(abs(v) / 0.25, 1)} mosse da 0,25 prezzate.")
+            f"{_num(abs(v) / FED_MOVE, 1)} mosse da 0,25 prezzate.")
     if not (s := (d["vix"] / d["vix3m"]).dropna()).empty:
         v = s.iloc[-1]
-        state, tone = ("paura sul breve", "r-stag") if v > 1 else ("in salita", "r-refl") if v > 0.9 else ("normale", "r-gold")
+        state, tone = ("paura sul breve", "r-stag") if v > VIX_STRUCTURE_ALARM else ("in salita", "r-refl") if v > VIX_STRUCTURE_RISING else ("normale", "r-gold")
         add("structure", "Opzioni: VIX a 1 mese / VIX a 3 mesi", s, _num(v, 2), state, tone, None,
             f"Sopra 1 le opzioni costano più sul mese che sui tre mesi: la paura è concentrata ora. VIX {_num(d['vix'].dropna().iloc[-1])}.")
     if not (s := d["skew"].dropna()).empty:
@@ -129,7 +133,7 @@ def rows(d: dict[str, pd.Series]) -> list[dict]:
         if (s := d[f"fut_{name}"].dropna()).empty:
             continue
         v = s.iloc[-1]
-        state, tone = ("backwardation", "r-refl") if v < -2 else ("contango", "muted") if v > 2 else ("piatta", "muted")
+        state, tone = ("backwardation", "r-refl") if v < -FUTURES_FLAT else ("contango", "muted") if v > FUTURES_FLAT else ("piatta", "muted")
         add(f"fut_{name}", f"{label}: curva dei futures a 12 mesi", s, f"{_num(v, 1, True)}% l'anno", state, tone, None,
             "Futures a 12 mesi contro il primo, in % l'anno." + _curve_note(d["curves"][name], unit))
     copper, gold = d["copper"].dropna(), d["gold"].dropna()

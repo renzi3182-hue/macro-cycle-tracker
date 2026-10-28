@@ -18,12 +18,14 @@ PUBLICATION_LAG_MONTHS = {"growth_yoy": 4, "industrial_production": 2}  # gli al
 STALE_DAYS = {"growth_yoy": 250, "unemployment_rate": 150}
 STALE_DAYS_DEFAULT = 120
 CORE_INPUTS = (GROWTH_INPUT, "inflation_yoy")  # se uno di questi e' in ritardo la lettura e' poco affidabile
-# Serie FRED ad alta frequenza (area, indicatore): massimo ritardo in giorni di calendario. Giornaliere 5
+# Serie ad alta frequenza (area, indicatore): massimo ritardo in giorni di calendario. Giornaliere 5
 # (weekend + un festivo), settimanali 14 (NFCI e sussidi escono 4-6 giorni dopo la settimana di riferimento).
+# Oltre a FRED: SKEW (Yahoo), put/call (CBOE) e percorso dei futures sui Fed Funds, data dell'ultima curva letta.
 HIGH_FREQ_MAX_DAYS = {
     ("USA", "yield_curve"): 5, ("USA", "credit_spread"): 5, ("Mercati", "vix"): 5, ("Mercati", "vix3m"): 5,
     ("Mercati", "breakeven_5y"): 5, ("Mercati", "breakeven_5y5y"): 5,
     ("USA", "fin_conditions"): 14, ("USA", "claims"): 14,
+    ("Mercati", "skew"): 5, ("Mercati", "put_call"): 5, ("Mercati", "futures_fed_funds"): 5,
 }
 USED_INPUTS = ("cli", "growth_yoy", "inflation_yoy", "core_inflation_yoy", "unemployment_rate", "recession_prob", "industrial_production")
 

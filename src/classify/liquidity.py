@@ -7,7 +7,7 @@ Fonti: FRED (WALCL - WTREGEN - RRPONTSYD, M2SL, DFEDTARU, FEDTARMD, FEDFUNDS) e 
 """
 import pandas as pd
 
-from src.classify.pricing import _num
+from src.classify.pricing import FUTURES_AREA, _num
 
 LIQUIDITY_WEEKS = 26  # liquidita' netta: variazione a 6 mesi, il segno dice espansione o calo
 GDP_DROP = 1.0  # calo del PIL "pronunciato": crescita annua scesa di almeno 1 punto in un trimestre
@@ -16,6 +16,9 @@ REAL_RATE_TIGHT = 1.0  # politica restrittiva: Fed Funds sopra l'inflazione core
 STRONG_FACTORS, WEAK_FACTORS = 3, 1  # su 4 fattori: almeno 3 = forte, al massimo 1 = debole, in mezzo = media
 INTENSITY_REGIMES = ("Stagflazione", "Deflazione")  # il libro da' la versione debole e forte solo per questi
 MOVE = 0.25  # una mossa della Fed
+MIN_MOVES = 0.5  # sotto mezza mossa prezzata = tassi fermi
+ABOVE, BELOW = "Inflazione sopra il 2%", "Inflazione sotto il 2%"
+FACTORS = ["PIL in calo forte", ABOVE, BELOW, "Liquidità in calo", "Politica restrittiva"]  # colonne di factors()
 
 
 def liquidity_change(net: pd.Series) -> pd.Series:
@@ -32,16 +35,25 @@ def real_rate(fed_funds: pd.Series, core: pd.Series) -> pd.Series:
 
 
 def factors(growth: pd.Series, inflation: pd.Series, liq_change: pd.Series, real: pd.Series) -> pd.DataFrame:
-    """I 4 fattori d'intensita' del libro, mensili, True quando aggravano: calo del PIL pronunciato, inflazione sopra
-    il 2%, liquidita' in calo, politica restrittiva. NaN dove manca il dato."""
+    """I fattori d'intensita' del libro, mensili, True quando aggravano: calo del PIL pronunciato, inflazione sopra e
+    sotto il 2%, liquidita' in calo, politica restrittiva. NaN dove manca il dato. Ne contano 4: quale delle due
+    colonne d'inflazione lo dice columns(regime)."""
     m = lambda s: s.resample("MS").last().ffill()
     g = m(growth)
-    cols = {"PIL in calo forte": (g.shift(3) - g) >= GDP_DROP, "Inflazione sopra il 2%": m(inflation) > INFLATION_TARGET,
-            "Liquidità in calo": m(liq_change) < 0, "Politica restrittiva": m(real) > REAL_RATE_TIGHT}
-    valid = {"PIL in calo forte": g.shift(3), "Inflazione sopra il 2%": m(inflation), "Liquidità in calo": m(liq_change),
+    cols = {"PIL in calo forte": (g.shift(3) - g) >= GDP_DROP, ABOVE: m(inflation) > INFLATION_TARGET,
+            BELOW: m(inflation) < INFLATION_TARGET, "Liquidità in calo": m(liq_change) < 0,
+            "Politica restrittiva": m(real) > REAL_RATE_TIGHT}
+    valid = {"PIL in calo forte": g.shift(3), ABOVE: m(inflation), BELOW: m(inflation), "Liquidità in calo": m(liq_change),
              "Politica restrittiva": m(real)}
     # ogni fattore resta valido fino al dato successivo: il PIL e' trimestrale, la liquidita' settimanale
     return pd.DataFrame({k: v.astype(float).where(valid[k].notna()) for k, v in cols.items()}).ffill()
+
+
+def columns(regime: str | None) -> list[str]:
+    """I 4 fattori che contano nel regime: in Deflazione aggrava l'inflazione sotto il 2% (il libro: Deflazione debole con
+    inflazione vicino al 2%, il pericolo e' scendere), negli altri regimi quella sopra."""
+    skip = ABOVE if regime == "Deflazione" else BELOW
+    return [c for c in FACTORS if c != skip]
 
 
 def intensity(regime: str, n_factors: int) -> str | None:
@@ -78,7 +90,8 @@ def policy(target_upper: pd.Series, dots: pd.Series, curve: pd.Series) -> list[d
 def load(read) -> dict[str, pd.Series]:
     """Serie dalla cache; read(area, indicatore) -> pd.Series, come pricing.load."""
     return {"net": read("Mercati", "net_liquidity"), "m2": read("Mercati", "m2_yoy"), "target": read("Mercati", "fed_target"),
-            "dots": read("Mercati", "dot_plot"), "curve": read("Futures", "fed_funds"), "fed_funds": read("USA", "fed_funds"),
+            "dots": read("Mercati", "dot_plot"), "curve": read(FUTURES_AREA, "fed_funds"),
+            "fed_path": read("Mercati", "futures_fed_funds"), "fed_funds": read("USA", "fed_funds"),
             "growth": read("USA", "growth_yoy"), "inflation": read("USA", "inflation_yoy"), "core": read("USA", "core_inflation_yoy")}
 
 
@@ -94,7 +107,7 @@ def rows(d: dict[str, pd.Series], regime: str | None) -> list[dict]:
     inputs = (d["growth"].dropna(), d["inflation"].dropna(), liq, real)
     f = factors(*inputs).dropna() if all(not s.empty for s in inputs) else pd.DataFrame()
     if regime and not f.empty:
-        last = f.iloc[-1].astype(bool)
+        last = f[columns(regime)].iloc[-1].astype(bool)
         level = intensity(regime, int(last.sum()))
         on = [k.lower() for k, v in last.items() if v]
         add(f"Intensità del regime USA: {regime}", f, f"{int(last.sum())} fattori su 4", level or "solo per stagflazione e deflazione",
@@ -111,12 +124,15 @@ def rows(d: dict[str, pd.Series], regime: str | None) -> list[dict]:
         v = s.iloc[-1]
         add("Massa monetaria M2 USA, annua", s, f"{_num(v, 1, True)}%", "in calo" if v < 0 else "in crescita",
             "r-refl" if v < 0 else "muted", "Contante, conti e depositi: cresce quando banche e Fed creano credito.")
+    # la curva dei futures non ha data sua (indice = scadenze): vale quella del suo ultimo numero riassuntivo
+    fed_path = d.get("fed_path", pd.Series(dtype=float)).dropna()
     for p in policy(d["target"], d["dots"], d["curve"].dropna()):
         gap = None if p["market"] is None else p["market"] - p["fed"]
         state = ("dati mancanti" if gap is None else "mercato più rigido della Fed" if gap >= MOVE
                  else "mercato più morbido della Fed" if gap <= -MOVE else "mercato e Fed d'accordo")
-        moves = lambda m: f"{_num(abs(m), 1)} {'rialzi' if m > 0 else 'tagli'} da 0,25" if abs(m) >= 0.5 else "tassi fermi"
-        add(f"Tassi Fed a fine {p['year']}: Fed contro mercato", d["target"].dropna(),
+        moves = lambda m: f"{_num(abs(m), 1)} {'rialzi' if m > 0 else 'tagli'} da 0,25" if abs(m) >= MIN_MOVES else "tassi fermi"
+        add(f"Tassi Fed a fine {p['year']}: Fed contro mercato",
+            fed_path if p["market"] is not None and not fed_path.empty else d["target"].dropna(),
             f"Fed {_num(p['fed'], 2)}% · mercato {'n/d' if p['market'] is None else _num(p['market'], 2) + '%'}", state,
             "muted" if gap is None or abs(gap) < MOVE else "r-refl",
             f"Oggi {_num(p['now'], 2)}% (metà forchetta). Dot plot della Fed: {moves(p['fed_moves'])}; futures: "

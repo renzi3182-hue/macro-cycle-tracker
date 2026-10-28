@@ -682,7 +682,7 @@ def warnings_html() -> str:
     out = []
     late = stale_high_freq({k: (s.index[-1] if not (s := load_indicator(*k)).empty else None) for k in HIGH_FREQ_MAX_DAYS})
     if late:
-        out.append(notice("Serie giornaliere/settimanali FRED ferme: " + ", ".join(f"{k[1]} ({k[0]})" for k in late)
+        out.append(notice("Serie giornaliere/settimanali ferme: " + ", ".join(f"{k[1]} ({k[0]})" for k in late)
                           + ". Possibile problema di aggiornamento.", "warn"))
     failures = json.loads(cache.read_meta("fetch_failures") or "[]")
     if failures:
