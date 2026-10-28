@@ -45,6 +45,17 @@ def test_fetch_put_call_appends_missing_days_and_skips_403(requests_mock, monkey
     assert s.to_dict() == {pd.Timestamp("2026-10-23"): 0.6, pd.Timestamp("2026-10-26"): 0.55, pd.Timestamp("2026-10-27"): 0.65}
 
 
+
+def test_fetch_put_call_keeps_days_read_before_an_error(requests_mock, monkeypatch):
+    monkeypatch.setattr(fetch_market.pd.Timestamp, "today", classmethod(lambda cls: pd.Timestamp("2026-10-28")))
+    cached = pd.Series([0.6], index=[pd.Timestamp("2026-10-23")])
+    url = lambda d: fetch_market.PUT_CALL_DAILY_URL.format(date=d)
+    requests_mock.get(url("2026-10-26"), json={"ratios": [{"name": "EQUITY PUT/CALL RATIO", "value": "0.55"}]})
+    requests_mock.get(url("2026-10-27"), json={"ratios": [{"name": "TOTAL PUT/CALL RATIO", "value": "1.0"}]})
+    requests_mock.get(url("2026-10-28"), status_code=404)
+    s = fetch_market.fetch_put_call(cached)
+    assert s.to_dict() == {pd.Timestamp("2026-10-23"): 0.6, pd.Timestamp("2026-10-26"): 0.55}
+
 def test_alarms_are_point_in_time_and_nan_without_history():
     days = pd.bdate_range("2000-01-03", periods=1400)
     up = pd.Series(np.arange(1400.0), index=days)  # sempre al massimo storico: in allarme appena c'e' il percentile

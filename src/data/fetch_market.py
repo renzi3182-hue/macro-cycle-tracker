@@ -69,11 +69,15 @@ def fetch_put_call(cached: pd.Series) -> pd.Series:
     for day in pd.bdate_range(s.index[-1] + pd.Timedelta(days=1), pd.Timestamp.today().normalize())[:PUT_CALL_MAX_DAYS]:
         try:
             resp = get_with_retry(PUT_CALL_DAILY_URL.format(date=f"{day:%Y-%m-%d}"), source="cboe", timeout=30)
+            value = next((r["value"] for r in resp.json()["ratios"] if r["name"] == "EQUITY PUT/CALL RATIO"), None)
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 403:
-                continue
-            raise
-        new[day] = next(float(r["value"]) for r in resp.json()["ratios"] if r["name"] == "EQUITY PUT/CALL RATIO")
+                continue  # seduta senza dati (festivo o non ancora pubblicata)
+            break  # altro errore: si tengono i giorni gia' letti, il resto al prossimo run
+        except Exception:
+            break
+        if value is not None:  # giorno senza rapporto azionario: saltato, non butta via gli altri
+            new[day] = float(value)
     return pd.concat([s, pd.Series(new, dtype=float)]).sort_index()
 
 
