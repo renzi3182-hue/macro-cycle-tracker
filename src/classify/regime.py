@@ -22,7 +22,6 @@ GROWTH_SCALE = 0.4  # per indicatori e solidita': z della variazione che vale "1
 # il libro). Fino al 25/10/2026 era alta anche con la media di totale + core sopra il 2,5%: 15/29 letture note contro
 # 18/29 di ora (il libro 2023-2024 da 3/13 a 9/13, la dashboard dell'app di riferimento 2026Q3 da 3/5 a 1/5);
 # numeri e costi in spec.md. Il core resta solo nel livello mostrato in pagina.
-INFLATION_INPUTS = ("inflation_yoy", "core_inflation_yoy")
 INFLATION_HIGH = 0.0  # punteggio = variazione 3 mesi della media 3 mesi, punti %
 INFLATION_LOW = 0.0
 INFLATION_SCALE = 0.5  # come GROWTH_SCALE, in punti %

@@ -1,7 +1,8 @@
-"""Export del sito statico (public/index.html, 27/10/2026): legge data/cache.db, compone le stesse pagine dell'app
-Streamlit con gli stessi blocchi HTML (src/ui/cards.py) e scrive un solo JSON che la pagina legge.
+"""Export del sito statico (public/index.html, 27/10/2026): legge data/cache.db, compone le pagine con i blocchi HTML
+di src/ui/cards.py e scrive un solo JSON che la pagina legge. Dal 28/10/2026 e' l'unica interfaccia: l'app Streamlit
+e' stata tolta.
 
-Quello che in Streamlit dipende da un widget qui diventa una variante: blocchi con data-when="nome=valore", la pagina
+Quello che dipende da una scelta dell'utente diventa una variante: blocchi con data-when="nome=valore", la pagina
 mostra quelli che corrispondono alla scelta. Grafici: segnaposto <div data-chart="chiave"> e serie in "charts". Lo
 stress test del Portafoglio si ricalcola nel browser a ogni modifica: qui solo prezzi mensili, cambio e testi fissi.
 
@@ -28,7 +29,7 @@ from src.classify.regime import monthly
 from src.classify.risk import label as risk_label
 from src.classify.rrg import GROUPS, MOMENTUM_WEEKS, TREND_WEEKS, quadrant, rrg
 from src.classify.score import HORIZON_MONTHS, PILLARS, TREND_MONTHS, UNIVERSE, band_table, forward_excess, hysteresis, pillars
-from src.classify.stress import EXTRA_ETF, MC_RUNS, MC_YEARS, PROXY, SCENARIOS
+from src.classify.stress import EXTRA_ETF, MC_RUNS, MC_YEARS, PROXY, SCENARIOS, VAR_LEVEL
 from src.config import cot_guide
 from src.config.asset_allocation import (
     AREA_EQUITY, ASSET_ALLOCATION, CASH, TREND_PROXY, apply_trend, combined_portfolio_weights, confirmation,
@@ -38,18 +39,15 @@ from src.data import cache
 from src.data.fetch_cot import CONTRACTS, DISAGG_GROUPS, DISAGG_MARKETS, TFF_GROUPS, WEEKS as COT_WEEKS
 from src.ui.cards import (
     area_hero_html, axis_card_html, bands_html, calendar_html, cap, changes_html, cot_groups_html, currency_html, cycle_wave_html,
-    events_html, freshness_html, gauge_html, hero_html, history_html, label_phrase, level_var, month_it,
-    opportunity_map_html, phase_bar_html, portfolio_html, prevailing_regime, prob_html, ranking_html, regimes_html,
+    events_html, freshness_html, gauge_html, hero_html, history_html, label_phrase, level_var, liquidity_html, monitor_html, month_it,
+    opportunity_map_html, phase_bar_html, portfolio_html, prevailing_regime, pricing_html, prob_html, ranking_html, regimes_html,
     relations_html, reliability_html, reliability_table_html, risk_explain_html, risk_html, stat_tile_html,
-    rrg_html, trend_chips_html, trend_html, ucits_html, weight_deltas, weights_html, why_text,
+    rrg_html, sector_regime_html, trend_chips_html, trend_html, ucits_html, weight_deltas, weights_html, why_text,
 )
 from src.ui.data import load_allocation, load_indicator, load_model, load_scores, load_usd_per_eur
-from src.ui.market_pages import (
-    CCY_NAMES, CLASS_GROUPS, EXAMPLE, IMPACT_LABELS_IT, _alloc_rows, _badge, load_weekly, upcoming_events,
-)
 from src.ui.shared import (
-    AREAS, INPUT_LABELS, LEADING_LABELS, RISK_PARTS, RISK_PROFILE_LABELS, RISK_SAY, STATIC_PORTFOLIOS, STRESS_ASSETS,
-    describe, load_assessment, load_risk, trend_rows,
+    CCY_NAMES, CLASS_GROUPS, EXAMPLE, IMPACT_LABELS_IT, _alloc_rows, _badge, load_weekly, upcoming_events, AREAS, INPUT_LABELS, LEADING_LABELS, RISK_PARTS, RISK_PROFILE_LABELS, RISK_SAY, STATIC_PORTFOLIOS, STRESS_ASSETS,
+    describe, load_assessment, load_book_canary, load_liquidity, load_monitor, load_pricing, load_risk, trend_rows, trend_vs_hold,
 )
 from src.ui.theme import _CSS, DONUT_SLOTS, TOKENS, _WAVE_MASK, phase_color, regime_color
 
@@ -57,7 +55,7 @@ OUT = Path(__file__).resolve().parents[2] / "public" / "data" / "site.json"
 CHART_YEARS = 20
 
 
-# --- piccoli blocchi che in Streamlit erano widget nativi ---
+# --- piccoli blocchi: metriche, scelte a pulsanti, sezioni apribili ---
 
 def ui(html: str) -> str:
     return f'<div class="si">{html}</div>'
@@ -93,7 +91,7 @@ def details(summary: str, body: str, open_: bool = False) -> str:
 
 
 def spark_svg(values: list[float] | None, area: bool = False) -> str:
-    """Mini grafico come st.metric(chart_data=...): fuori da Streamlit gli <svg> si possono usare."""
+    """Mini grafico SVG di una metrica."""
     if not values or len(values) < 3:
         return ""
     lo, hi = min(values), max(values)
@@ -106,7 +104,7 @@ def spark_svg(values: list[float] | None, area: bool = False) -> str:
 
 def metric(label: str, value: str, delta: str | None = None, help: str = "", chart: list | None = None,
            delta_var: str | None = None, delta_note: str = "", area: bool = False) -> str:
-    """Come st.metric con il bordo. delta_var: token colore del delta (None = grigio)."""
+    """Metrica con bordo, valore, variazione e mini grafico. delta_var: token colore del delta (None = grigio)."""
     color = f"var(--{delta_var})" if delta_var else "var(--muted)"
     d = (f'<span class="d" style="color:{color}">{escape(delta)}</span>' if delta else "") + (
         f'<span class="d">{escape(delta_note)}</span>' if delta_note else "")
@@ -124,7 +122,7 @@ def spark(ser: pd.Series, n: int = 24) -> list[float] | None:
 
 
 def switch(name: str, options: list[str], default: str, labels: dict | None = None) -> str:
-    """Scelta a pulsanti (st.segmented_control / st.pills): la pagina mostra i blocchi data-when="name=valore"."""
+    """Scelta a pulsanti: la pagina mostra i blocchi data-when="name=valore"."""
     buttons = "".join(f'<button type="button" data-value="{escape(o)}">{escape((labels or {}).get(o, o))}</button>' for o in options)
     return f'<div class="seg" data-switch="{escape(name)}" data-default="{escape(default)}">{buttons}</div>'
 
@@ -184,8 +182,8 @@ def page_today(ctx: dict) -> str:
             f'<div class="track"><i style="width:{up / len(trend):.0%};background:var(--accent)"></i></div>',
             "Più forti: " + escape(", ".join(UNIVERSE[t][0] for t in best.index)), "Verificato"))
     out = [ui(hero_html(f"Oggi · {pd.Timestamp.today():%d/%m/%Y}", "Il quadro di oggi",
-                        "Tre numeri, cosa è cambiato dal mese scorso, il filtro di tendenza, poi dove si trova ogni paese nel ciclo, "
-                        "come vanno crescita e inflazione e cosa pesare di più o di meno. Tocca una card per il dettaglio.")),
+                        "Tre numeri e cosa è cambiato dal mese scorso, poi tre livelli: cosa prezza il mercato, che guarda avanti, "
+                        "il ciclo macro, che spiega il contesto, e la tendenza, l'unica regola che decide. Tocca una card per il dettaglio.")),
            ui('<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">' + "".join(tiles) + "</div>")]
     alloc = load_allocation()
     if not px.empty:
@@ -200,19 +198,30 @@ def page_today(ctx: dict) -> str:
         out.append(ui(changes_html(items, px.index[-1])))
         if items:
             out.append(details("Testo da copiare", f'<pre class="copy">{escape(chr(10).join(t for _, t in items))}</pre>'))
-        out.append(ui(trend_html(trend_rows(px), px.index[-1])))
-        out.append(caption("Per applicarlo alla tua allocazione: interruttore **Filtro di tendenza** nella pagina **Portafoglio**."))
+    out.append(section('1 · Cosa prezza il mercato', 'Tassi, credito, opzioni e futures guardano avanti e cambiano ogni giorno: dicono cosa si aspetta il mercato, non cosa fare.'))
+    if rows := load_pricing():
+        out.append(ui(pricing_html(rows)))
+    if not risk.empty:
+        out.append(ui('<span id="cosa-vuol-dire"></span>' + risk_explain_html(
+            r["Punteggio"], state, f"{risk.index[-1]:%d/%m/%Y}", [(name, desc, r[col]) for col, name, desc in RISK_PARTS], alarm,
+            load_book_canary())))
+    out.append(section('2 · Ciclo macro', 'Crescita, inflazione e fase del ciclo per paese. Dati lenti e rivisti: spiegano il contesto, non decidono.'))
     out.append(ui('<div class="card"><span class="eyebrow">In che fase è ogni paese</span>' + reliability_html("phase")
                   + cycle_wave_html(phases) + "</div>"))
     out.append(ui(regimes_html(assessments)))
+    if rows := load_liquidity(assessments.get("USA")):
+        out.append(ui(liquidity_html(rows)))
+    if (mon := load_monitor())[0]:
+        out.append(ui(monitor_html(*mon)))
+    out.append(section('3 · Tendenza: la regola che decide', "Prezzo contro la media a 10 mesi: l'unica regola dell'app che nel passato ha ridotto le perdite. Sotto, dove pesare di più dentro ogni paese."))
+    if not px.empty:
+        out.append(ui(trend_html(trend_rows(px), px.index[-1])))
+        out.append(caption(trend_vs_hold(px) + " Per applicarlo alla tua allocazione: interruttore **Filtro di tendenza** nella pagina **Portafoglio**."))
     if alloc:
         cl = alloc["Classi di asset"]
         month, grid = opp.grid(cl["score"], cl["prob"], cl["raw"]["Tendenza"], phases)
         if grid:
             out.append(ui(opportunity_map_html(grid, opp.best(grid), phases, month)))
-    if not risk.empty:
-        out.append(ui('<span id="cosa-vuol-dire"></span>' + risk_explain_html(
-            r["Punteggio"], state, f"{risk.index[-1]:%d/%m/%Y}", [(name, desc, r[col]) for col, name, desc in RISK_PARTS], alarm)))
     out.append(caption("Solo informativo, non è consulenza finanziaria. Metodo e affidabilità nella sezione **Metodo**."))
     return "".join(out)
 
@@ -222,7 +231,7 @@ def section(title: str, lead: str) -> str:
 
 
 def country_allocation(area: str) -> str:
-    """Come market_pages.country_allocation, restituendo l'HTML."""
+    """Pagina Il mio paese: classi di asset del paese (classifica verificata) e la sua valuta nella classifica delle valute."""
     data = load_allocation()
     if not data:
         return notice("Nessun prezzo in cache per le classi di asset.")
@@ -385,6 +394,7 @@ def page_ranking() -> str:
             if items:
                 right.append(when(f"rot={rot}", ui(rrg_html(items, f"Rotazione · {rot}", f"settimanale, al {last_day:%d/%m/%Y}"))))
     out.append(columns((8, "".join(left)), (4, "".join(right))))
+    out.append(when("group=Tutti", ui(sector_regime_html(usa_regime))) + when("group=Settori USA", ui(sector_regime_html(usa_regime))))
     out.append(details("Dall'Italia: equivalenti UCITS di questi ETF", ui("".join(ucits))))
     out.append(caption("Solo informativo, non è consulenza. Si aggiorna a fine mese. Verde = parte alta della classifica, rosso = "
                        "parte bassa. Verifica, soglie e cosa ha voluto dire ogni fascia di punteggio nella sezione Metodo."))
@@ -455,7 +465,7 @@ def stress_data(px: pd.DataFrame, bases: dict) -> dict:
     nums = lambda s: [None if pd.isna(v) else round(float(v), 6) for v in s]
     return {
         "months": [d.strftime("%Y-%m") for d in p.index], "px": {t: nums(p[t]) for t in tickers}, "usd_per_eur": nums(usd),
-        "proxy": PROXY, "cash": PROXY[CASH], "trend_months": TREND_MONTHS, "mc": {"years": MC_YEARS, "runs": MC_RUNS},
+        "proxy": PROXY, "cash": PROXY[CASH], "trend_months": TREND_MONTHS, "mc": {"years": MC_YEARS, "runs": MC_RUNS}, "var_level": VAR_LEVEL,
         "scenarios": [[name, f"{month_it(pd.Timestamp(a), True)} – {month_it(pd.Timestamp(b), True)}", a, b]
                       for name, (a, b) in SCENARIOS.items()],
         "assets": STRESS_ASSETS, "bases": bases,
@@ -668,7 +678,7 @@ def page_allocation() -> str:
 
 
 def warnings_html() -> str:
-    """Avvisi in testa a ogni pagina, come nell'app: serie FRED ferme e fetch falliti."""
+    """Avvisi in testa a ogni pagina: serie FRED ferme e fetch falliti."""
     out = []
     late = stale_high_freq({k: (s.index[-1] if not (s := load_indicator(*k)).empty else None) for k in HIGH_FREQ_MAX_DAYS})
     if late:
@@ -683,7 +693,7 @@ def warnings_html() -> str:
 
 
 def css() -> str:
-    """CSS dei blocchi di cards.py con i token chiari e scuri (in Streamlit si sceglieva uno dei due)."""
+    """CSS dei blocchi di cards.py con i token chiari e scuri."""
     var = lambda mode: " ".join(f"--{k}: {v};" for k, v in TOKENS[mode].items())
     tips = "\n".join(f".si .donut:has(.s{i}:hover) .c.t{i} {{ display: flex; }}" for i in range(DONUT_SLOTS))
     return (f":root {{ {var('dark')} color-scheme: dark; }}\n@media (prefers-color-scheme: light) {{ :root {{ {var('light')} color-scheme: light; }} }}\n"

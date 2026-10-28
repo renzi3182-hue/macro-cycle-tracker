@@ -5,9 +5,11 @@ import os
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.classify import allocation, cycle, intermarket, score, stress
+from src.classify import allocation, cycle, intermarket, monitor, risk, score, stress
 from src.classify.assess import UNCERTAIN_PREFIX, assess
 from src.data import cache, fetch_bis, fetch_boe, fetch_boj, fetch_calendar, fetch_cot, fetch_ecb, fetch_french, fetch_fred, fetch_fx, fetch_japan, fetch_market, fetch_oecd
 
@@ -17,10 +19,11 @@ logger = logging.getLogger(__name__)
 MARKET_AREA = "Mercati"
 CALENDAR_AREA = "Calendario"
 FX_AREA = "Valute"
-SLOW_AREAS = {MARKET_AREA, FX_AREA, score.ASSET_AREA, score.HISTORY_AREA, intermarket.AREA, allocation.AREA}  # aggiornate solo nel run completo
+FUTURES_AREA = "Futures"  # curva di oggi per contratto: indice = mese di scadenza
+SLOW_AREAS = {MARKET_AREA, FX_AREA, FUTURES_AREA, score.ASSET_AREA, score.HISTORY_AREA, intermarket.AREA, allocation.AREA}  # aggiornate solo nel run completo
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
-# Fetch falliti in questo run: mostrati in app (src/app.py), senza query string (puo' contenere api_key:
+# Fetch falliti in questo run: mostrati sul sito (export_site.warnings_html), senza query string (puo' contenere api_key:
 # data/cache.db e' pubblicata come release pubblica).
 FETCH_FAILURES: list[dict] = []
 
@@ -153,6 +156,13 @@ def update_market_context(fred_key: str) -> None:
         **{t.lower(): lambda t=t: fetch_market.fetch_yahoo(t, "max", "1d", adjusted=True) for t in ("XLY", "XLP")},
         "breakeven_5y": lambda: fetch_fred.fetch_breakeven_5y(fred_key),
         "breakeven_5y5y": lambda: fetch_fred.fetch_breakeven_5y5y(fred_key),
+        "skew": fetch_market.fetch_skew,
+        "put_call": lambda: fetch_market.fetch_put_call(cache.read_indicator_series(MARKET_AREA, "put_call")),
+        # Liquidita' e politica monetaria (src/classify/liquidity.py)
+        "net_liquidity": lambda: fetch_fred.fetch_net_liquidity(fred_key),
+        "m2_yoy": lambda: fetch_fred.fetch_m2_yoy(fred_key),
+        "fed_target": lambda: fetch_fred.fetch_level(fetch_fred.SERIES_FED_TARGET_UPPER, fred_key),
+        "dot_plot": lambda: fetch_fred.fetch_level(fetch_fred.SERIES_DOT_PLOT, fred_key),
     }
     for indicator, fetch_fn in fetchers.items():
         try:
@@ -177,6 +187,8 @@ def update_market_context(fred_key: str) -> None:
             logger.exception("cot gruppi %s: fetch fallito, salto e continuo", name)
             _record_failure(MARKET_AREA, f"cotg_{name}", e)
 
+    update_futures()
+
     fx_fetchers = {name: lambda name=name: fetch_fx.fetch_fx(name, fred_key) for name in fetch_fx.FX_SERIES}
     fx_fetchers.update({f"rate_{c}": lambda c=c: fetch_fx.fetch_short_rate(c, fred_key) for c in fetch_fx.RATE_SERIES})
     for indicator, fetch_fn in fx_fetchers.items():
@@ -185,6 +197,37 @@ def update_market_context(fred_key: str) -> None:
         except Exception as e:
             logger.exception("valute %s: fetch fallito, salto e continuo", indicator)
             _record_failure(FX_AREA, indicator, e)
+
+
+def update_futures() -> None:
+    """Curve dei futures (src/data/fetch_market.FUTURES): la fotografia di oggi sotto FUTURES_AREA, sostituita a ogni run,
+    e il numero riassuntivo di oggi (pendenza o percorso dei tassi Fed) aggiunto al suo storico in MARKET_AREA."""
+    today = pd.Timestamp.today().normalize()
+    for name, (root, exchange) in fetch_market.FUTURES.items():
+        try:
+            # Fed Funds fino a dicembre dell'anno prossimo: e' l'ultima data del dot plot che conta (src/classify/liquidity.py)
+            months = max(fetch_market.CURVE_MONTHS, 25 - today.month) if name == "fed_funds" else fetch_market.CURVE_MONTHS
+            curve = fetch_market.fetch_futures_curve(root, exchange, today, months)
+            cache.write_indicator_series(FUTURES_AREA, name, curve)
+            value = (fetch_market.fed_path if name == "fed_funds" else fetch_market.curve_slope)(curve)
+            if value is None:
+                raise ValueError(f"{name}: curva con {len(curve)} contratti, numero non calcolabile")
+            indicator = f"futures_{name}"
+            history = cache.read_indicator_series(MARKET_AREA, indicator)
+            cache.write_indicator_series(MARKET_AREA, indicator, pd.concat([history[history.index != today], pd.Series({today: value})]))
+        except Exception as e:
+            logger.exception("futures %s: fetch fallito, salto e continuo", name)
+            _record_failure(FUTURES_AREA, name, e)
+
+
+def update_monitor(fred_key: str) -> None:
+    """Serie USA del cruscotto (src/classify/monitor.py), nel loro livello. Una serie che fallisce non blocca le altre."""
+    for key, series_id in monitor.FRED_SERIES.items():
+        try:
+            cache.write_indicator_series(monitor.AREA, key, fetch_fred.fetch_level(series_id, fred_key))
+        except Exception as e:
+            logger.exception("cruscotto %s: fetch fallito, salto e continuo", key)
+            _record_failure(monitor.AREA, key, e)
 
 
 def update_calendar(fred_key: str) -> None:
@@ -208,8 +251,9 @@ def update_calendar(fred_key: str) -> None:
 
 def update_asset_prices() -> None:
     """Chiusure mensili rettificate degli ETF del punteggio asset (src/classify/score.py) e di quelli che servono solo a
-    filtro di tendenza e stress test (stress.EXTRA_ETF). Un ticker che fallisce non blocca gli altri."""
-    for ticker in [*score.UNIVERSE, *stress.EXTRA_ETF]:
+    filtro di tendenza e stress test (stress.EXTRA_ETF) o al canarino del libro (risk.BOOK_CANARIES). Un ticker che
+    fallisce non blocca gli altri."""
+    for ticker in dict.fromkeys([*score.UNIVERSE, *stress.EXTRA_ETF, *risk.BOOK_CANARIES]):
         try:
             cache.write_indicator_series(score.ASSET_AREA, ticker, fetch_market.fetch_yahoo(ticker, "max", "1mo", adjusted=True))
         except Exception as e:
@@ -283,6 +327,7 @@ def main(argv: list[str] | None = None) -> None:
         except Exception:
             logger.exception("update fallito per area %s, salto e continuo", area)
     update_calendar(fred_key)
+    update_monitor(fred_key)
     if macro_only:
         # i fallimenti dell'ultimo run completo restano visibili finche' quelle fonti non si riprovano
         FETCH_FAILURES.extend(f for f in json.loads(cache.read_meta("fetch_failures") or "[]") if f["area"] in SLOW_AREAS)

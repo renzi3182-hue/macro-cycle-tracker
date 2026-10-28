@@ -1,5 +1,5 @@
-"""Blocchi HTML dell'interfaccia (st.html). Colori solo da variabili CSS di theme.py, cosi' valgono in chiaro e scuro.
-Niente <svg>: st.html li rimuove, quindi grafici solo con div/CSS."""
+"""Blocchi HTML del sito (src/scheduler/export_site.py). Colori solo da variabili CSS di theme.py, cosi' valgono in
+chiaro e scuro. Grafici con div/CSS, senza <svg> inline (scelta nata con Streamlit, che li toglieva)."""
 from collections import Counter
 from html import escape
 from math import cos, pi, sin
@@ -11,10 +11,11 @@ from src.classify.assess import label_regimes, run_start
 from src.classify.cycle import PHASES
 from src.classify.opportunities import CLASS_NAMES, sentence as opp_sentence
 from src.classify.regime import REGIME_AXES, REGIMES
-from src.classify.risk import CANARY, LABELS as RISK_LABELS
+from src.classify.risk import BOOK_CANARIES, CANARY, CANARY_LEVELS, CANARY_RISK_OFF, LABELS as RISK_LABELS
 from src.classify.score import HORIZON_MONTHS, STRONG, WEAK
 from src.config.asset_allocation import PHASE_ASSETS
 from src.config.reliability import KINDS, READINGS
+from src.config.sector_regime import INTENSITY_NOTES, SECTOR_NAMES, SECTOR_REGIME, SPREAD_BY_REGIME
 from src.config.ucits import NO_EQUIVALENT, SOURCE as UCITS_SOURCE, UCITS
 from src.ui.theme import DONUT_SLOTS, WAVE_AMPLITUDE, phase_color, regime_color
 
@@ -286,9 +287,10 @@ def opportunity_map_html(grid: dict[str, list[dict]], top: list[tuple[str, dict]
             'mesi. Il punteggio è la lettura verificata; teoria e tendenza descrivono.</p></div>')
 
 
-def risk_explain_html(score: float, state: str, when: str, parts: list[tuple[str, str, float]], alarm: bool) -> str:
+def risk_explain_html(score: float, state: str, when: str, parts: list[tuple[str, str, float]], alarm: bool,
+                      book: dict | None = None) -> str:
     """Spiega il punteggio Risk On/Off: la scala a cinque fasce con il segno sul valore, cosa misura e cosa non
-    misura, le sei componenti e lo stato del canarino."""
+    misura, le sei componenti, lo stato del canarino e il canarino a cinque ETF (shared.load_book_canary)."""
     s = round(score)
     low = min(parts, key=lambda x: x[2])
     bands = "".join(f'<span class="{"on" if lab == state else ""}">{lo}<br>{escape(lab)}</span>'
@@ -305,8 +307,22 @@ def risk_explain_html(score: float, state: str, when: str, parts: list[tuple[str
         f'è <b>{escape(low[0].lower())}</b> ({low[2]:.0f}).</p>'
         '<p class="say">Più è basso, più la borsa ha oscillato nel mese dopo: dice <b>quanto può muoversi</b>, non in che direzione.</p>'
         f'<div>{bar_rows_html(parts)}</div>'
-        f'<p class="note">Canarino {CANARY} {canary}. È anche la sesta misura del punteggio.</p></div>'
+        f'<p class="note">Canarino {CANARY} {canary}. È anche la sesta misura del punteggio.</p>{_book_canary(book)}</div>'
     )
+
+
+def _book_canary(book: dict | None) -> str:
+    """Riga del canarino a cinque ETF: livello 1-5 con i negativi; vuota senza dati."""
+    if not book:
+        return ""
+    lv = book["level"]
+    color = "r-refl" if lv <= CANARY_RISK_OFF else "r-gold"
+    neg = ", ".join(book["negative"])
+    return (f'<p class="note">Canarino a cinque ETF ({", ".join(BOOK_CANARIES)}), al {book["date"]:%d/%m}: livello '
+            f'<b style="color:var(--{color})">{lv}/5, {escape(CANARY_LEVELS[lv - 1])}</b>'
+            f'{f" (momentum negativo: {neg})" if neg else ", tutti in salita"}. Conta quanti dei cinque salgono su '
+            f'1-12 mesi: 1-3 risk off, 4-5 risk on. Descrittivo: aggiunto al filtro di tendenza, dal 2019 ha ridotto i cali '
+            f'ma tolto 3,6 punti di rendimento l\'anno.</p>')
 
 
 
@@ -478,6 +494,90 @@ def trend_html(rows: list[tuple[str, str, float, float | None]], month: pd.Times
             'perde qualcosa nei rimbalzi veloci: numeri nella sezione Metodo.</p></div>')
 
 
+def _signal_rows(rows: list[dict]) -> str:
+    """Una riga per segnale con valore, stato e cosa misura (formato di pricing.rows e liquidity.rows)."""
+    return "".join(
+        f'<div class="row" style="align-items:flex-start"><div class="grow"><b style="font-weight:600">{escape(r["name"])}</b>'
+        f'<small class="muted" style="display:block;font-size:12px;line-height:17px">{escape(r["note"])}'
+        f'{f" Percentile storico {r['pct']:.0f}." if r["pct"] is not None else ""} Al {r["date"]:%d/%m}.</small></div>'
+        f'<span class="mono" style="white-space:nowrap;font-size:13px">{escape(r["value"])}</span>'
+        f'<span class="chip tint" style="--c:var(--{r["tone"]})">{escape(r["state"])}</span></div>'
+        for r in rows)
+
+
+def pricing_html(rows: list[dict]) -> str:
+    """Livello 1 della pagina Oggi (src/classify/pricing.rows)."""
+    return (f'<div class="si card"><div class="head"><h3>Cosa prezza il mercato</h3><span class="note">tassi, credito, opzioni, futures</span></div>'
+            f'{reliability_html("pricing")}<div class="list">{_signal_rows(rows)}</div>'
+            '<p class="note">Percentile = posizione del valore di oggi fra tutti quelli passati (100 = il più alto). Le curve dei '
+            'futures si salvano da ottobre 2026: il loro storico è ancora corto. Backwardation = la merce vale di più subito che fra un '
+            'anno (offerta scarsa o domanda forte); contango = il contrario, normale per l\'oro.</p></div>')
+
+
+def liquidity_html(rows: list[dict]) -> str:
+    """Livello 2 della pagina Oggi (src/classify/liquidity.rows): liquidita', Fed e intensita' del regime USA."""
+    return (f'<div class="si card"><div class="head"><h3>Liquidità e Fed: quanto pesa il regime USA</h3><span class="note">USA</span></div>'
+            f'{reliability_html("liquidity")}<div class="list">{_signal_rows(rows)}</div>'
+            '<p class="note">Crescita e inflazione dicono il regime, liquidità e politica della Fed quanto è profondo. Quattro '
+            'fattori lo aggravano: PIL annuo sceso di almeno 1 punto in un trimestre, inflazione sopra il 2%, liquidità in calo '
+            'su 6 mesi, tasso reale della Fed sopra 1 punto. Il dot plot è la mediana delle previsioni dei membri della Fed, '
+            'aggiornata 4 volte l\'anno.</p></div>')
+
+
+def _monitor_cell(x: float | None, unit: str, sign: int) -> str:
+    if x is None or pd.isna(x):
+        return '<td class="n">n/d</td>'
+    tone = "muted" if sign == 0 or x == 0 else "r-gold" if x * sign > 0 else "r-stag"
+    txt = f"{x:+.{2 if abs(x) < 1 else 1}f}{'%' if unit == '%' else ''}".replace(".", ",").replace("-", "−")
+    return f'<td style="color:var(--{tone})">{"▲" if x > 0 else "▼" if x < 0 else "·"} {txt}</td>'
+
+
+def sector_regime_html(regime: str | None) -> str:
+    """Settori USA per regime (src/config/sector_regime.py): ▲ long, ▼ short, · neutro, colonna del regime USA di oggi
+    evidenziata; sotto, long meno short misurato e le versioni debole e forte."""
+    regimes = list(SECTOR_REGIME)
+    bg = lambda r: "background:var(--raised);" if r == regime else ""
+    head = "".join(f'<th style="{bg(r)}color:{regime_color(r)}">{escape(r)}{" · oggi" if r == regime else ""}</th>' for r in regimes)
+
+    def cell(t: str, r: str) -> str:
+        long, short = SECTOR_REGIME[r]
+        mark, tone = ("▲", "r-gold") if t in long else ("▼", "r-stag") if t in short else ("·", "muted")
+        return f'<td style="{bg(r)}color:var(--{tone});text-align:center">{mark}</td>'
+    body = "".join(f'<tr><td>{escape(n.capitalize())} <span class="muted">{t}</span></td>'
+                   + "".join(cell(t, r) for r in regimes) + "</tr>" for t, n in SECTOR_NAMES.items())
+    spread = ("<tr><td><b>Long meno short, storico</b></td>" + "".join(
+        f'<td class="mono" style="{bg(r)}text-align:center">{f"{SPREAD_BY_REGIME[r]:+.1f}".replace(".", ",").replace("-", "−")}</td>'
+        for r in regimes) + "</tr>")
+    notes = "".join(f"<p><b>{escape(r)}</b>: {escape(n)}</p>" for r, n in INTENSITY_NOTES.items())
+    return (f'<div class="si card"><div class="head"><h3>Settori per regime</h3><span class="note">USA</span></div>'
+            f'{reliability_html("sector_regime")}'
+            f'<div class="tbl"><table class="mtx"><tr><th></th>{head}</tr>{body}{spread}</table></div>{notes}'
+            '<p class="note">▲ più peso, ▼ meno peso, · nessuna indicazione. Long meno short = quanto i settori ▲ hanno battuto i ▼ '
+            "in punti l'anno, nel mese dopo, con il regime USA come si leggeva allora (1948-2026). Solo la Stagflazione "
+            "supera il rumore, ma su quattro regimi uno così esce anche per caso.</p></div>")
+
+
+def monitor_html(groups: list[tuple[str, list[dict]]], diffusion: pd.Series) -> str:
+    """Cruscotto USA (src/classify/monitor.rows): diffusione in cima, tabella delle serie per gruppo, apribile."""
+    n = sum(len(r) for _, r in groups)
+    body = "".join(
+        f'<tr><td colspan="4" style="font-weight:600;padding-top:14px">{escape(g)}</td></tr>' + "".join(
+            f'<tr><td>{escape(r["name"])}</td><td class="n">{f"T{(r['date'].month - 1) // 3 + 1} {r['date'].year}" if r["quarterly"] else month_it(r["date"], True)}</td>'
+            f'{_monitor_cell(r["prev"], r["unit"], r["sign"])}{_monitor_cell(r["lookback"], r["unit"], r["sign"])}</tr>'
+            for r in rows) for g, rows in groups)
+    d = diffusion.dropna()
+    head = ("" if d.empty else
+            f'<p class="say">Delle serie che hanno un verso, <b>{d.iloc[-1]:.0f}%</b> sta meglio di 3 mesi fa '
+            f'({"sotto la metà: economia che rallenta" if d.iloc[-1] < 50 else "più della metà: economia che regge"}). '
+            f'Tre mesi prima era il {d.iloc[-4]:.0f}%.</p>' if len(d) > 3 else "")
+    return (f'<div class="si card"><div class="head"><h3>Cruscotto USA: {n} serie mese per mese</h3><span class="note">USA</span></div>'
+            f'{reliability_html("monitor")}{head}'
+            f'<details><summary style="cursor:pointer;font-size:13px">Tutte le serie</summary><div class="tbl"><table class="mtx">'
+            f'<tr><th></th><th>Ultimo dato</th><th>Sul periodo prima</th><th>Su 3 mesi</th></tr>{body}</table></div></details>'
+            '<p class="note">Conta la direzione, non il livello. Verde = meglio per l\'economia, rosso = peggio, grigio = senza '
+            'un verso (prezzi, tassi, scorte, import, risparmio). Le serie trimestrali (T) confrontano col trimestre prima.</p></div>')
+
+
 RELATION_VARS = {"regolare": "r-gold", "più debole del solito": "r-refl", "rotta": "r-stag"}
 
 
@@ -593,7 +693,7 @@ def ranking_html(rows: list[dict], month: pd.Timestamp, title: str = "Classifica
 
 def currency_html(row: dict, pos: int, total: int, month: pd.Timestamp, note: str) -> str:
     """La valuta di un paese nella classifica delle valute (src/classify/allocation.currencies): punteggio, posizione,
-    probabilita', tendenza e perche'. row: una riga di _alloc_rows (market_pages); note: reliability_html."""
+    probabilita', tendenza e perche'. row: una riga di _alloc_rows (shared); note: reliability_html."""
     trend = row["Tendenza"]
     trend_txt = "n/d" if pd.isna(trend) else f"{trend * 100:+.1f}%".replace(".", ",").replace("-", "−")
     return (f'<div class="si card"><div class="head"><h3>La valuta: {escape(row["nome"])}</h3><span class="note">punteggio '
@@ -753,7 +853,10 @@ def lab_html(plain: dict, trend: dict | None, unit: str = "$") -> str:
     rows = [("Oggi avresti", lambda x: f"{10000 * x['final']:,.0f} {unit}".replace(",", ".")),
             ("Guadagno medio all'anno", lambda x: _pct_it(x["cagr"], 1)),
             ("Calo peggiore", lambda x: _pct_it(x["dd"])),
-            ("Attesa più lunga per tornare in pari", lambda x: "mai sotto" if x["under"] == 0 else _months_it(x["under"]))]
+            ("Attesa più lunga per tornare in pari", lambda x: "mai sotto" if x["under"] == 0 else _months_it(x["under"])),
+            ("Mese cattivo, 1 su 20 (VaR 95%)", lambda x: _pct_it(x["var"], 1)),
+            ("Media dei mesi peggiori (Expected Shortfall)", lambda x: _pct_it(x["es"], 1)),
+            ("Guadagno annuo diviso calo peggiore", lambda x: "nessun calo" if x["ret_dd"] is None else f"{x['ret_dd']:.2f}".replace(".", ","))]
     body = "".join(f"<tr><td>{label}</td>" + "".join(f"<td>{fmt(x)}</td>" for _, x in cols) + "</tr>" for label, fmt in rows)
     verdict = ""
     if trend:
@@ -764,7 +867,9 @@ def lab_html(plain: dict, trend: dict | None, unit: str = "$") -> str:
             f'<p>Se a {month_it(plain["start"])} avessi messo <b>10.000 {unit}</b> nel portafoglio qui a fianco:</p>'
             f'<div class="tbl"><table class="mtx"><tr><th></th>{head}</tr>{body}</table></div>{verdict}'
             '<p class="note">Calo peggiore = quanto sei sceso, al massimo, da un picco. Attesa più lunga = il periodo più lungo passato '
-            f'sotto un picco prima di superarlo. Il grafico sotto segue 100 {unit} nel tempo. Ribilanciamento ogni mese, ETF in dollari'
+            'sotto un picco prima di superarlo. VaR = il mese peggiore 1 volta su 20; Expected Shortfall = quanto perdi in media in '
+            'quei mesi, dice meglio il rischio di eventi estremi. Guadagno diviso calo: più alto = più guadagno per ogni punto di calo. '
+            f'Il grafico sotto segue 100 {unit} nel tempo. Ribilanciamento ogni mese, ETF in dollari'
             + (", convertiti in euro senza copertura del cambio" if unit == "€" else "")
             + ', senza costi né tasse; il filtro sposta in cash (BIL, T-bill a 1-3 mesi) ogni ETF sotto la sua media a 10 mesi.</p></div>')
 

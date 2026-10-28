@@ -4,7 +4,8 @@ from src.ui.cards import (
     duration_it, month_it, portfolio_html, prevailing_regime, ribbon_html, rrg_html, weight_deltas,
     why_text,
 )
-from src.ui.theme import TOKENS, page_css
+from src.scheduler.export_site import css
+from src.ui.theme import TOKENS
 
 
 def test_prevailing_regime_counts_areas():
@@ -42,7 +43,7 @@ def test_ribbon_has_one_cell_per_month_and_uses_theme_variables():
 
 def test_both_themes_define_the_same_tokens():
     assert TOKENS["dark"].keys() == TOKENS["light"].keys()
-    assert "--r-gold: #177A4D" in page_css("light") and "--r-gold: #7BE0A4" in page_css("dark")
+    assert "--r-gold: #177A4D" in css() and "--r-gold: #7BE0A4" in css()
 
 
 def test_wave_dot_sits_on_the_quarter_of_the_phase():

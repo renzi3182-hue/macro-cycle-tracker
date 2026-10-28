@@ -39,6 +39,8 @@ def test_summary_and_recovery():
     assert recovery(r, "2000-03", "2000-04") == 0 and recovery(r.iloc[:3], "2000-02", "2000-02") is None
     assert recovery(pd.concat([r.iloc[:4], pd.Series([-0.9], index=[r.index[4]])]), "2000-03", "2000-04") == 0  # crollo dopo la crisi
     assert summary(r.head(12)) is None
+    assert s["var"] == 0.0 and round(s["es"], 6) == round(-0.5 / 21, 6)  # 5 percentile cade fra gli zeri; media di -0,5 e 20 zeri
+    assert round(s["ret_dd"], 6) == round(s["cagr"] / 0.5, 6)
 
 
 def test_monte_carlo_is_ordered_and_needs_history():

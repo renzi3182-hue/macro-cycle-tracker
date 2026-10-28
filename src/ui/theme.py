@@ -1,8 +1,7 @@
 """Token del design system Soft Glass (artifact NFSg6TDRqqdXEJp3C7hGTx, tokens.json) e CSS dei blocchi HTML.
 
-I componenti in cards.py usano solo variabili CSS (var(--fg), var(--r-gold)...): il tema chiaro o scuro
-si sceglie qui una volta, in base a st.context.theme.type, e i colori dei widget nativi vengono da
-.streamlit/config.toml con gli stessi valori."""
+I componenti in cards.py usano solo variabili CSS (var(--fg), var(--r-gold)...): export_site.css() scrive i token
+chiari e scuri, il browser sceglie con prefers-color-scheme."""
 from math import pi, sin
 from urllib.parse import quote
 
@@ -33,15 +32,10 @@ def phase_color(phase: str | None) -> str:
     return f"var(--{PHASE_VARS.get(phase, 'muted')})"
 
 
-def hex_color(mode: str, token: str) -> str:
-    """Valore esadecimale di un token, per i componenti che non leggono variabili CSS (grafici)."""
-    return TOKENS.get(mode, TOKENS["dark"])[token]
-
-
 _CSS = """
 .si { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: var(--fg); }
 .si * { box-sizing: border-box; }
-.si .mono, [data-testid="stMetricValue"] { font-family: 'DM Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.si .mono { font-family: 'DM Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .si .muted { color: var(--muted); }
 .si .eyebrow { font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .si .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
@@ -193,16 +187,13 @@ __DONUT_TIPS__
 .si .arow { display: grid; grid-template-columns: 22px minmax(0, 1.8fr) minmax(70px, 1fr) 62px 62px 52px 32px; gap: 12px; align-items: center; min-height: 44px; font-size: 14px; border-bottom: 1px solid var(--line); }
 .si .arow:last-child { border-bottom: 0; }
 
-/* tabelle numeriche (matrice delle correlazioni, cosa ha funzionato) */
+/* tabelle numeriche */
 .si .tbl { overflow-x: auto; }
 .si table.mtx { width: 100%; border-collapse: collapse; font-size: 13px; }
 .si .mtx th { font-size: 11px; font-weight: 600; color: var(--muted); text-align: right; padding: 6px 8px; white-space: nowrap; }
 .si .mtx td { padding: 7px 8px; text-align: right; border-top: 1px solid var(--line); font-family: 'DM Mono', monospace; white-space: nowrap; }
 .si .mtx td:first-child { text-align: left; font-family: inherit; }
-.si .mtx .sep { border-left: 1px solid var(--line); }
 .si .mtx td.n { color: var(--muted); }
-.si .mtx td.brk { background: color-mix(in srgb, var(--r-stag) 16%, transparent); color: var(--r-stag); font-weight: 500; }
-.si .mtx tr.top td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 /* equivalenti UCITS (cards.ucits_html): testo a sinistra che va a capo, solo l'ISIN in colonna fissa */
 .si .mtx.ucits th, .si .mtx.ucits td { text-align: left; font-family: inherit; white-space: normal; vertical-align: top; }
 .si .mtx.ucits td.isin { font-family: 'DM Mono', monospace; white-space: nowrap; }
@@ -211,10 +202,6 @@ __DONUT_TIPS__
 @media (prefers-reduced-motion: no-preference) {
   .si .card { animation: si-in .35s ease-out both; }
 }
-/* Streamlit sbiadisce la pagina a 0,33 a ogni rerun: lampeggia anche quando il rerun dura 100 ms. Qui si sbiadisce
-   poco e solo se il rerun supera 0,4 s; al ritorno l'opacita' torna piena subito. */
-[data-stale="true"] { opacity: .7 !important; transition: opacity .25s ease .4s !important; }
-[data-stale="false"] { transition: none !important; }
 @keyframes si-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 640px) {
   .si .card { padding: 18px; }
@@ -239,15 +226,9 @@ __DONUT_TIPS__
 DONUT_SLOTS = 12
 WAVE_AMPLITUDE = 38  # % dell'altezza: un periodo di sinusoide centrata, il punto di cards.wave_html sta sulla stessa curva
 _WAVE_PATH = "M" + " L".join(f"{x} {50 - WAVE_AMPLITUDE * sin(2 * pi * x / 100):.2f}" for x in range(101))
-# SVG solo come immagine di maschera nel CSS (st.html toglie gli <svg> dal DOM, non le url() dei fogli di stile)
+# SVG come immagine di maschera nel CSS: i blocchi di cards.py non usano <svg> inline (vedi il suo docstring)
 _WAVE_MASK = 'url("data:image/svg+xml,' + quote(
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'>"
     f"<path d='{_WAVE_PATH}' fill='none' stroke='black' stroke-width='3' stroke-linejoin='round' "
     "vector-effect='non-scaling-stroke'/></svg>") + '")'
 
-
-def page_css(mode: str) -> str:
-    t = TOKENS.get(mode, TOKENS["dark"])
-    root = ":root { " + " ".join(f"--{k}: {v};" for k, v in t.items()) + " }"
-    tips = "\n".join(f".si .donut:has(.s{i}:hover) .c.t{i} {{ display: flex; }}" for i in range(DONUT_SLOTS))
-    return f"<style>{root}{_CSS.replace('__DONUT_TIPS__', tips).replace('__WAVE__', _WAVE_MASK)}</style>"

@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 
 from src.classify.allocation import fx_usd_per_local
+from src.classify.risk import canary_level, momentum_13612w
 from src.classify.score import ASSET_AREA, complete_months, monthly_prices
 from src.data import cache
 
@@ -47,18 +48,6 @@ INFLOW, BASE, EXTRAS = 150.0, 100.0, (150.0, 200.0)
 V1_INFLOW, V1_ON, V1_OFF = 100.0, 80.0, (120.0, 140.0)
 RISK_OFF_MAX = 3  # scala 1-5: 1-3 risk off (il libro chiama "alto risk off" anche il 3-4)
 CANARIES = {"SPY": ["SPY"], "TIP": ["TIP"], "VWO": ["EEM"], "VEA": ["EZU", "EWJ", "EWU"], "BND": ["IEF"]}
-
-
-def momentum_13612w(px: pd.DataFrame) -> pd.DataFrame:
-    """Momentum 13612W su prezzi mensili (pesi 12, 4, 2, 1 sui rendimenti a 1, 3, 6, 12 mesi), come risk.canary."""
-    r = lambda m: px / px.shift(m) - 1
-    return (12 * r(1) + 4 * r(3) + 2 * r(6) + r(12)) / 4
-
-
-def canary_scale(mom: pd.DataFrame) -> pd.Series:
-    """Scala 1-5 dai canarini con momentum positivo (0 o 1 -> 1, 5 -> 5); NaN se manca un canarino."""
-    positive = (mom > 0).sum(axis=1).clip(lower=1).astype(float)
-    return positive.where(mom.notna().all(axis=1))
 
 
 def simulate(price: pd.Series, cash_rate: pd.Series, risk_off: pd.Series, inflow: float, invest_on: float,
@@ -138,7 +127,7 @@ def run(price: pd.Series, rate: pd.Series, off: pd.Series, label: str) -> dict[s
 
 def main() -> None:
     price, rate, canaries = load()
-    scale = canary_scale(momentum_13612w(canaries))
+    scale = canary_level(momentum_13612w(canaries))
     tip_alarm = momentum_13612w(canaries[["TIP"]])["TIP"] < 0
     signals = {"Canarino del libro (5 ETF, risk off = scala 1-3)": (scale <= RISK_OFF_MAX).where(scale.notna()),
                "Canarino dell'app (solo TIP sotto zero)": tip_alarm.where(momentum_13612w(canaries[["TIP"]])["TIP"].notna())}

@@ -113,8 +113,36 @@ READINGS = {
         "avevano −0,17); sotto 20 l'S&P 500 ha "
         "oscillato al 29-30% annuo, sopra 60 all'11-13%. Canarino: momentum 13612W di TIP, in allarme sotto zero "
         "(2004-2026: calo dell'S&P 500 oltre il 10% entro 3 mesi nel 20% dei casi contro l'11%). Come segnale "
-        "operativo il risultato dipende dalla variante.",
+        "operativo il risultato dipende dalla variante. Canarino a cinque ETF (SPY, TIP, VWO, VEA, BND), livello 1-3 "
+        "aggiunto al filtro di tendenza: 2008-2018 10,2% l'anno e calo massimo −12,1% contro 8,2% e −16,7%, dal 2019 "
+        "6,1% e −16,6% contro 9,7% e −21,9%; con un solo canarino negativo 5,9% e 4,3%. Non entra in nessuna regola.",
         "scripts/evaluate_risk.py, risk.py"),
+    "pricing": Reading(
+        "Cosa prezza il mercato", "Descrittivo",
+        "Dice cosa si aspetta il mercato su tassi, credito, volatilità e materie prime, non cosa fare.",
+        "Curva, credito, inflazione attesa, tassi Fed attesi (futures), VIX/VIX 3 mesi, SKEW, put/call, MOVE, curve dei "
+        "futures su petrolio, rame e oro, rame/oro, dollaro. Provati su SPY come condizione in più sul filtro di tendenza "
+        "(2012-2018 e dal 2019, criterio deciso prima: drawdown migliore e al massimo 0,5 punti di rendimento in meno in "
+        "tutti e due i periodi): nessuno passa. Il più vicino è il put/call letto al contrario (resta investito con paura "
+        "estrema): dal 2019 16,7% l'anno e −16,1% contro 9,7% e −21,9% del filtro, ma 2012-2018 stesso calo massimo e solo "
+        "13 mesi di allarme su 179. Le curve dei futures hanno storico solo da ottobre 2026.",
+        "scripts/evaluate_pricing.py, pricing.py"),
+    "liquidity": Reading(
+        "Liquidità e Fed", "Descrittivo",
+        "Dice quanto è profondo il regime USA, non cosa fare.",
+        "Liquidità netta della Fed (dal 2003), tasso reale della Fed e intensità del regime provati come uscita in più sul "
+        "filtro di tendenza di SPY, stesso criterio deciso prima di Cosa prezza il mercato: nessuno passa. Liquidità in calo: "
+        "dal 2019 calo massimo −8,0% contro −21,9% del filtro con più rendimento (10,5% contro 9,7%), ma 2003-2018 7,3% "
+        "contro 8,7% l'anno senza ridurre il calo massimo. Intensità forte: 19 mesi su 277, stesso calo massimo prima del 2019. "
+        "Soglie scelte prima, una variante ciascuna.",
+        "scripts/evaluate_pricing.py, liquidity.py"),
+    "monitor": Reading(
+        "Cruscotto USA", "Descrittivo",
+        "Dice in che direzione va l'economia USA, non cosa fare.",
+        "Diffusione = quota delle serie con un verso migliori di 3 mesi prima, con il ritardo di pubblicazione. Sotto il 50% "
+        "come uscita in più sul filtro di tendenza di SPY: 1993-2018 10,7% l'anno contro 11,1%, dal 2019 6,8% contro 9,7%, "
+        "stesso calo massimo: non passa. FRED dà i dati rivisti, non quelli usciti allora.",
+        "scripts/evaluate_pricing.py, monitor.py"),
     "confirmation": Reading(
         "Conferma dei mercati", "Descrittivo",
         "Dice se i mercati si muovono come il regime, non se il regime è giusto.",

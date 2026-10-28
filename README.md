@@ -1,12 +1,12 @@
 # Macro Cycle Tracker
 
-Dashboard per uso personale: regime macro (Goldilocks/Deflazione/Reflazione/Stagflazione) e fase del ciclo economico (Espansione/Rallentamento/Recessione/Ripresa (sotto trend)) per nove aree: USA, Eurozona, Italia, UK, Giappone, Canada, Cina, Australia, India. Pubblicata su https://macrocycletracker.streamlit.app/, con dati aggiornati da GitHub Actions.
+Dashboard per uso personale: regime macro (Goldilocks/Deflazione/Reflazione/Stagflazione) e fase del ciclo economico (Espansione/Rallentamento/Recessione/Ripresa (sotto trend)) per nove aree: USA, Eurozona, Italia, UK, Giappone, Canada, Cina, Australia, India. Pubblicata come sito statico su https://macro-cycle-tracker.vercel.app, con dati aggiornati da GitHub Actions.
 
 ## Setup
 
 ```bash
-py -3.12 -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
 
 Copia `.env.example` in `.env` e riempi:
@@ -32,26 +32,26 @@ Se un'area fallisce, l'update la salta e continua con le altre (vedi `src/schedu
 
 ```bash
 .venv\Scripts\python -m src.scheduler.update_data   # aggiorna la cache locale
-.venv\Scripts\streamlit run src/app.py               # apre la dashboard
+.venv\Scripts\python -m src.scheduler.export_site  # scrive public/data/site.json
+.venv\Scripts\python scripts/serve_site.py 8610      # apre il sito su http://localhost:8610
 ```
 
 ## Aggiornamento automatico
 
-In produzione: il workflow `.github/workflows/update-data.yml` gira ogni 30 minuti nei giorni feriali solo per macro e calendario (`--macro-only`), completo alle 21:45 UTC dopo la chiusura USA e una volta nel weekend, aggiorna `data/cache.db` e la pubblica come asset della release `data-latest`; l'app la scarica all'avvio se è più recente di quella locale (`src/data/sync.py`).
+In produzione: il workflow `.github/workflows/update-data.yml` gira ogni 30 minuti nei giorni feriali solo per macro e calendario (`--macro-only`), completo alle 21:45 UTC dopo la chiusura USA e una volta nel weekend, aggiorna `data/cache.db` e la pubblica come asset della release `data-latest`; poi esporta `site.json` sul branch `site-data`, che il sito legge.
 
-In locale, facoltativo, con Windows Task Scheduler (modifica di sistema, da fare a mano):
+In locale, facoltativo, con `cron` sul Mac (modifica di sistema, da fare a mano): `crontab -e` e aggiungi una riga come
 
-1. Apri **Utilità di pianificazione** (Task Scheduler).
-2. Crea attività di base → trigger giornaliero, orario a scelta.
-3. Azione: avvia programma.
-   - Programma: `C:\Users\renzi\OneDrive\Desktop\soft-investing\.venv\Scripts\python.exe`
-   - Argomenti: `-m src.scheduler.update_data`
-   - Cartella di lavoro (importante): `C:\Users\renzi\OneDrive\Desktop\soft-investing`
+```
+0 22 * * * cd ~/MatteoClaude/soft-investing/code/macro-cycle-tracker && ~/MatteoClaude/soft-investing/.venv/bin/python -m src.scheduler.update_data
+```
+
+La cartella di lavoro (`cd`) è importante. Il Mac deve essere acceso all'orario scelto.
 
 ## Test
 
 ```bash
-.venv\Scripts\pytest tests/ -v
+.venv/bin/pytest tests/ -v
 ```
 
 163 test, tutti con HTTP mockato (nessuna chiamata di rete reale, nessuna API key richiesta per il build).
@@ -71,4 +71,4 @@ Cinque voci principali: Oggi (pagina iniziale: tre numeri, cosa è cambiato dal 
 
 ## Stato deploy
 
-Live su https://macrocycletracker.streamlit.app/ (Streamlit Community Cloud), da un repo pubblico separato e piatto. I dati arrivano dal workflow GitHub Actions descritto sopra.
+Live su https://macro-cycle-tracker.vercel.app (sito statico su Vercel), da un repo pubblico separato e piatto: guida in `DEPLOY-VERCEL.md`. I dati arrivano dal workflow GitHub Actions descritto sopra. L'app Streamlit è stata tolta il 28/10/2026.

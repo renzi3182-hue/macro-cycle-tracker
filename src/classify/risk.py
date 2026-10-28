@@ -35,6 +35,12 @@ FILL_DAYS = 5  # calendari diversi (FRED, Yahoo, festivi dei bond): un dato vale
 BANDS = [0, 20, 40, 60, 80, 100]
 LABELS = ["Risk Off estremo", "Risk Off", "Neutrale", "Risk On", "Risk On estremo"]
 CANARY = "TIP"
+# Canarino del libro (28/10/2026, cap. 9; Keller, Bold Asset Allocation): momentum 13612W mensile di cinque ETF, livello
+# 1-5 = quanti sono positivi (0 o 1 -> 1). 1-3 risk off, 4-5 risk on, come la scala del libro. Descrittivo: il PAC
+# dinamico non batte il PAC costante (scripts/backtest_pac.py), per il filtro di tendenza vedi scripts/evaluate_pricing.py.
+BOOK_CANARIES = ("SPY", "TIP", "VWO", "VEA", "BND")
+CANARY_LEVELS = ["Risk Off estremo", "Risk Off alto", "Risk Off basso", "Risk On alto", "Risk On estremo"]
+CANARY_RISK_OFF = 3
 
 
 def expanding_percentile(s: pd.Series) -> pd.Series:
@@ -77,3 +83,15 @@ def canary(tip: pd.Series) -> pd.Series:
 
 def label(score: float) -> str:
     return LABELS[min(int(score // 20), len(LABELS) - 1)]
+
+
+def momentum_13612w(px: pd.DataFrame) -> pd.DataFrame:
+    """Momentum 13612W su prezzi mensili (pesi 12, 4, 2, 1 sui rendimenti a 1, 3, 6, 12 mesi), come canary."""
+    r = lambda m: px / px.shift(m) - 1
+    return (12 * r(1) + 4 * r(3) + 2 * r(6) + r(12)) / 4
+
+
+def canary_level(mom: pd.DataFrame) -> pd.Series:
+    """Livello 1-5 dai canarini con momentum positivo (0 o 1 -> 1, 5 -> 5); NaN se ne manca uno."""
+    positive = (mom > 0).sum(axis=1).clip(lower=1).astype(float)
+    return positive.where(mom.notna().all(axis=1))

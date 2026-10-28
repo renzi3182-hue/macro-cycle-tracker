@@ -22,6 +22,7 @@ SCENARIOS = {
 }
 MC_YEARS, MC_RUNS, MC_SEED = 10, 2000, 0
 MC_PERCENTILES = (5, 50, 95)
+VAR_LEVEL = 0.05  # VaR al 95%: il mese peggiore 1 volta su 20
 
 
 def ticker_weights(weights: dict) -> tuple[dict, list[str]]:
@@ -73,16 +74,18 @@ def common_window(*series: pd.Series) -> pd.Index:
 
 
 def summary(r: pd.Series) -> dict | None:
-    """Rendimento annuo, valore finale di 1, drawdown massimo e striscia piu' lunga di mesi sotto il massimo precedente.
-    None sotto 2 anni."""
+    """Rendimento annuo, valore finale di 1, drawdown massimo, striscia piu' lunga di mesi sotto il massimo precedente,
+    VaR 95% mensile (5 percentile dei mesi), Expected Shortfall (media dei mesi fino al VaR) e rendimento annuo diviso
+    per il drawdown massimo (None senza drawdown). None sotto 2 anni."""
     r = r.dropna()
     if len(r) < 24:
         return None
     wealth = (1 + r).cumprod()
     under = wealth < wealth.cummax().clip(lower=1)
-    return {"start": r.index[0], "final": wealth.iloc[-1], "cagr": wealth.iloc[-1] ** (12 / len(r)) - 1,
-            "dd": min(0.0, (wealth / wealth.cummax().clip(lower=1) - 1).min()),
-            "under": int(under.groupby((~under).cumsum()).sum().max())}
+    cagr, dd, var = wealth.iloc[-1] ** (12 / len(r)) - 1, min(0.0, (wealth / wealth.cummax().clip(lower=1) - 1).min()), r.quantile(VAR_LEVEL)
+    return {"start": r.index[0], "final": wealth.iloc[-1], "cagr": cagr, "dd": dd,
+            "under": int(under.groupby((~under).cumsum()).sum().max()), "var": var, "es": r[r <= var].mean(),
+            "ret_dd": cagr / -dd if dd < 0 else None}
 
 
 def recovery(r: pd.Series, start: str, end: str) -> int | None:

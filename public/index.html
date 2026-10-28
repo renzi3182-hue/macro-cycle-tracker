@@ -317,7 +317,7 @@ const stress = {
     while (start > 0 && ok[start - 1]) start--;
     return [start, end];
   },
-  summary(r, months) {
+  summary(r, months, varLevel) {
     if (r.length < 24) return null;
     let w = 1, peak = 1, dd = 0, run = 0, under = 0;
     for (const x of r) {
@@ -325,7 +325,11 @@ const stress = {
       dd = Math.min(dd, w / peak - 1);
       run = w < peak ? run + 1 : 0; under = Math.max(under, run);
     }
-    return { start: months[0], final: w, cagr: w ** (12 / r.length) - 1, dd, under };
+    const cagr = w ** (12 / r.length) - 1, sorted = [...r].sort((a, b) => a - b);
+    const x = (sorted.length - 1) * varLevel, lo = Math.floor(x);  // quantile lineare, come pandas
+    const v = sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * (x - lo), tail = r.filter(y => y <= v);
+    return { start: months[0], final: w, cagr, dd, under, var: v, es: tail.reduce((a, b) => a + b, 0) / tail.length,
+             retDd: dd < 0 ? cagr / -dd : null };
   },
   scenario(r, months, a, b) {
     const i0 = months.indexOf(a), i1 = months.indexOf(b);
@@ -370,7 +374,9 @@ const stress = {
 function labHtml(plain, trend, unit) {
   const cols = [["Senza filtro", plain], ...(trend ? [["Con filtro di tendenza", trend]] : [])];
   const rows = [["Oggi avresti", x => `${money(10000 * x.final)} ${unit}`], ["Guadagno medio all'anno", x => pctIt(x.cagr, 1)],
-    ["Calo peggiore", x => pctIt(x.dd)], ["Attesa più lunga per tornare in pari", x => x.under === 0 ? "mai sotto" : monthsIt(x.under)]];
+    ["Calo peggiore", x => pctIt(x.dd)], ["Attesa più lunga per tornare in pari", x => x.under === 0 ? "mai sotto" : monthsIt(x.under)],
+    ["Mese cattivo, 1 su 20 (VaR 95%)", x => pctIt(x.var, 1)], ["Media dei mesi peggiori (Expected Shortfall)", x => pctIt(x.es, 1)],
+    ["Guadagno annuo diviso calo peggiore", x => x.retDd === null ? "nessun calo" : x.retDd.toFixed(2).replace(".", ",")]];
   let verdict = "";
   if (trend) {
     const diff = (trend.cagr - plain.cagr) * 100;
@@ -382,7 +388,9 @@ function labHtml(plain, trend, unit) {
     + `<div class="tbl"><table class="mtx"><tr><th></th>${cols.map(([n]) => `<th>${n}</th>`).join("")}</tr>`
     + rows.map(([label, f]) => `<tr><td>${label}</td>${cols.map(([, x]) => `<td>${f(x)}</td>`).join("")}</tr>`).join("") + `</table></div>${verdict}`
     + `<p class="note">Calo peggiore = quanto sei sceso, al massimo, da un picco. Attesa più lunga = il periodo più lungo passato `
-    + `sotto un picco prima di superarlo. Il grafico sotto segue 100 ${unit} nel tempo. Ribilanciamento ogni mese, ETF in dollari`
+    + `sotto un picco prima di superarlo. VaR = il mese peggiore 1 volta su 20; Expected Shortfall = quanto perdi in media in `
+    + `quei mesi, dice meglio il rischio di eventi estremi. Guadagno diviso calo: più alto = più guadagno per ogni punto di calo. `
+    + `Il grafico sotto segue 100 ${unit} nel tempo. Ribilanciamento ogni mese, ETF in dollari`
     + (unit === "€" ? ", convertiti in euro senza copertura del cambio" : "")
     + `, senza costi né tasse; il filtro sposta in cash (BIL, T-bill a 1-3 mesi) ogni ETF sotto la sua media a 10 mesi.</p></div>`;
 }
@@ -464,10 +472,10 @@ const lab = {
     if (this.ccy === "Euro") [r, rt, spy, unit] = [stress.eur(r, S.usd_per_eur), stress.eur(rt, S.usd_per_eur), stress.eur(spy, S.usd_per_eur), "€"];
     let cw = stress.commonWindow(r, rt);
     const slice = (x, w) => w.length ? x.slice(w[0], w[1] + 1) : [];
-    let plain = stress.summary(slice(r, cw), slice(S.months, cw)), filtered = stress.summary(slice(rt, cw), slice(S.months, cw));
+    let plain = stress.summary(slice(r, cw), slice(S.months, cw), S.var_level), filtered = stress.summary(slice(rt, cw), slice(S.months, cw), S.var_level);
     if (!plain) {  // il filtro non ha un tratto abbastanza lungo (manca BIL): solo il portafoglio
       cw = stress.commonWindow(r);
-      plain = stress.summary(slice(r, cw), slice(S.months, cw)); filtered = null;
+      plain = stress.summary(slice(r, cw), slice(S.months, cw), S.var_level); filtered = null;
     }
     out.innerHTML = "";
     if (plain) {

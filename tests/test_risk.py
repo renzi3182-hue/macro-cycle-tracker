@@ -1,6 +1,8 @@
 import pandas as pd
 
-from src.classify.risk import MIN_HISTORY_DAYS, TREND_DAYS, breadth, canary, components, expanding_percentile, label, risk_score
+from src.classify.risk import (
+    MIN_HISTORY_DAYS, TREND_DAYS, breadth, canary, canary_level, components, expanding_percentile, label, momentum_13612w, risk_score)
+from src.ui.cards import risk_explain_html
 
 
 def test_expanding_percentile_ignores_future_values():
@@ -45,3 +47,15 @@ def test_canary_weights_recent_months_more():
     tip.iloc[-21:] = 98.0  # solo l'ultimo mese in calo del 2%
     assert canary(tip).iloc[-1] < 0
     assert pd.isna(canary(tip).iloc[250])  # serve un anno di storia
+
+
+def test_book_canary_level_counts_positive_momentum():
+    idx = pd.date_range("2024-01-01", periods=14, freq="MS")
+    up, down = pd.Series(range(100, 114), idx, dtype=float), pd.Series(range(114, 100, -1), idx, dtype=float)
+    px = pd.DataFrame({"SPY": up, "TIP": up, "VWO": down, "VEA": up, "BND": up})
+    mom = momentum_13612w(px)
+    assert mom.iloc[:12].isna().all().all() and canary_level(mom).iloc[-1] == 4
+    assert canary_level(-mom).iloc[-1] == 1  # 1 positivo e 0 positivi danno entrambi 1
+    html = risk_explain_html(50, "Neutrale", "28/10/2026", [("VIX", "x", 50.0)], False,
+                             {"level": 4, "date": idx[-1], "negative": ["VWO"]})
+    assert "4/5, Risk On alto" in html and "momentum negativo: VWO" in html

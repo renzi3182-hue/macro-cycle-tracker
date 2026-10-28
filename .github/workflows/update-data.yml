@@ -1,5 +1,5 @@
-# Aggiorna la cache dei dati e la pubblica come asset della release `data-latest`: l'app la scarica da li'
-# (src/data/sync.py). Nessun commit della cache: il repo non cresce. Il primo run parte da workflow_dispatch.
+# Aggiorna la cache dei dati e la pubblica come asset della release `data-latest`: e' l'unica copia dello storico, il
+# run dopo riparte da li'. Nessun commit della cache: il repo non cresce. Il primo run parte da workflow_dispatch.
 # Poi esporta il sito statico (src/scheduler/export_site.py) sul branch site-data, letto dal sito su Vercel.
 # Secret richiesti nel repo: FRED_API_KEY, ESTAT_APP_ID.
 name: update-data

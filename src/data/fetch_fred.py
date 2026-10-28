@@ -27,6 +27,12 @@ SERIES_PERMITS = "PERMIT"  # permessi di costruzione, migliaia di unita' annuali
 # manifatturiera della Philadelphia Fed e' il proxy regionale piu' usato (diffusion index, <0 = contrazione).
 SERIES_PHILLY_FED = "GACDFSA066MSFRBPHI"
 SERIES_GDPNOW = "GDPNOW"  # Atlanta Fed GDPNow: stima del PIL del trimestre in corso, % t/t annualizzata
+# Liquidita' netta Fed (cap. 7 del libro di riferimento): attivi Fed - conto del Tesoro - reverse repo overnight.
+# WALCL e WTREGEN settimanali (mercoledi', milioni di $), RRPONTSYD giornaliera (miliardi di $), dal 2003.
+SERIES_FED_ASSETS, SERIES_TREASURY_ACCOUNT, SERIES_REVERSE_REPO = "WALCL", "WTREGEN", "RRPONTSYD"
+SERIES_M2 = "M2SL"  # massa monetaria M2 USA, mensile
+SERIES_FED_TARGET_UPPER = "DFEDTARU"  # limite alto della forchetta dei Fed Funds, giornaliero
+SERIES_DOT_PLOT = "FEDTARMD"  # mediana delle proiezioni FOMC sui Fed Funds a fine anno: solo l'ultima riunione con proiezioni
 # Rendimenti mensili OCSE (via FRED) per le curve fuori USA: decennale - tasso breve.
 # UK: il 3 mesi interbancario (IR3TIB01GBM156N) e' fermo a gen 2026, si usa il tasso overnight.
 CURVES = {
@@ -141,6 +147,17 @@ def fetch_daily(series_id: str, api_key: str, years: int) -> pd.Series:
     """Serie giornaliera in livelli, solo gli ultimi `years` anni (pagina Intermarket)."""
     s = _fetch_series(series_id, api_key, units="lin")
     return s[s.index >= s.index[-1] - pd.DateOffset(years=years)]
+
+
+def fetch_net_liquidity(api_key: str) -> pd.Series:
+    """Liquidita' netta Fed in miliardi di $, una riga per settimana (date di WALCL). Reverse repo all'ultimo giorno noto."""
+    assets, tga = (_fetch_series(s, api_key, units="lin") / 1000 for s in (SERIES_FED_ASSETS, SERIES_TREASURY_ACCOUNT))
+    rrp = _fetch_series(SERIES_REVERSE_REPO, api_key, units="lin")
+    return (assets - tga - rrp.reindex(assets.index, method="ffill")).dropna()
+
+
+def fetch_m2_yoy(api_key: str) -> pd.Series:
+    return _fetch_series(SERIES_M2, api_key)
 
 
 def fetch_spread(long_id: str, short_id: str, api_key: str) -> pd.Series:

@@ -1,6 +1,8 @@
-"""Lettura della cache condivisa dalle pagine (src/app.py, src/ui/market_pages.py): niente chiamate API, solo data/cache.db."""
+"""Lettura della cache per l'export del sito (src/scheduler/export_site.py): niente chiamate API, solo data/cache.db.
+Ogni funzione legge una volta per processo (functools.cache): chi la chiama non deve modificare il risultato."""
+from functools import cache as memo
+
 import pandas as pd
-import streamlit as st
 
 from src.classify import allocation
 from src.classify.assess import USED_INPUTS, assess
@@ -9,21 +11,12 @@ from src.classify.stress import EXTRA_ETF
 from src.data import cache
 
 
-@st.cache_data
+@memo
 def load_indicator(area: str, indicator: str) -> pd.Series:
     return cache.read_indicator_series(area, indicator)
 
 
-def ui(html: str) -> None:
-    st.html(f'<div class="si">{html}</div>')
-
-
-
-def spark(ser: pd.Series, n: int = 24) -> list[float] | None:
-    return None if len(ser) < 3 else ser.tail(n).round(2).tolist()
-
-
-@st.cache_data
+@memo
 def load_model() -> dict:
     """Prezzi mensili a mese chiuso (px) e punteggio a cinque pilastri (src/classify/score.py: score, prob, contrib,
     weights), solo mesi con una classifica. Senza serie lunghe o regime USA il modello usa solo gli ETF. px ha anche
@@ -42,7 +35,7 @@ def load_model() -> dict:
             "usa_regime": usa["regime"] if usa else None}  # regime USA di oggi, per le frecce dei settori nella Classifica
 
 
-@st.cache_data
+@memo
 def load_usd_per_eur() -> pd.Series:
     """Dollari per euro a fine mese sui mesi dei prezzi di load_model (prima del 1999 il marco), per il Portafoglio in euro."""
     return allocation.fx_usd_per_local(load_indicator, load_model()["px"].index)["Eurozona"]
@@ -54,7 +47,7 @@ def load_scores() -> tuple[pd.DataFrame, pd.DataFrame]:
     return m["px"], m["score"]
 
 
-@st.cache_data
+@memo
 def load_allocation() -> dict:
     """Le tre classifiche di lungo periodo (src/classify/allocation.py): per ognuna score, prob, weights del modello
     ristimato ogni gennaio, feats (pilastri in posizione) e raw (valori dei pilastri)."""

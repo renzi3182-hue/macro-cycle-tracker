@@ -9,6 +9,7 @@ from src.classify.regime import REGIMES
 from src.classify.score import UNIVERSE
 from src.config.reliability import READINGS
 from src.config.sector_regime import SECTOR_NAMES, SECTOR_REGIME, sector_arrows
+from src.ui.cards import sector_regime_html
 
 
 def names(tickers):
@@ -42,3 +43,10 @@ def test_ranking_shows_the_arrow_next_to_the_sector():
            "prob": 0.57, "attivo": False, "storico": pd.Series(dtype=float), "perche": "x", "freccia": 1}
     html = ranking_html([row, {**row, "ticker": "SPY", "nome": "USA", "freccia": None}], pd.Timestamp("2026-09-01"))
     assert html.count("▲") == 1 and "Teoria" in html
+
+
+def test_sector_regime_card_marks_today_column():
+    html = sector_regime_html("Stagflazione")
+    assert html.count("<tr>") == len(SECTOR_NAMES) + 2  # intestazione, un settore per riga, long meno short
+    assert "Stagflazione · oggi" in html and "+3,2" in html and "−2,5" in html
+    assert "· oggi" not in sector_regime_html(None)

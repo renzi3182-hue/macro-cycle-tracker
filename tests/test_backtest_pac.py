@@ -5,7 +5,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 
-from scripts.backtest_pac import canary_scale, irr, simulate, summary
+from scripts.backtest_pac import irr, simulate, summary
+from src.classify.risk import canary_level
 
 IDX = pd.date_range("2020-01-01", periods=4, freq="MS")
 
@@ -30,6 +31,6 @@ def test_cash_earns_the_short_rate_and_irr_is_annual():
     assert abs(irr([-100] * 12 + [0] * 0) - irr([-100] * 12)) < 1e-9 and round(irr([-100, 101]), 1) == 12.7
 
 
-def test_canary_scale_counts_positive_momentum():
+def test_canary_level_counts_positive_momentum():
     mom = pd.DataFrame({"a": [0.1, -0.1, 0.1], "b": [0.1, -0.1, None], "c": [0.1, 0.1, 0.1]})
-    assert canary_scale(mom).tolist()[:2] == [3.0, 1.0] and pd.isna(canary_scale(mom).iloc[2])
+    assert canary_level(mom).tolist()[:2] == [3.0, 1.0] and pd.isna(canary_level(mom).iloc[2])

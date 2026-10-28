@@ -29,6 +29,19 @@ SECTOR_REGIME = {  # regime -> (long, short)
 #   Portafogli: long 11,7% l'anno (calo massimo -44%), short 11,4% (-57%), tutti i settori 11,9% (-49%).
 #   A 6 mesi: +0,6 punti l'anno (t 0,5), +0,2 e +0,9 nelle due meta'.
 # Resta "Teoria": le frecce dicono cosa prevede il libro, non un vantaggio misurato.
+SPREAD_BY_REGIME = {"Goldilocks": 0.6, "Reflazione": -0.2, "Stagflazione": 3.2, "Deflazione": -2.5}  # long meno short,
+# punti l'anno, dalla verifica qui sopra: riga "com'e' andata" della card Settori per regime
+
+# Versione debole e forte (cap. 7, fig. 7.16-7.17 e 7.19-7.20): il libro le da' solo per questi due regimi; l'intensita'
+# di oggi sta nella card Liquidita' e Fed (src/classify/liquidity.py)
+INTENSITY_NOTES = {
+    "Stagflazione": "Debole (PIL che rallenta di poco, inflazione non preoccupante): negativi solo finanziari e salute, "
+                    "bene energia, materiali, tecnologia, utilities. Forte (PIL in calo netto, inflazione sopra il 2%): "
+                    "tutto negativo tranne le utilities.",
+    "Deflazione": "Debole (PIL che si contrae di poco, inflazione vicino al 2%, politica meno rigida): tutti positivi, in "
+                  "testa salute, utilities, prima necessità e immobiliare. Media: positivi solo prima necessità, salute e "
+                  "utilities, energia e immobiliare i peggiori.",
+}
 
 
 def sector_arrows(regime: str | None) -> dict[str, int]:

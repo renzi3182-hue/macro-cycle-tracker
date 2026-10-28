@@ -27,12 +27,6 @@ RATES = {"DGS10", "DFII10"}  # in %: il "rendimento" giornaliero e' la variazion
 COPPER_GOLD = "Rame/oro"  # colonna derivata HG=F / GLD: il livello e' diverso dall'oro spot, la direzione no
 DOLLAR, BENCHMARK = "DTWEXBGS", "SPY"
 
-MATRIX = {  # righe della matrice delle correlazioni (figura 5.1 del libro)
-    "SPY": "S&P 500", "QQQ": "Nasdaq 100", "IWM": "Russell 2000", "TLT": "Treasury 20+ anni", "IEF": "Treasury 7-10 anni",
-    "DBC": "Materie prime", "GLD": "Oro", "SMH": "Semiconduttori", COPPER: "Rame", "DCOILWTICO": "Petrolio WTI",
-    DOLLAR: "Dollaro", "DGS10": "Rendimento 10 anni", "DFII10": "Tasso reale 10 anni",
-}
-WINDOWS = (15, 30, 90, 120)  # giorni di borsa
 NORM_WINDOW, NORM_YEARS = 120, 5  # norma = mediana della correlazione a 120 giorni degli ultimi 5 anni
 BREAK_GAP = 0.5  # rottura: distanza dalla norma oltre questo valore...
 NORM_MIN_SIGN = 0.2  # ...oppure segno opposto, ma solo se la norma ha un segno (con norma ~0 il segno e' rumore)
@@ -57,11 +51,6 @@ MURPHY_PHASES = {
     (False, True, True): 4, (False, False, True): 5, (False, False, False): 6,
 }
 UNDEFINED = "Fase non definita"  # obbligazioni e materie prime nella stessa direzione, azioni contro
-MURPHY_TEXT = {
-    1: "obbligazioni in salita, azioni e materie prime in calo", 2: "obbligazioni e azioni in salita, materie prime in calo",
-    3: "obbligazioni, azioni e materie prime in salita", 4: "obbligazioni in calo, azioni e materie prime in salita",
-    5: "obbligazioni e azioni in calo, materie prime in salita", 6: "tutti e tre in calo: cash is king",
-}
 
 # Allineamento fase del ciclo dell'app -> fasi di Murphy (allineate, parziali); le altre due sono disallineate.
 # Ogni fase dell'app copre due stadi consecutivi di Pring, i vicini sono parziali, gli opposti disallineati:
@@ -76,14 +65,10 @@ MACRO_TO_MURPHY = {
 }
 COPPER_GOLD_UP = {RECOVERY_BELOW_TREND: True, "Espansione": True, "Rallentamento": False, "Recessione": False}
 ALIGNED, PARTIAL, MISALIGNED = "Allineati", "Parzialmente allineati", "Disallineati"
-MISALIGNED_TEXT = ("Se i mercati non confermano lo scenario macro: ridurre il rischio, operare solo dove "
-                   "c'è vantaggio statistico, preferire strumenti meno volatili.")
 
-EDGE_MIN_CASES, EDGE_MIN_T, EDGE_TOP = 30, 2.0, 3  # "cosa ha funzionato": in evidenza solo con t > 2 e 30 casi
 # Extra-rendimento della verifica (scripts/evaluate_intermarket.py) a 3 mesi, come la Classifica fino al 26/10/2026:
 # i numeri in spec.md sono a 3 mesi. La Classifica ora guarda a 6 (score.HORIZON_MONTHS).
 HORIZON_MONTHS = 3
-CORR_DOUBLE_RISK = 0.7  # due posizioni piu' correlate di cosi' (120 giorni) = rischio doppio
 
 
 def levels(series: dict[str, pd.Series]) -> pd.DataFrame:
@@ -121,27 +106,6 @@ def is_break(current: float, usual: float) -> bool:
     return (abs(usual) >= NORM_MIN_SIGN and current * usual < 0) or abs(current - usual) > BREAK_GAP
 
 
-def _last(s: pd.Series) -> float:
-    return float(s.iloc[-1]) if not s.empty else math.nan
-
-
-def matrix(lv: pd.DataFrame) -> pd.DataFrame:
-    """Righe = MATRIX; colonne (riferimento, finestra) e (riferimento, 'norma'). NaN contro se stessa o senza dati."""
-    cols = {}
-    for ref in (BENCHMARK, DOLLAR):
-        rows = [r for r in MATRIX if r in lv and r != ref] if ref in lv else []
-        for w in WINDOWS:
-            cols[(ref, w)] = pd.Series({r: _last(rolling_corr(lv, r, ref, w)) for r in rows}, dtype=float)
-        cols[(ref, "norma")] = pd.Series({r: norm(rolling_corr(lv, r, ref, NORM_WINDOW)) for r in rows}, dtype=float)
-    return pd.DataFrame(cols).reindex(list(MATRIX))
-
-
-def matrix_breaks(m: pd.DataFrame) -> pd.DataFrame:
-    """True dove la correlazione di una finestra rompe la sua norma."""
-    return pd.DataFrame({(ref, w): [is_break(x, n) for x, n in zip(m[(ref, w)], m[(ref, "norma")])]
-                         for ref, w in m.columns if w != "norma"}, index=m.index)
-
-
 def relation_state(current: float, usual: float, expected_sign: int) -> str:
     if math.isnan(current):
         return "n/d"
@@ -157,12 +121,6 @@ def change(s: pd.Series, months: int = DIRECTION_MONTHS) -> pd.Series:
     s = s.dropna()
     past = s.reindex(s.index - pd.DateOffset(months=months), method="ffill")
     return pd.Series(s.to_numpy() - past.to_numpy(), index=s.index).dropna()
-
-
-def diverging(ratio: pd.Series, yld: pd.Series) -> pd.Series:
-    """Rame/oro e rendimento a 10 anni con direzione a 3 mesi opposta: uno dei due mercati "sta mentendo"."""
-    both = pd.concat([change(ratio), change(yld)], axis=1, join="inner")
-    return both.iloc[:, 0] * both.iloc[:, 1] < 0
 
 
 def murphy_phase(bonds_up: bool, stocks_up: bool, commodities_up: bool) -> int | None:
@@ -195,37 +153,3 @@ def alignment(macro_phase: str, phase: int, copper_gold_up: bool) -> str:
     if murphy_ok and copper_ok:
         return ALIGNED
     return MISALIGNED if not murphy_ok and not copper_ok else PARTIAL
-
-
-def same_situation(regime: pd.Series, murphy: pd.Series, now_regime: str, now_phase: int) -> pd.Index:
-    """Mesi con lo stesso regime USA point-in-time (assess.point_in_time_history) e la stessa fase di Murphy di oggi."""
-    both = pd.concat([regime.rename("r"), murphy.rename("m")], axis=1, join="inner")
-    return both.index[(both["r"] == now_regime) & (both["m"] == now_phase)]
-
-
-def edge_table(excess: pd.DataFrame, months: pd.Index) -> pd.DataFrame:
-    """Extra-rendimento a HORIZON_MONTHS mesi (score.forward_excess con horizon=HORIZON_MONTHS) nei mesi indicati, per ticker: casi, media e
-    mediana (%), % sopra la media, t. Finestre sovrapposte: il t usa casi / HORIZON_MONTHS osservazioni indipendenti."""
-    x = excess.loc[excess.index.intersection(months)]
-    n = x.count()
-    t = x.mean() / x.std() * (n / HORIZON_MONTHS) ** 0.5
-    table = pd.DataFrame({"casi": n, "media": x.mean() * 100, "mediana": x.median() * 100,
-                          "sopra": (x > 0).sum() / n.where(n > 0) * 100, "t": t})
-    return table[table["casi"] > 0].sort_values("media", ascending=False)
-
-
-def highlighted(table: pd.DataFrame, tickers: list[str]) -> list[str]:
-    """Primi EDGE_TOP ticker fra quelli dati con almeno EDGE_MIN_CASES casi e t > EDGE_MIN_T (solo extra-rendimento
-    positivo: un t molto negativo dice cosa evitare, non cosa ha funzionato). Lista vuota = nessun vantaggio."""
-    ok = table[table.index.isin(tickers) & (table["casi"] >= EDGE_MIN_CASES) & (table["t"] > EDGE_MIN_T)]
-    return list(ok.index[:EDGE_TOP])
-
-
-def double_risk(lv: pd.DataFrame, tickers: list[str]) -> list[tuple[str, str, float]]:
-    """Coppie con correlazione a NORM_WINDOW giorni sopra CORR_DOUBLE_RISK."""
-    out = []
-    for i, a in enumerate(tickers):
-        for b in tickers[i + 1:]:
-            if a in lv and b in lv and not (c := rolling_corr(lv, a, b, NORM_WINDOW)).empty and c.iloc[-1] > CORR_DOUBLE_RISK:
-                out.append((a, b, float(c.iloc[-1])))
-    return out
