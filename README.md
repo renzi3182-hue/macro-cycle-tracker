@@ -38,7 +38,7 @@ Se un'area fallisce, l'update la salta e continua con le altre (vedi `src/schedu
 
 ## Aggiornamento automatico
 
-In produzione: il workflow `.github/workflows/update-data.yml` gira ogni 30 minuti nei giorni feriali solo per macro e calendario (`--macro-only`), completo alle 21:45 UTC dopo la chiusura USA e una volta nel weekend, aggiorna `data/cache.db` e la pubblica come asset della release `data-latest`; poi esporta `site.json` sul branch `site-data`, che il sito legge.
+In produzione: il workflow `.github/workflows/update-data.yml` gira una volta al giorno alle 22:30 UTC nei giorni feriali, dopo la chiusura USA, e la domenica alle 8:00 per il calendario, aggiorna `data/cache.db` e la pubblica come asset della release `data-latest`; poi esporta `site.json` sul branch `site-data`, che il sito legge.
 
 In locale, facoltativo, con `cron` sul Mac (modifica di sistema, da fare a mano): `crontab -e` e aggiungi una riga come
 

@@ -146,3 +146,27 @@ def assess(area: str, series: dict[str, pd.Series], today: pd.Timestamp | None =
         "history": hist,
     }
 
+
+
+TRAIL_MONTHS = 6  # coda dei grafici della pagina Mondo (onda del ciclo e quadrante dei regimi)
+
+
+def phase_trail(hist: pd.DataFrame, offsets: tuple[int, ...] = (TRAIL_MONTHS, TRAIL_MONTHS // 2, 0)) -> list[dict]:
+    """Fase e mesi passati nella fase, `offsets` mesi prima dell'ultima lettura (dal piu' vecchio). Salta i mesi
+    senza fase. hist: assess()["history"]."""
+    phase = hist["phase"]
+    out = []
+    for k in offsets:
+        if k >= len(phase) or not isinstance(p := phase.iloc[-1 - k], str):
+            continue
+        upto = phase.iloc[:len(phase) - k]
+        out.append({"month": upto.index[-1], "phase": p, "months": int((upto.index >= run_start(upto)).sum())})
+    return out
+
+
+def axis_trail(hist: pd.DataFrame, months: int = TRAIL_MONTHS) -> list[dict]:
+    """Posizione sui due assi (axis_positions) e regime degli ultimi months+1 mesi, dal piu' vecchio."""
+    tail = hist.dropna(subset=["growth_z", "inflation_score"]).tail(months + 1)
+    return [{"month": m, "x": float(xy[0]), "y": float(xy[1]), "regime": r}
+            for m, r, xy in zip(tail.index, tail["regime"],
+                                (axis_positions(g, i) for g, i in zip(tail["growth_z"], tail["inflation_score"])))]

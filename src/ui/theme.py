@@ -199,11 +199,89 @@ __DONUT_TIPS__
 .si .mtx.ucits td.isin { font-family: 'DM Mono', monospace; white-space: nowrap; }
 .si .arow.th { min-height: 28px; font-size: 12px; color: var(--muted); }
 
+/* pagina Mondo (src/ui/charts.py): onda con i paesi, quadrante dei regimi, schede paese, mappa di calore */
+.si svg text { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+.si .wc, .si .rq { display: flex; flex-direction: column; gap: 12px; }
+.si .wc svg, .si .rq svg { width: 100%; height: auto; display: block; overflow: visible; }
+.si .rq svg { max-width: 460px; margin: 0 auto; }
+.si .wc-band { opacity: .05; }
+.si .wc-ph { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.si .wc-mid { stroke: var(--muted); stroke-opacity: .4; stroke-dasharray: 4 5; }
+.si .wc-wave { fill: none; stroke: var(--muted); stroke-opacity: .7; stroke-width: 2.5; stroke-linecap: round; }
+.si .wc-glow { fill: none; stroke: var(--accent); stroke-opacity: .14; stroke-width: 14; stroke-linecap: round; }
+.si .wc-trail { fill: none; stroke: var(--fg); stroke-opacity: .35; stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; }
+.si .wc-past { fill: var(--fg); }
+.si .wc-ring { fill: var(--surface); stroke-width: 3; filter: drop-shadow(0 2px 4px rgba(0,0,0,.18)); }
+.si .wc-flag { font-size: 20px; }
+.si .wc-lbl { font-size: 13px; font-weight: 700; fill: var(--fg); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.si .wc-l { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; font-size: 13px; }
+.si .wc-l div { display: flex; flex-direction: column; gap: 4px; }
+.si .wc-l b { font-size: 15px; }
+.si .wc-as { font-size: 12px; }
+.si .rq-band { opacity: .09; }
+.si .rq-name { font-size: 13px; font-weight: 800; letter-spacing: -.01em; }
+.si .rq-axis { stroke: var(--muted); stroke-opacity: .45; stroke-dasharray: 4 5; }
+.si .rq-ax { font-size: 11px; fill: var(--muted); }
+.si .rq-tail { fill: none; stroke-width: 2; stroke-opacity: .4; stroke-linecap: round; stroke-linejoin: round; }
+.si .rq-past { opacity: .5; }
+.si .rq-b circle { fill: var(--surface); stroke-width: 3; filter: drop-shadow(0 2px 4px rgba(0,0,0,.18)); }
+.si .rq-b text { font-size: 16px; }
+.si .rq-b.unc circle { stroke-dasharray: 4 3; }
+.si .cc { gap: 12px; }
+.si .cc-top { display: flex; align-items: center; gap: 10px; }
+.si .cc-top h3 { flex: 1; font-size: 19px; }
+.si .cc-flag { font-size: 26px; line-height: 1; }
+.si .cc-ccy { font-family: 'DM Mono', ui-monospace, monospace; font-size: 12px; }
+.si .cc-state { display: flex; align-items: center; gap: 10px; font-size: 22px; line-height: 28px; font-weight: 800; letter-spacing: -.02em; color: var(--c); }
+.si .cc-state i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 5px color-mix(in srgb, var(--c) 20%, transparent); }
+.si .cc-sub { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.si .cc-strip { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; }
+.si .cc-strip i { opacity: .75; }
+.si .cc-mid { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; font-size: 14px; }
+.si .cc-mid div { display: flex; flex-direction: column; gap: 3px; }
+.si .mw { width: 96px; height: 29px; }
+.si .mw path { fill: none; stroke: var(--muted); stroke-opacity: .7; stroke-width: 1.6; }
+.si .cc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.si .cc-chips .chip { font-size: 12px; padding: 3px 9px; }
+.si .cc-ch { font-size: 13px; color: var(--fg); border-top: 1px solid var(--line); padding-top: 10px; }
+.si .hm { display: grid; grid-template-columns: minmax(110px, 1.2fr) repeat(var(--n), minmax(64px, 1fr)); gap: 4px; align-items: center; }
+.si .hm-h { text-align: center; }
+.si .hm-a { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.si .hm-c { display: flex; align-items: center; justify-content: center; min-height: 34px; border-radius: 8px; font-size: 13px; color: var(--fg); }
+.si .hm-na { color: var(--muted); background: var(--raised); }
+/* testata Mondo: onde a tutta larghezza in basso, il testo sopra la parte vuota dell'immagine; ::after riserva l'altezza delle onde */
+.si .wh { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: var(--bg); }
+.si .wh::after { content: ""; display: block; aspect-ratio: 100 / 30; }
+.si .wh::before, .si .wh-v { position: absolute; left: 0; bottom: 0; width: 100%; aspect-ratio: 1284 / 716;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 45%); mask-image: linear-gradient(to bottom, transparent, black 45%); }
+.si .wh::before { content: ""; background: url(/media/onde-scuro.webp) center / cover no-repeat; }
+.si .wh-v { object-fit: cover; opacity: 0; transition: opacity .8s; }
+.si .wh-v.on { opacity: 1; }
+.si .wh-t { position: relative; z-index: 1; padding: 36px 36px 0; max-width: 820px; }
+@media (prefers-color-scheme: light) { .si .wh::before { background-image: url(/media/onde-chiaro.webp); } }
+/* testata Paese: simbolo della valuta in vetro (fondo scuro, come un'icona) accanto a nome e stato della tendenza */
+.si .ph { display: flex; align-items: center; gap: 28px; }
+.si .ph-i { width: 168px; height: 168px; flex: none; border-radius: 32px; border: 1px solid var(--line); object-fit: cover; }
+.si .ph-t { flex: 1; min-width: 0; }
+.si .ph-t h1 { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.si .ph-t h1 .chip { font-size: 15px; letter-spacing: 0; font-weight: 600; }
+.si .ph-f { font-size: .8em; }
+.si .ph-s { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 28px; line-height: 34px; font-weight: 800; letter-spacing: -.02em; color: var(--c); }
+.si .ph-s i { width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 20%, transparent); }
+.si .ph-s .chip { font-size: 13px; letter-spacing: 0; }
+.si .ph .cc-strip { max-width: 360px; }
+
 @media (prefers-reduced-motion: no-preference) {
   .si .card { animation: si-in .35s ease-out both; }
+  .si .cc { animation-delay: calc(var(--i, 0) * 60ms); }
+  .si .rq-tail { stroke-dasharray: 1; stroke-dashoffset: 1; animation: si-draw .8s ease-out forwards; }
+  .si .rq-b { animation: si-pop .35s .75s ease-out both; transform-box: fill-box; transform-origin: center; }
 }
+@keyframes si-draw { to { stroke-dashoffset: 0; } }
+@keyframes si-pop { from { opacity: 0; scale: .4; } to { opacity: 1; scale: 1; } }
 @keyframes si-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 640px) {
+  .si .list .row { flex-wrap: wrap; row-gap: 6px; }  /* valore e chip vanno a capo invece di uscire dalla scheda */
   .si .card { padding: 18px; }
   .si .wrow { grid-template-columns: 10px minmax(0, 1fr) 44px 36px; }
   .si .wrow .track { display: none; }
@@ -220,6 +298,20 @@ __DONUT_TIPS__
   .si .mxg .eyebrow { font-size: 9px; letter-spacing: .02em; }
   .si .mx { height: auto; min-height: 34px; padding: 4px 2px; font-size: 11px; line-height: 1.2; text-align: center; }
   .si .mx.opp { gap: 4px; font-size: 12px; }
+  .si .wc-lbl { display: none; }
+  .si .wc-flag { font-size: 24px; }
+  .si .wc-ring { r: 22px; }
+  .si .wc-ph { font-size: 15px; letter-spacing: 0; }
+  .si .wc-l { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
+  .si .hm { grid-template-columns: minmax(84px, 1fr) repeat(var(--n), minmax(0, 1fr)); gap: 3px; }
+  .si .hm-a { font-size: 12px; }
+  .si .hm-h { font-size: 9px; letter-spacing: 0; overflow-wrap: anywhere; }
+  .si .hm-c { font-size: 11px; min-height: 30px; }
+  .si .wh { border-radius: 18px; }
+  .si .wh-t { padding: 22px 20px 0; }
+  .si .ph { gap: 16px; align-items: flex-start; }
+  .si .ph-i { width: 84px; height: 84px; border-radius: 20px; }
+  .si .ph-s { font-size: 22px; line-height: 28px; }
 }
 """
 

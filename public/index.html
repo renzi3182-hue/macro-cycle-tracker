@@ -38,6 +38,7 @@ header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, v
 header .in { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 16px; }
 header .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.03em; font-size: 17px; color: var(--fg); text-decoration: none; flex: none; }
 header .brand img { width: 30px; height: 30px; }
+@media (max-width: 520px) { header .brand span { display: none; } header .in { gap: 8px; padding: 10px 12px; } nav { gap: 0; } nav a { padding: 7px 6px; font-size: 14px; } }
 nav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; align-items: center; }
 nav a, nav summary { color: var(--muted); text-decoration: none; padding: 7px 12px; border-radius: 10px; white-space: nowrap; font-weight: 500; cursor: pointer; }
 nav a:hover, nav summary:hover { color: var(--fg); background: var(--raised); }
@@ -48,6 +49,9 @@ nav summary::-webkit-details-marker { display: none; }
 nav details[open] summary, nav details.on summary { color: var(--fg); }
 #more { position: fixed; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px;
   box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 180px; z-index: 20; }
+#more a { color: var(--muted); text-decoration: none; border-radius: 10px; font-weight: 500; }
+#more a:hover, #more a.on { color: var(--fg); background: var(--raised); }
+#more a.on { font-weight: 600; }
 .fresh { font-size: 13px; color: var(--muted); margin-top: 12px; }
 .fresh i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
@@ -93,21 +97,24 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 </head>
 <body>
 <header><div class="in">
-  <a class="brand" href="/" data-link><img id="logo" src="/logo-mark.svg" alt=""> Soft Investing</a>
+  <a class="brand" href="/" data-link><img id="logo" src="/logo-mark.svg" alt=""> <span>Soft Investing</span></a>
   <nav id="nav"></nav>
 </div></header>
 <main>
-  <div class="fresh" id="fresh"></div>
+  <div class="fresh"><span id="fresh"></span>Non prevede i rendimenti. Aiuta a capire il contesto e a ridurre le perdite grandi.</div>
   <div id="warnings"></div>
   <div id="page"><p class="loading">Carico i dati…</p></div>
 </main>
 <div id="more" class="hidden"></div>
 <script>
 "use strict";
-// Pagine come nell'app Streamlit: cinque voci in alto, il resto in "Avanzato". Vecchi indirizzi portano alla pagina nuova.
-const MAIN = [["oggi", "Oggi"], ["paese", "Il mio paese"], ["asset", "Asset"], ["portafoglio", "Portafoglio"], ["metodo", "Metodo"]];
-const MORE = [["cot", "COT report"], ["calendario", "Calendario"], ["mercati", "Mercati"], ["allocazione", "Allocazione"]];
-const OLD = { aree: "paese", classifica: "asset", valute: "allocazione", "": "oggi" };
+// Tre pagine in alto (Mondo è la home, plan-dashboard-paesi.md), il resto in "Strumenti". Vecchi indirizzi portano alla pagina nuova.
+const MAIN = [["mondo", "Mondo"], ["paese", "Paese"], ["metodo", "Metodo"]];
+const MORE = [["oggi", "Oggi"], ["asset", "Classifica asset"], ["portafoglio", "Portafoglio e stress test"], ["allocazione", "Allocazione"],
+              ["cot", "COT report"], ["calendario", "Calendario"], ["mercati", "Mercati"]];
+const OLD = { aree: "paese", classifica: "asset", valute: "allocazione", "": "mondo" };
+// /paese/italia -> /paese?area=Italia: sigle corte maiuscole (USA, UK), il resto con l'iniziale maiuscola
+const areaFromSlug = s => s.length <= 3 ? s.toUpperCase() : s[0].toUpperCase() + s.slice(1).toLowerCase();
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 let DATA = null;
@@ -119,7 +126,8 @@ function setLogo() { $("#logo").src = dark.matches ? "/logo-mark.svg" : "/logo-m
 
 function pageName() {
   const p = location.pathname.replace(/^\/|\/$/g, "");
-  return OLD[p] ?? ([...MAIN, ...MORE].some(([k]) => k === p) ? p : "oggi");
+  if (p.startsWith("paese/")) return "paese";
+  return OLD[p] ?? ([...MAIN, ...MORE].some(([k]) => k === p) ? p : "mondo");
 }
 function params() { return new URLSearchParams(location.search); }
 
@@ -127,7 +135,7 @@ function renderNav() {
   const cur = pageName();
   const inMore = MORE.some(([k]) => k === cur);
   $("#nav").innerHTML = MAIN.map(([k, t]) => `<a href="/${k}" data-link class="${k === cur ? "on" : ""}">${t}</a>`).join("")
-    + `<a href="#" id="moreBtn" class="${inMore ? "on" : ""}">Avanzato ▾</a>`;
+    + `<a href="#" id="moreBtn" class="${inMore ? "on" : ""}">Strumenti ▾</a>`;
   $("#more").innerHTML = MORE.map(([k, t]) => `<a href="/${k}" data-link class="${k === cur ? "on" : ""}" style="padding:8px 12px">${t}</a>`).join("");
 }
 
@@ -153,7 +161,7 @@ document.addEventListener("click", e => {
   const url = new URL(href, location.origin + "/");
   if (url.origin !== location.origin) return;
   e.preventDefault();
-  go(url.pathname);
+  go(url.pathname + url.search);
   scrollTo(0, 0);
 });
 addEventListener("popstate", route);
@@ -207,6 +215,8 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => {
   if (e.target.matches("input[type=checkbox][data-switch]")) setParam(e.target.dataset.switch, e.target.checked ? "1" : "0");
 });
+// i grafici dentro un <details> chiuso non hanno larghezza: si disegnano quando si apre
+document.addEventListener("toggle", e => { if (e.target.open) drawCharts(e.target); }, true);
 
 // --- calendario: scelta multipla di valute e impatto sulle righe di calendar_html ---
 function applyFilters(page) {
@@ -493,10 +503,27 @@ const lab = {
 };
 
 // --- pagina ---
+// innerHTML non esegue gli <script> delle pagine (animazione dell'onda, charts.ANIMATE_JS): li ricrea
+function runScripts(page) {
+  $$("script", page).forEach(s => s.replaceWith(Object.assign(document.createElement("script"), { textContent: s.textContent })));
+}
+// Video della testata Mondo (public/media/onde-*): solo senza riduzione del movimento e senza risparmio dati,
+// altrimenti resta l'immagine ferma di sfondo
+function heroVideo(page) {
+  const v = $(".wh-v", page);
+  if (!v || matchMedia("(prefers-reduced-motion: reduce)").matches || navigator.connection?.saveData) return;
+  const n = dark.matches ? "scuro" : "chiaro";
+  v.innerHTML = `<source src="/media/onde-${n}.webm" type="video/webm"><source src="/media/onde-${n}.mp4" type="video/mp4">`;
+  v.addEventListener("playing", () => v.classList.add("on"), { once: true });
+  v.load();
+  v.play().catch(() => {});
+}
+
 function route() {
   const name = pageName();
   const path = location.pathname.replace(/^\/|\/$/g, "");
   if (OLD[path] !== undefined && path) history.replaceState(null, "", "/" + OLD[path] + location.search);
+  if (path.startsWith("paese/")) history.replaceState(null, "", "/paese?area=" + encodeURIComponent(areaFromSlug(decodeURIComponent(path.slice(6)))));
   renderNav();
   document.title = [...MAIN, ...MORE].find(([k]) => k === name)[1] + " · Soft Investing";
   if (!DATA) return;
@@ -505,16 +532,18 @@ function route() {
   lab.profile = null;
   applyFilters(page);
   applyState(page);
+  runScripts(page);
+  heroVideo(page);
   if (location.hash) $(location.hash)?.scrollIntoView();
 }
 
 function freshness() {
   if (!DATA.updated_at) return;
   const t = new Date(DATA.updated_at);
-  const fresh = Date.now() - t < 6 * 3600e3;
+  const fresh = Date.now() - t < 48 * 3600e3;  // un run al giorno, nessuno il sabato
   const f = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(t);
   const p = Object.fromEntries(f.map(x => [x.type, x.value]));
-  $("#fresh").innerHTML = `<i style="background:var(--${fresh ? "r-gold" : "r-refl"})"></i>Dati aggiornati il ${p.day}/${p.month} alle ${p.hour}:${p.minute}`;
+  $("#fresh").innerHTML = `<i style="background:var(--${fresh ? "r-gold" : "r-refl"})"></i>Dati aggiornati il ${p.day}/${p.month} alle ${p.hour}:${p.minute} · `;
 }
 
 async function load() {

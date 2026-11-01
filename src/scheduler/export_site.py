@@ -18,10 +18,11 @@ from pathlib import Path
 import pandas as pd
 
 from src.classify import changes
+from src.classify import exposure as ex
 from src.classify.allocation import CCY, COUNTRY_ETF, ENTER, EXIT, HORIZON as AL_HORIZON
 from src.classify import intermarket as im
 from src.classify import opportunities as opp
-from src.classify.assess import HIGH_FREQ_MAX_DAYS, label_regimes, stale_high_freq
+from src.classify.assess import HIGH_FREQ_MAX_DAYS, axis_trail, label_regimes, phase_trail, stale_high_freq
 from src.classify.leading import SIGNALS
 from src.classify.positioning import percentile_rank, zscore
 from src.classify.recession import sahm_gap
@@ -32,7 +33,7 @@ from src.classify.score import HORIZON_MONTHS, PILLARS, TREND_MONTHS, UNIVERSE, 
 from src.classify.stress import EXTRA_ETF, MC_RUNS, MC_YEARS, PROXY, SCENARIOS, VAR_LEVEL
 from src.config import cot_guide
 from src.config.asset_allocation import (
-    AREA_EQUITY, ASSET_ALLOCATION, CASH, TREND_PROXY, apply_trend, combined_portfolio_weights, confirmation,
+    AREA_EQUITY, ASSET_ALLOCATION, CASH, PHASE_ASSETS, TREND_PROXY, apply_trend, combined_portfolio_weights, confirmation,
 )
 from src.config.sector_regime import sector_arrows
 from src.data import cache
@@ -44,6 +45,7 @@ from src.ui.cards import (
     relations_html, reliability_html, reliability_table_html, risk_explain_html, risk_html, stat_tile_html,
     rrg_html, sector_regime_html, trend_chips_html, trend_html, ucits_html, weight_deltas, weights_html, why_text,
 )
+from src.ui import charts as ch
 from src.ui.data import load_allocation, load_indicator, load_model, load_scores, load_usd_per_eur
 from src.ui.shared import (
     CCY_NAMES, CLASS_GROUPS, EXAMPLE, IMPACT_LABELS_IT, _alloc_rows, _badge, load_weekly, upcoming_events, AREAS, INPUT_LABELS, LEADING_LABELS, RISK_PARTS, RISK_PROFILE_LABELS, RISK_SAY, STATIC_PORTFOLIOS, STRESS_ASSETS,
@@ -226,12 +228,121 @@ def page_today(ctx: dict) -> str:
     return "".join(out)
 
 
+HEAT_COLS = ["Azioni", "Obbligazioni", "Valuta"]
+
+
+def asset_trend(name: str, cls: dict[str, float], markets: dict[str, float]) -> float | None:
+    """Distanza dalla media a 10 mesi di un asset di PHASE_ASSETS: borsa, titoli di Stato e oro del paese (classifica
+    delle classi di asset), materie prime con l'ETF DBC."""
+    key = ("Azioni" if "Azionario" in name else "Obbligazioni" if "Titoli di Stato" in name else "Oro" if name == "Oro"
+           else None)
+    v = cls.get(key) if key else markets.get("DBC") if name == "Materie prime" else None
+    return None if v is None or pd.isna(v) else float(v)
+
+
+def change_text(history: pd.DataFrame, trend: dict | None) -> str | None:
+    """Cosa e' cambiato nell'ultimo mese: tendenza, fase e regime. None se niente."""
+    out = []
+    if trend and trend["months"] == 1 and not trend["first_reading"]:
+        out.append(f"Borsa passata in tendenza {'positiva' if trend['positive'] else 'negativa'}")
+    for col, name in (("phase", "fase"), ("regime", "regime")):
+        s = history[col].dropna() if col in history else pd.Series(dtype=object)
+        if len(s) >= 2 and s.iloc[-1] != s.iloc[-2]:
+            out.append(f"{cap(name)} da {ch.PHASE_SHORT.get(s.iloc[-2], s.iloc[-2])} a {ch.PHASE_SHORT.get(s.iloc[-1], s.iloc[-1])}")
+    return " · ".join(out) or None
+
+
+def world_page(assessments: dict, trends: dict, cls: dict, fx_score: dict, fx_trend: dict, markets: dict,
+               month: pd.Timestamp) -> str:
+    """Pagina Mondo. assessments: load_assessment per area; trends: exposure.countries; cls: area -> {classe: distanza}
+    (classifica delle classi di asset); fx_score / fx_trend: valuta -> punteggio 1-100 / distanza; markets: ticker ->
+    distanza (GLD, DBC)."""
+    phases = {a: x["phase"] for a, x in assessments.items()}
+    top = Counter(p for p in phases.values() if p).most_common(1)
+    up = sum(t["positive"] for t in trends.values())
+    lead = (f"A fine {escape(month_it(month))} <b>{up} paesi su {len(trends)}</b> hanno la borsa in tendenza positiva."
+            + (f" La fase più diffusa è <b>{escape(ch.PHASE_SHORT.get(top[0][0], top[0][0]))}</b>." if top else "")
+)
+    out = [ui(ch.world_hero_html(f"Mondo · lettura di {month_it(month)}", "Dove sono i paesi nel ciclo", lead))]
+
+    def card_data(a: str) -> dict:
+        x, t = assessments[a], trends.get(a)
+        favored = PHASE_ASSETS.get(x["phase"], ([], []))[0]
+        assets = [(n.replace(" {paese}", ""), None if (v := asset_trend(n, cls.get(a, {}), markets)) is None else v >= 0)
+                  for n in favored]
+        score = fx_score.get(CCY.get(a))
+        return {"area": a, "href": f"/paese?area={a}", "trend": t, "regime": x["regime_label"], "phase": x["phase"],
+                "ccy_up": None if score is None else score >= 50, "assets": assets,
+                "change": change_text(x["history"], t)}
+
+    areas = list(assessments)
+    by_trend = sorted(areas, key=lambda a: -trends[a]["dist_pct"] if a in trends else math.inf)
+    grid = lambda order: ('<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">'
+                          + "".join(ch.country_card_html(card_data(a), i) for i, a in enumerate(order)) + "</div>")
+    out.append(section("I paesi", "Ogni scheda dice se la borsa del paese è sopra o sotto la sua media a 10 mesi, "
+                       "l'unica regola dell'app verificata sul passato. Regime e fase spiegano il contesto. Tocca una scheda per il dettaglio."))
+    out.append(switch("ordine", ["tendenza", "nome"], "tendenza", {"tendenza": "Per tendenza", "nome": "Per nome"}))
+    out.append(when("ordine=tendenza", ui(grid(by_trend))) + when("ordine=nome", ui(grid(sorted(areas)))))
+    out.append(caption("La regola non prevede i rendimenti. Sullo storico intero ha dimezzato le perdite più grandi a parità di "
+                       "rendimento; dal 2019 le ha ridotte di un terzo ma è costata circa 4 punti l'anno (crollo e rimbalzo "
+                       "rapidi del 2020, falsi segnali). Dettagli nella pagina **Metodo**."))
+
+    out.append(section("Il ciclo economico", "Ogni paese sta nella sua fase: più mesi ci è, più è avanti sull'onda. "
+                       "La linea tratteggiata parte da dove era 6 mesi fa. Il bordo è verde o rosso secondo la tendenza della borsa."))
+    out.append(ui('<div class="card">' + reliability_html("phase") + ch.world_cycle_html(
+        {a: {"trail": phase_trail(x["history"]), "positive": trends.get(a, {}).get("positive"), "regime": x["regime_label"]}
+         for a, x in assessments.items()}) + f"<script>{ch.ANIMATE_JS}</script></div>"))
+    heat = {a: {"Azioni": trends[a]["dist_pct"] if a in trends else None,
+                "Obbligazioni": None if (v := cls.get(a, {}).get("Obbligazioni")) is None or pd.isna(v) else round(v * 100, 1),
+                "Valuta": None if (v := fx_trend.get(CCY.get(a))) is None or pd.isna(v) else round(v * 100, 1)}
+            for a in areas}
+    extra = " · ".join(f"{n} {ch.pct_it(markets[t] * 100)}" for t, n in (("GLD", "Oro"), ("DBC", "Materie prime"))
+                       if t in markets and not pd.isna(markets[t]))
+    out.append(section("Regimi e tendenze", "A sinistra crescita e inflazione di ogni paese, con la coda degli ultimi 6 "
+                       "mesi. A destra quanto ogni mercato è sopra o sotto la sua media a 10 mesi."))
+    out.append(columns(
+        (1, ui('<div class="card"><span class="eyebrow">Regimi</span>' + reliability_html("regime") + ch.regime_quadrant_html(
+            {a: {"trail": axis_trail(x["history"]), "label": x["regime_label"]} for a, x in assessments.items()}) + "</div>")),
+        (1, ui('<div class="card"><span class="eyebrow">Mappa di calore</span>' + ch.heatmap_html(heat, HEAT_COLS, month)
+               + (f'<p class="note">Uguali per tutti, in dollari: {escape(extra)}.</p>' if extra else "") + "</div>"))))
+    out.append(caption("Solo informativo, non è consulenza finanziaria. Si legge a fine mese."))
+    return "".join(out)
+
+
+def world_data(ctx: dict) -> dict | None:
+    """Letture comuni alle pagine Mondo e Paese, una volta sola per export: tendenza della borsa per paese, classi di
+    asset del paese e valute a fine mese, GLD e DBC. None senza prezzi in cache."""
+    if "world" in ctx:
+        return ctx["world"]
+    trends = ex.countries(ex.equity_from_cache(cache.read_indicator_series))
+    data = load_allocation()
+    px, _ = load_scores()
+    w = None
+    if data and not px.empty and trends:
+        ct = data["Classi di asset"]["raw"]["Tendenza"]
+        month = ct.index.get_level_values(1).max()
+        fs, ft = data["Valute"]["score"].dropna(how="all"), data["Valute"]["raw"]["Tendenza"]
+        w = {"trends": trends, "month": month,
+             "cls": {a: ct.loc[(a, month)].to_dict() for a in AREAS if (a, month) in ct.index},
+             "fx_score": fs.iloc[-1].dropna().to_dict(), "fx_trend": ft.loc[month].dropna().to_dict(),
+             "markets": pillars(px.drop(columns=EXTRA_ETF))["Tendenza"].iloc[-1].dropna().to_dict()}
+    ctx["world"] = w
+    return w
+
+
+def page_world(ctx: dict) -> str:
+    w = world_data(ctx)
+    if not w:
+        return notice("Nessun prezzo in cache.")
+    return world_page(ctx["assessments"], w["trends"], w["cls"], w["fx_score"], w["fx_trend"], w["markets"], w["month"])
+
+
 def section(title: str, lead: str) -> str:
     return ui(f'<h2 class="sec">{escape(title)}</h2><p class="note" style="font-size:15px">{lead}</p>')
 
 
 def country_allocation(area: str) -> str:
-    """Pagina Il mio paese: classi di asset del paese (classifica verificata) e la sua valuta nella classifica delle valute."""
+    """Pagina Paese: classi di asset del paese (classifica verificata) e la sua valuta nella classifica delle valute."""
     data = load_allocation()
     if not data:
         return notice("Nessun prezzo in cache per le classi di asset.")
@@ -254,30 +365,71 @@ def country_allocation(area: str) -> str:
     return "".join(out)
 
 
+def favored_html(phase: str | None, cls: dict[str, float], markets: dict[str, float]) -> str:
+    """Asset favoriti e sfavoriti dalla fase (PHASE_ASSETS), ognuno colorato dalla sua tendenza."""
+    more, less = PHASE_ASSETS.get(phase, ([], []))
+    chips = lambda names: trend_chips_html([(n.replace(" {paese}", ""), None if (v := asset_trend(n, cls, markets)) is None
+                                             else v >= 0) for n in names]) if names else '<p class="note">Nessuno.</p>'
+    return (f'<div class="card"><div class="head"><h3>Quando il ciclo è in {escape(ch.PHASE_SHORT.get(phase, phase))}</h3>'
+            f'<span class="note">fase del ciclo</span></div>{reliability_html("phase")}'
+            f'<span class="eyebrow">Più peso</span>{chips(more)}<span class="eyebrow">Meno peso</span>{chips(less)}'
+            '<p class="note">Cosa è andato meglio e peggio in questa fase in passato. Verde = sopra la media a 10 mesi a fine '
+            'mese, rosso = sotto, grigio = senza dato. Descrive il contesto, non dice cosa comprare.</p></div>')
+
+
 def page_area(area: str, ctx: dict) -> str:
-    out = [ui(hero_html("Il mio paese", escape(area), "Cosa pesare di più dentro il paese, come sta la sua valuta e il quadro "
-                        "macro: crescita, inflazione e fase del ciclo. Cambia paese qui sopra: il link resta sul paese scelto.")),
-           section("Classi di asset e valuta", "Azioni, titoli di Stato, liquidità e oro del paese, in valuta locale, per "
-                   "probabilità di rendere più delle altre nei 6 mesi dopo; poi la valuta fra le 8 dell'app."),
-           country_allocation(area)]
+    """Pagina Paese (plan-dashboard-paesi.md, sezione 5): stato della tendenza, dove sta nel ciclo, asset favoriti,
+    classi di asset e valuta, ETF UCITS, storico; indicatori e dati usati nel dettaglio chiuso."""
+    w = world_data(ctx) or {}
+    out = [ui(ch.country_hero_html(area, w.get("trends", {}).get(area), w.get("month")))]
     a = ctx["assessments"].get(area)
+    if a:
+        px = load_scores()[0]
+        above = {} if px.empty else (pillars(px)["Tendenza"].iloc[-1].dropna() > 0).to_dict()
+        conf = confirmation(a["regime"], above, AREA_EQUITY.get(area))
+        out.append(section("Dove siamo", "Il paese sull'onda del ciclo e nel quadrante crescita e inflazione, con la "
+                           "strada degli ultimi 6 mesi. Spiegano il contesto: non cambiano lo stato della tendenza."))
+        out.append(ui(area_hero_html(a, describe(a), (sum(up for *_, up in conf), len(conf)))))
+        one = {area: a}
+        out.append(columns(
+            (1, ui('<div class="card"><span class="eyebrow">Ciclo</span>' + reliability_html("phase") + ch.world_cycle_html(
+                {area: {"trail": phase_trail(a["history"]), "positive": w.get("trends", {}).get(area, {}).get("positive"),
+                        "regime": a["regime_label"]}}) + f"<script>{ch.ANIMATE_JS}</script></div>")),
+            (1, ui('<div class="card"><span class="eyebrow">Regime</span>' + reliability_html("regime") + ch.regime_quadrant_html(
+                {x: {"trail": axis_trail(v["history"]), "label": v["regime_label"]} for x, v in one.items()}) + "</div>"))))
+        trend = {asset: (t, up) for asset, t, up in conf}
+        items = [(f"{asset} · {trend[asset][0]}" if asset in trend else asset, trend[asset][1] if asset in trend else None)
+                 for asset in ASSET_ALLOCATION.get(a["regime"], [])]
+        out.append(section("Asset favoriti da fase e regime", "Più peso e meno peso secondo la fase del ciclo, poi gli "
+                           "asset tipici del regime. Ogni asset ha il colore della sua tendenza."))
+        out.append(columns(
+            (1, ui(favored_html(a["phase"], w.get("cls", {}).get(area, {}), w.get("markets", {})))),
+            (1, ui(f'<div class="card"><div class="head"><h3>Asset tipici quando {escape(label_phrase(a["regime"]))}</h3>'
+                   f'<span class="note">regime {escape(a["regime"])}</span></div>{reliability_html("regime_assets")}{trend_chips_html(items)}'
+                   f'{reliability_html("confirmation")}'
+                   '<p class="note">Verde = ETF sopra la media a 10 mesi (fine mese), rosso = sotto, grigio = senza ETF.</p></div>'))))
+    out.append(section("Classi di asset e valuta", "Azioni, titoli di Stato, liquidità e oro del paese, in valuta locale, "
+                       "per probabilità di rendere più delle altre nei 6 mesi dopo; poi la valuta fra le 8 dell'app."))
+    out.append(country_allocation(area))
+    etf = AREA_EQUITY.get(area)
+    if etf:
+        out.append(section("Investire in questa borsa dall'Italia", f"L'app misura la tendenza con l'ETF americano {etf}. "
+                           "Chi investe dall'Italia di solito compra un equivalente UCITS: qui un esempio, non un consiglio."))
+        out.append(ui(ucits_html([etf], {etf: f"Azioni {area}"})))
     if not a:
         return "".join(out) + notice("Nessun dato macro in cache per quest'area.")
-    out.append(section("Il quadro macro", "Crescita e inflazione, fase del ciclo, indicatori anticipatori e dati usati."))
+    out.append(section("Storico", "Il regime mese per mese e dove stava il paese sull'onda del ciclo."))
+    out.append(ui(history_html(a["history"])))
+    detail = []
     if a["stale"]:
-        out.append(notice("Dati in ritardo anomalo: " + ", ".join(INPUT_LABELS.get(n, n) for n in a["stale"])
-                          + ". La fonte potrebbe aver cambiato dataset: la lettura è meno affidabile.", "warn"))
-    px = load_scores()[0]
-    above = {} if px.empty else (pillars(px)["Tendenza"].iloc[-1].dropna() > 0).to_dict()
-    conf = confirmation(a["regime"], above, AREA_EQUITY.get(area))
-    out.append(ui(area_hero_html(a, describe(a), (sum(up for *_, up in conf), len(conf)))))
-
+        detail.append(notice("Dati in ritardo anomalo: " + ", ".join(INPUT_LABELS.get(n, n) for n in a["stale"])
+                             + ". La fonte potrebbe aver cambiato dataset: la lettura è meno affidabile.", "warn"))
     xg, xi = a["positions"]
     growth_src = a["growth_source"]
     gser = load_indicator(area, growth_src)
     gm = monthly(gser)
     g_change = gm.iloc[-1] - gm.iloc[-4] if len(gm) > 3 else 0.0
-    out.append(ui(
+    detail.append(ui(
         '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'
         + axis_card_html(
             f"Crescita · {'CLI OCSE' if growth_src == 'cli' else 'PIL annuo'}",
@@ -300,7 +452,6 @@ def page_area(area: str, ctx: dict) -> str:
           f'l\'inflazione del trimestre in corso risulti in salita a dati completi. La crescita del trimestre non si prevede '
           f'(resta vicina al 50%): crescita incerta.</p></div>'
         + "</div>"))
-    out.append(ui(history_html(a["history"])))
 
     risk = a["leading"]
     if risk:
@@ -332,24 +483,17 @@ def page_area(area: str, ctx: dict) -> str:
                 metric(label, "n/d" if ser.empty else fmt.format(ser.iloc[-1]),
                        f"{ser.iloc[-1] - ser.iloc[-1 - lag]:+.1f}" if len(ser) > lag else None, tip, spark(ser))
                 for label, ser, fmt, lag, tip in extra])))
-        out.append(f'<div class="box">{"".join(box)}</div>')
+        detail.append(f'<div class="box">{"".join(box)}</div>')
 
     growth, inflation, unemployment = (load_indicator(area, n) for n in ("growth_yoy", "inflation_yoy", "unemployment_rate"))
     lines = {k: v for k, v in {"PIL annuo %": (growth, "r-gold"), "Inflazione annua %": (inflation, "r-stag"),
                                "Disoccupazione %": (unemployment, "r-defl")}.items() if not v[0].empty}
     key = f"area-{area}"
     ctx["charts"][key] = {"height": 300, "series": [{"label": lb, "tok": tok, "data": series_points(s)} for lb, (s, tok) in lines.items()]}
-    out.append(f'<div class="box"><b>Crescita, inflazione, disoccupazione</b>{chart_div(key, {lb: tok for lb, (_, tok) in lines.items()})}</div>')
+    detail.append(f'<div class="box"><b>Crescita, inflazione, disoccupazione</b>{chart_div(key, {lb: tok for lb, (_, tok) in lines.items()})}</div>')
 
-    trend = {asset: (t, up) for asset, t, up in conf}
-    items = [(f"{asset} · {trend[asset][0]}" if asset in trend else asset, trend[asset][1] if asset in trend else None)
-             for asset in ASSET_ALLOCATION.get(a["regime"], [])]
-    out.append(columns(
-        (1, ui(freshness_html([(INPUT_LABELS[n], d, n in a["stale"]) for n, d in a["as_of"].items()]))),
-        (1, ui(f'<div class="card"><div class="head"><h3>Asset tipici quando {escape(label_phrase(a["regime"]))}</h3>'
-               f'<span class="note">regime {escape(a["regime"])}</span></div>{reliability_html("regime_assets")}{trend_chips_html(items)}'
-               f'{reliability_html("confirmation")}'
-               '<p class="note">Verde = ETF sopra la media a 10 mesi (fine mese), rosso = sotto, grigio = senza ETF.</p></div>'))))
+    detail.append(ui(freshness_html([(INPUT_LABELS[n], d, n in a["stale"]) for n, d in a["as_of"].items()])))
+    out.append(details("Dettaglio: crescita, inflazione, segnali di stress e dati usati", "".join(detail)))
     return "".join(out)
 
 
@@ -668,7 +812,7 @@ def page_allocation() -> str:
                      "Per PAC e investimenti fissi, orizzonte 6-12 mesi. Punteggio 1-100 relativo: 50 = metà classifica, 90 = "
                      "meglio del 90% degli altri nello stesso mese, per probabilità di battere la media nei 6 mesi dopo. "
                      "Più peso a chi sta in alto, meno peso a chi sta in basso: sono vantaggi statistici storici, non certezze. "
-                     "Le classi di asset di ogni paese sono nella pagina <b>Il mio paese</b>.")),
+                     "Le classi di asset di ogni paese sono nella pagina <b>Paese</b>.")),
         ui(ranking_html(countries, month, "Paesi", AL_HORIZON, _badge("Paesi"))),
         ui(ranking_html(_alloc_rows(fx, lambda mo: mo, CCY_NAMES, {}, "valuta", None)[0], month, "Valute", AL_HORIZON, _badge("Valute"))),
         caption("Solo informativo, non è consulenza. Si aggiorna a fine mese. Come è stata verificata nella sezione Metodo. "
@@ -710,7 +854,7 @@ def build() -> dict:
     return {
         "updated_at": cache.read_meta("updated_at"), "exported_at": pd.Timestamp.now(tz="UTC").isoformat(),
         "css": css(), "warnings": warnings_html(),
-        "pages": {"oggi": page_today(ctx), "paese": paese, "asset": page_ranking(), "portafoglio": portfolio,
+        "pages": {"mondo": page_world(ctx), "oggi": page_today(ctx), "paese": paese, "asset": page_ranking(), "portafoglio": portfolio,
                   "metodo": page_method(), "cot": page_cot(ctx), "calendario": page_calendar(), "mercati": page_markets(),
                   "allocazione": page_allocation()},
         "charts": ctx["charts"], "stress": stress,
