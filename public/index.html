@@ -85,6 +85,31 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 .lwc { height: 300px; margin-top: 8px; }
 .loading { color: var(--muted); padding: 40px 0; }
 
+/* Preparazione del colloquio */
+.advice h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.12; letter-spacing: -.04em; margin: 0; }
+.advice h2 { margin: 0; letter-spacing: -.02em; }
+.advice p { margin-bottom: 0; }
+.advice .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.advice .metrics { margin-top: 12px; }
+.advice .metric .v { font: 700 16px/1.4 "Plus Jakarta Sans", system-ui, sans-serif; }
+.advice a { text-underline-offset: 3px; }
+
+.advice-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+.advice-fields label, .advice-position label { display: grid; gap: 3px; min-width: 0; font-size: 13px; color: var(--muted); }
+.advice input:not([type=checkbox]), .advice select {
+  width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--raised); color: var(--fg); font: inherit;
+}
+.advice-position { margin: 0 0 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px;
+  display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.advice-position .advice-reference { grid-column: 1 / -1; }
+.advice-position .toggle { display: flex; }
+.advice-position .btn { justify-self: end; }
+.advice button[hidden], .advice [hidden] { display: none; }
+.advice-plot { width: 100%; height: auto; display: block; margin-top: 14px; }
+.advice-key { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; }
+.advice-key span::before { content: ""; display: inline-block; width: 16px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--key); }
+
 /* stress test: posizioni modificabili */
 .edit { width: 100%; border-collapse: collapse; font-size: 14px; }
 .edit th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 4px; }
@@ -101,18 +126,68 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
   <nav id="nav"></nav>
 </div></header>
 <main>
-  <div class="fresh"><span id="fresh"></span>Non prevede i rendimenti. Aiuta a capire il contesto e a ridurre le perdite grandi.</div>
+  <div class="fresh"><span id="fresh"></span></div>
   <div id="warnings"></div>
   <div id="page"><p class="loading">Carico i dati…</p></div>
 </main>
 <div id="more" class="hidden"></div>
+<template id="advice">
+  <section class="advice">
+    <div class="box">
+      <p class="lbl">Macro Cycle Tracker</p>
+      <h1>Patrimonio e proposta</h1>
+      <p>Inserisci le posizioni in euro e prova una modifica. I dati restano in memoria nella scheda del browser.</p>
+    </div>
+
+    <div class="box">
+      <h2>Obiettivo di spesa</h2>
+      <div class="advice-fields">
+        <label>Importo in euro <input id="advice-goal" type="number" min="0" max="1000000000000" step=".01"></label>
+        <label>Mese previsto <input id="advice-date" type="month"></label>
+      </div>
+      <p class="cap">Segna come disponibili solo le posizioni che il cliente potrebbe liquidare entro quel mese. La stima assume che il ricavato sia disponibile al valore simulato.</p>
+    </div>
+
+    <div class="cols">
+      <div class="box">
+        <h2>Situazione attuale</h2>
+        <div id="advice-current"></div>
+        <p class="cap" id="advice-total-current"></p>
+        <button type="button" class="btn" id="advice-add-current">Aggiungi posizione</button>
+      </div>
+      <div class="box">
+        <h2>Proposta</h2>
+        <p id="advice-empty">Copia la situazione attuale e modifica la distribuzione a parità di capitale.</p>
+        <div id="advice-proposed" hidden></div>
+        <p class="cap" id="advice-total-proposed"></p>
+        <div class="advice-fields">
+          <button type="button" class="btn" id="advice-copy">Copia la situazione attuale</button>
+          <button type="button" class="btn" id="advice-add-proposed" hidden>Aggiungi posizione</button>
+          <button type="button" class="btn" id="advice-reset" hidden>Elimina la proposta</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="box">
+      <h2>Confronto</h2>
+      <button type="button" class="btn" id="advice-run">Calcola il confronto</button>
+      <div id="advice-result" aria-live="polite"></div>
+      <p class="cap">Scheda di preparazione. La proposta richiede una valutazione di adeguatezza.</p>
+    </div>
+
+    <details class="box">
+      <summary>Contesto di mercato</summary>
+      <div id="advice-market"></div>
+      <p><a href="/mondo">Apri la panoramica mondiale</a></p>
+    </details>
+  </section>
+</template>
 <script>
 "use strict";
-// Tre pagine in alto (Mondo è la home, plan-dashboard-paesi.md), il resto in "Strumenti". Vecchi indirizzi portano alla pagina nuova.
-const MAIN = [["mondo", "Mondo"], ["paese", "Paese"], ["metodo", "Metodo"]];
-const MORE = [["oggi", "Oggi"], ["asset", "Classifica asset"], ["portafoglio", "Portafoglio e stress test"], ["allocazione", "Allocazione"],
+const MAIN = [["consulenza", "Consulenza"], ["mondo", "Mondo"], ["paese", "Paese"]];
+const MORE = [["oggi", "Oggi"], ["metodo", "Metodo"], ["asset", "Classifica asset"], ["portafoglio", "Portafoglio e stress test"], ["allocazione", "Allocazione"],
               ["cot", "COT report"], ["calendario", "Calendario"], ["mercati", "Mercati"]];
-const OLD = { aree: "paese", classifica: "asset", valute: "allocazione", "": "mondo" };
+const OLD = { aree: "paese", classifica: "asset", valute: "allocazione", "": "consulenza" };
 // /paese/italia -> /paese?area=Italia: sigle corte maiuscole (USA, UK), il resto con l'iniziale maiuscola
 const areaFromSlug = s => s.length <= 3 ? s.toUpperCase() : s[0].toUpperCase() + s.slice(1).toLowerCase();
 const $ = (s, el = document) => el.querySelector(s);
@@ -127,7 +202,7 @@ function setLogo() { $("#logo").src = dark.matches ? "/logo-mark.svg" : "/logo-m
 function pageName() {
   const p = location.pathname.replace(/^\/|\/$/g, "");
   if (p.startsWith("paese/")) return "paese";
-  return OLD[p] ?? ([...MAIN, ...MORE].some(([k]) => k === p) ? p : "mondo");
+  return OLD[p] ?? ([...MAIN, ...MORE].some(([k]) => k === p) ? p : "consulenza");
 }
 function params() { return new URLSearchParams(location.search); }
 
@@ -184,7 +259,11 @@ function applyState(page) {
   const s = state(page);
   $$("[data-switch]", page).forEach(el => {
     if (el.type === "checkbox") el.checked = s[el.dataset.switch] === "1";
-    else el.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.value === s[el.dataset.switch]));
+    else el.querySelectorAll("button").forEach(b => {
+      const active = b.dataset.value === s[el.dataset.switch];
+      b.classList.toggle("on", active);
+      b.setAttribute("aria-pressed", active);
+    });
   });
   $$("[data-when]", page).forEach(el => {
     const ok = el.dataset.when.split(";").every(c => { const [k, v] = c.split("="); return s[k] === v; });
@@ -363,11 +442,23 @@ const stress = {
     for (let i = iLow; i < wealth.length; i++) if (wealth[i] >= 1) return i + 1;
     return null;
   },
+  random() {
+    let seed = 0;
+    return () => {
+      seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  },
+  quantile(sorted, fraction) {
+    const x = (sorted.length - 1) * fraction, lo = Math.floor(x);
+    return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * (x - lo);
+  },
   monteCarlo(r, mc) {  // ricampiona i mesi storici; generatore con seme fisso, la banda non cambia a ogni modifica
     r = r.filter(x => x !== null);
     if (r.length < 60) return null;
-    let seed = 0;
-    const rand = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const rand = this.random();
     const finals = new Float64Array(mc.runs);
     for (let k = 0; k < mc.runs; k++) {
       let v = 100;
@@ -375,7 +466,7 @@ const stress = {
       finals[k] = v;
     }
     finals.sort();
-    const pct = p => { const x = (finals.length - 1) * p / 100, lo = Math.floor(x); return finals[lo] + (finals[Math.min(lo + 1, finals.length - 1)] - finals[lo]) * (x - lo); };
+    const pct = p => this.quantile(finals, p / 100);
     return { 5: pct(5), 50: pct(50), 95: pct(95) };
   },
 };
@@ -519,6 +610,302 @@ function heroVideo(page) {
   v.play().catch(() => {});
 }
 
+const advice = {
+  root: null,
+  categories: ["Conto e depositi", "Risparmio gestito", "Titoli", "Polizze", "Altro"],
+  portfolios() { return ["current", "proposed"].map(id => $("#advice-" + id, this.root)); },
+  init() {
+    const [current, proposed] = this.portfolios();
+    this.add(current);
+    $("#advice-add-current", this.root).onclick = () => { this.add(current); this.invalidate(); };
+    $("#advice-add-proposed", this.root).onclick = () => { this.add(proposed); this.invalidate(); };
+    $("#advice-copy", this.root).onclick = event => {
+      const rows = this.read(current);
+      if (!rows?.length) {
+        $("#advice-result", this.root).textContent = "Completa almeno una posizione con un importo valido.";
+        return;
+      }
+      proposed.replaceChildren();
+      rows.forEach(row => this.add(proposed, row));
+      proposed.hidden = false;
+      $("#advice-empty", this.root).hidden = true;
+      $("#advice-add-proposed", this.root).hidden = false;
+      event.currentTarget.hidden = true;
+      this.invalidate();
+    };
+    this.root.addEventListener("input", () => this.invalidate());
+    $("#advice-run", this.root).onclick = () => this.run();
+    $("#advice-reset", this.root).onclick = event => {
+      proposed.replaceChildren();
+      proposed.hidden = true;
+      $("#advice-empty", this.root).hidden = false;
+      $("#advice-add-proposed", this.root).hidden = true;
+      $("#advice-copy", this.root).hidden = false;
+      event.currentTarget.hidden = true;
+      this.invalidate();
+    };
+    this.invalidate();
+  },
+  add(container, row = { category: this.categories[0], amount: null, reference: "fixed", available: false }) {
+    const position = document.createElement("div");
+    position.className = "advice-position";
+    const references = Object.keys(DATA?.stress?.proxy ?? {}).filter(name => name !== "Cash");
+    position.innerHTML = `<label>Categoria <select data-field="category">${this.categories.map(name =>
+      `<option>${esc(name)}</option>`).join("")}</select></label>
+      <label>Valore in euro <input data-field="amount" type="number" min="0" max="1000000000000" step=".01"></label>
+      <label class="advice-reference">Modello per la simulazione <select data-field="reference">
+        <option value="">Da approfondire</option><option value="fixed">Liquidità a valore costante</option>
+        ${references.map(name => `<option value="${esc(name)}">${esc(name)} (${esc(DATA.stress.proxy[name])})</option>`).join("")}
+      </select></label>
+      <label class="toggle"><input data-field="available" type="checkbox"> Disponibile per la spesa</label>
+      <button type="button" class="btn">Rimuovi</button>`;
+    for (const key of ["category", "reference"]) {
+      $(`[data-field=${key}]`, position).value = row[key] ?? "";
+    }
+    $("[data-field=amount]", position).value = row.amount === null ? "" : row.amount / 100;
+    $("[data-field=available]", position).checked = row.available;
+    $("[data-field=category]", position).addEventListener("change", event => {
+      $("[data-field=reference]", position).value = event.target.value === this.categories[0] ? "fixed" : "";
+    });
+    $("button", position).onclick = () => {
+      position.remove();
+      this.invalidate();
+    };
+    container.append(position);
+  },
+  read(container) {
+    const rows = [];
+    for (const position of $$(".advice-position", container)) {
+      const field = key => $(`[data-field=${key}]`, position);
+      const amount = field("amount");
+      if (!amount.validity.valid) return null;
+      if (!amount.value || amount.valueAsNumber === 0) continue;
+      rows.push({
+        category: field("category").value,
+        reference: field("reference").value,
+        amount: Math.round(amount.valueAsNumber * 100),
+        available: field("available").checked,
+      });
+    }
+    return rows;
+  },
+  invalidate() {
+    const [current, proposed] = this.portfolios();
+    for (const [container, id] of [[current, "current"], [proposed, "proposed"]]) {
+      const rows = this.read(container);
+      $("#advice-total-" + id, this.root).textContent = rows
+        ? "Totale inserito " + this.euros(this.total(rows)) : "Verifica gli importi.";
+    }
+    $("#advice-reset", this.root).hidden = proposed.hidden;
+    $("#advice-result", this.root).textContent = "Calcola per aggiornare il confronto.";
+  },
+  total(rows) { return rows.reduce((sum, row) => sum + row.amount, 0); },
+  euros(cents) { return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(cents / 100); },
+  goal() {
+    const amount = $("#advice-goal", this.root), date = $("#advice-date", this.root);
+    if (!amount.value && !date.value && amount.validity.valid && date.validity.valid) return {};
+    if (!amount.validity.valid || !date.validity.valid || !(amount.valueAsNumber > 0) || !date.value) {
+      return { error: "Indica sia l’importo positivo sia il mese previsto per la spesa." };
+    }
+    const now = new Date(), [year, month] = date.value.split("-").map(Number);
+    const months = (year - now.getFullYear()) * 12 + month - now.getMonth() - 1;
+    if (months < 0 || months > 120) return { error: "Scegli un mese tra quello corrente e i prossimi dieci anni." };
+    return { amount: Math.round(amount.valueAsNumber * 100), months };
+  },
+  model(rows, S) {
+    const modeled = rows.filter(row => row.reference === "fixed" || S?.px?.[S.proxy[row.reference]]);
+    const eligible = modeled.filter(row => row.available);
+    const unknownEligible = rows.some(row => row.available && !modeled.includes(row));
+    const group = positions => {
+      const start = this.total(positions);
+      const columns = positions.map(row => row.reference === "fixed"
+        ? Array(S?.months.length ?? 1).fill(0)
+        : stress.eur(stress.ret(S.px[S.proxy[row.reference]]), S.usd_per_eur));
+      return { start, returns: start ? stress.combine(positions.map(row => row.amount / start), columns) : null };
+    };
+    return {
+      total: this.total(rows), eligible: group(eligible), other: group(modeled.filter(row => !row.available)),
+      modeled: this.total(modeled), unknownEligible, eligibleTotal: this.total(rows.filter(row => row.available)),
+      risky: modeled.some(row => row.reference !== "fixed"),
+    };
+  },
+  simulate(models, goal, horizon, runs) {
+    const sides = models.map(({ eligible, other }) => ({ eligible, other,
+      values: Array.from({ length: horizon + 1 }, () => new Float64Array(runs)),
+      goalValues: goal.amount ? new Float64Array(runs) : null, misses: 0 }));
+    const returns = sides.flatMap(({ eligible, other }) => [eligible.returns, other.returns]).filter(Boolean);
+    if (!returns.length) return null;
+    const window = stress.commonWindow(...returns);
+    const risky = models.some(model => model.risky);
+    if (!window.length || (risky && window[1] - window[0] + 1 < 60)) return null;
+    const [start, end] = window, random = stress.random();
+    const wealth = sides.map(() => ({ eligible: 0, other: 0 }));
+    for (let k = 0; k < runs; k++) {
+      sides.forEach((side, i) => {
+        wealth[i].eligible = side.eligible.start;
+        wealth[i].other = side.other.start;
+      });
+      for (let month = 0; month <= horizon; month++) {
+        const index = month ? start + Math.floor(random() * (end - start + 1)) : start;
+        sides.forEach((side, i) => {
+          const w = wealth[i];
+          if (month) {
+            w.eligible *= 1 + (side.eligible.returns?.[index] ?? 0);
+            w.other *= 1 + (side.other.returns?.[index] ?? 0);
+          }
+          if (month === goal.months) {
+            side.goalValues[k] = w.eligible;
+            if (w.eligible + 0.000001 < goal.amount) side.misses++;
+          }
+          side.values[month][k] = w.eligible + w.other;
+        });
+      }
+    }
+    return {
+      series: sides.map(({ values, goalValues, misses }) => ({
+        misses: misses / runs,
+        goalLow: goalValues ? stress.quantile(goalValues.sort(), .05) : null,
+        bands: values.map(column => {
+          column.sort();
+          return [.05, .5, .95].map(p => stress.quantile(column, p));
+        }),
+      })),
+      history: risky ? [start, end] : null,
+    };
+  },
+  plot(series, horizon, goalMonth) {
+    const width = 760, height = 285, left = 105, right = 714, top = 18, bottom = 246;
+    const values = series.flatMap(({ bands }) => bands.flat());
+    const min = Math.min(...values), max = Math.max(...values);
+    const pad = Math.max((max - min) * .05, max * .005, 1);
+    const low = Math.max(0, min - pad), high = max + pad;
+    const x = month => left + (right - left) * month / horizon;
+    const y = value => bottom - (bottom - top) * (value - low) / (high - low);
+    const points = (bands, i) => bands.map((row, month) => `${x(month).toFixed(1)},${y(row[i]).toFixed(1)}`);
+    const tokens = ["--r-defl", "--accent"];
+    const grid = Array.from({ length: 5 }, (_, i) => {
+      const value = low + (high - low) * i / 4, at = y(value);
+      return `<path d="M${left},${at}H${right}" stroke="var(--line)"/>
+        <text x="${left - 8}" y="${at + 4}" text-anchor="end">${this.euros(value)}</text>`;
+    }).join("");
+    const ticks = [...new Set([0, Math.round(horizon / 3), Math.round(horizon * 2 / 3), horizon])].map(month =>
+      `<text x="${x(month)}" y="267" text-anchor="middle">${month ? monthsIt(month) : "Oggi"}</text>`).join("");
+    const marker = goalMonth === undefined ? "" : `<path d="M${x(goalMonth)},${top}V${bottom}"
+      stroke="var(--muted)" stroke-dasharray="4 4"><title>Mese della spesa</title></path>`;
+    const shapes = series.map(({ bands }, i) => `<polygon fill="var(${tokens[i]})" opacity=".14"
+      points="${[...points(bands, 0), ...points(bands, 2).reverse()].join(" ")}"/>`).join("")
+      + series.map(({ bands }, i) => `<polyline fill="none" stroke="var(${tokens[i]})" stroke-width="2.5"
+      ${i ? 'stroke-dasharray="6 4"' : ""} points="${points(bands, 1).join(" ")}"/>`).join("");
+    return `<svg class="advice-plot" viewBox="0 0 ${width} ${height}" role="img"
+      aria-label="Valore simulato nel tempo. Fascia dal quinto al novantacinquesimo percentile e mediana."
+      fill="var(--muted)" font-size="13">${grid}${ticks}${marker}${shapes}</svg>
+      <div class="advice-key"><span style="--key:var(--r-defl)">Situazione attuale</span>
+        ${series.length > 1 ? '<span style="--key:var(--accent)">Proposta (linea tratteggiata)</span>' : ""}</div>`;
+  },
+  run() {
+    const result = $("#advice-result", this.root), [current, proposed] = this.portfolios();
+    const rows = [this.read(current), ...(!proposed.hidden ? [this.read(proposed)] : [])];
+    const goal = this.goal();
+    if (rows.some(row => row === null) || !rows[0]?.length || goal.error) {
+      result.textContent = goal.error ?? "Inserisci almeno una posizione attuale e verifica gli importi.";
+      return;
+    }
+    const S = DATA?.stress, models = rows.map(row => this.model(row, S));
+    const labels = ["Situazione attuale", "Proposta"];
+    const summaries = models.map((model, i) => {
+      const breakdown = this.categories.map(category => {
+        const amount = this.total(rows[i].filter(row => row.category === category));
+        return amount ? `<div>${category} · ${this.euros(amount)}</div>` : "";
+      }).join("");
+      return `<div class="metric"><span class="v">${labels[i]} · ${this.euros(model.total)}</span>
+        ${breakdown}<span class="k">Patrimonio simulabile ${this.euros(model.modeled)}</span>
+        ${goal.amount ? `<span class="k">Segnato come disponibile per la spesa ${this.euros(model.eligibleTotal)}</span>` : ""}
+        ${model.modeled < model.total ? `<span class="k">Da approfondire ${this.euros(model.total - model.modeled)}</span>` : ""}</div>`;
+    }).join("");
+    result.innerHTML = '<div class="metrics">' + summaries + '</div>';
+    if (models.length === 2 && models[0].total !== models[1].total) {
+      const difference = models[1].total - models[0].total;
+      const exact = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(Math.abs(difference) / 100);
+      result.insertAdjacentHTML("beforeend", `<p class="notice warn">La proposta ha ${exact} in ${difference > 0 ? "più" : "meno"}. Pareggia i due totali per confrontarli.</p>`);
+      return;
+    }
+    if (models.some(model => !model.modeled)) {
+      result.insertAdjacentHTML("beforeend", '<p class="notice warn">Associa almeno una posizione per portafoglio a un modello per avviare la simulazione.</p>');
+      return;
+    }
+    const horizon = goal.months === undefined ? 120 : Math.max(goal.months, 12);
+    const runs = S?.mc?.runs ?? 2000;
+    const sim = this.simulate(models, goal, horizon, runs);
+    if (!sim) {
+      result.insertAdjacentHTML("beforeend", '<p class="notice warn">Servono almeno 60 mesi consecutivi di dati comuni per le posizioni simulate.</p>');
+      return;
+    }
+    const measures = sim.series.map(({ misses, bands, goalLow }, i) => {
+      const model = models[i], [low, median, high] = bands[goal.months ?? horizon];
+      const rate = new Intl.NumberFormat("it-IT", { style: "percent", maximumFractionDigits: 1 }).format(misses);
+      return `<div class="metric"><span class="v">${labels[i]}</span>
+        <span>Valore mediano ${this.euros(median)}</span>
+        <span class="k">5°–95° percentile · ${this.euros(low)} – ${this.euros(high)}</span>
+        ${goal.amount ? `<span>Spesa scoperta nelle simulazioni: ${rate}</span>
+          <span class="k">Capitale disponibile al 5° percentile · ${this.euros(goalLow)}</span>
+          ${model.unknownEligible ? '<span class="k">Stima parziale: alcune posizioni segnate come disponibili sono fuori dal modello.</span>' : ""}
+          ${!model.eligibleTotal ? '<span class="k">Nessuna posizione segnata come disponibile per la spesa.</span>' : ""}` : ""}</div>`;
+    }).join("");
+    const prompts = [];
+    if (models.some(model => model.modeled !== model.total)) {
+      prompts.push("Verifica esposizioni, valore di riscatto e vincoli delle voci fuori simulazione prima di trarre conclusioni sull’intero patrimonio.");
+    }
+    if (goal.amount && models.some(model => model.eligibleTotal < goal.amount)) {
+      prompts.push("Controlla se la spesa può essere coperta con altre somme. Almeno uno degli assetti ha oggi meno capitale segnato come disponibile dell’importo indicato.");
+    }
+    if (models.length === 2 && goal.amount && models.every(model => !model.unknownEligible) && sim.series[1].misses > sim.series[0].misses) {
+      prompts.push("Nel modello la proposta lascia scoperta la spesa più spesso. Prova a riservare una quota liquida maggiore e confronta di nuovo.");
+    }
+    if (models.length === 2 && models[0].modeled !== models[1].modeled) {
+      prompts.push("I grafici partono da importi simulabili diversi. Allinea la copertura prima di confrontare i valori finali.");
+    }
+    if (models.length === 2 && models.every(model => model.modeled === model.total) &&
+        sim.series[1].bands[goal.months ?? horizon][0] < sim.series[0].bands[goal.months ?? horizon][0]) {
+      prompts.push("Nella proposta il valore al 5° percentile è più basso. Verifica se il cliente potrebbe sostenere quell’esito all’orizzonte scelto.");
+    }
+    const heading = goal.amount ? "Valori al mese della spesa" : "Valori dopo 10 anni";
+    const history = sim.history ? ` Campione storico comune da ${S.months[sim.history[0]]} a ${S.months[sim.history[1]]}.` : "";
+    result.insertAdjacentHTML("beforeend", `<h3>Monte Carlo sul patrimonio simulabile</h3>
+      ${this.plot(sim.series, horizon, goal.months)}<h3>${heading}</h3><div class="metrics">${measures}</div>
+      ${prompts.length ? `<h3>Cosa approfondire</h3><ul>${prompts.map(note => `<li>${note}</li>`).join("")}</ul>` : ""}
+      <p class="cap">${sim.history ? `${runs.toLocaleString("it-IT")} percorsi con gli stessi mesi estratti per ogni portafoglio.${history}`
+        : "Le voci simulate hanno valore costante in ogni percorso."}
+      Fasce dal 5° al 95° percentile a ogni data. Valori nominali in euro prima di costi e tasse. Liquidità a rendimento zero.
+      Per le posizioni modellate tramite ETF, rendimenti storici convertiti in euro e pesi costanti mese per mese all’interno delle due quote, disponibile e restante.
+      La spesa è verificata al mese indicato senza sottrarla dai percorsi. Le percentuali valgono per queste ipotesi.</p>`);
+  },
+};
+
+function renderAdvice(page) {
+  if (!advice.root) {
+    advice.root = $("#advice").content.firstElementChild.cloneNode(true);
+    advice.init();
+  }
+  page.replaceChildren(advice.root);
+  const target = $("#advice-market", page);
+  const context = DATA?.advice_market;
+  if (!context?.length) {
+    target.innerHTML = DATA
+      ? '<p>Apri Mondo per consultare le letture disponibili.</p>'
+      : '<p>I dati di mercato sono temporaneamente indisponibili. Puoi continuare a preparare il colloquio.</p>';
+    return;
+  }
+  target.innerHTML = '<div class="metrics">' + context.map(({ area, regime, phase, macro_month, trend, trend_month, yield_10y, yield_month }) => {
+    const reading = trend === true ? "positiva" : trend === false ? "negativa" : "non disponibile";
+    return `<div class="metric">
+      <a class="v" href="/paese?area=${encodeURIComponent(area)}">${esc(area)}</a>
+      <span class="d">${esc(regime)} · ${esc(phase || "Fase non disponibile")}${macro_month ? " · " + esc(macro_month) : ""}</span>
+      <span class="k">Tendenza azionaria ${reading}${trend_month ? " · " + esc(trend_month) : ""}</span>
+      <span class="k">Decennale ${yield_10y ? esc(yield_10y) + " · " + esc(yield_month) : "non disponibile"}</span>
+    </div>`;
+  }).join("") + '</div>';
+}
+
 function route() {
   const name = pageName();
   const path = location.pathname.replace(/^\/|\/$/g, "");
@@ -526,9 +913,13 @@ function route() {
   if (path.startsWith("paese/")) history.replaceState(null, "", "/paese?area=" + encodeURIComponent(areaFromSlug(decodeURIComponent(path.slice(6)))));
   renderNav();
   document.title = [...MAIN, ...MORE].find(([k]) => k === name)[1] + " · Soft Investing";
-  if (!DATA) return;
   const page = $("#page");
-  page.innerHTML = DATA.pages[name];
+  if (name === "consulenza") renderAdvice(page);
+  else if (DATA) page.innerHTML = DATA.pages[name];
+  else {
+    page.innerHTML = '<p class="notice warn">Dati di mercato non disponibili. Riprova fra qualche minuto.</p>';
+    return;
+  }
   lab.profile = null;
   applyFilters(page);
   applyState(page);
@@ -543,7 +934,7 @@ function freshness() {
   const fresh = Date.now() - t < 48 * 3600e3;  // un run al giorno, nessuno il sabato
   const f = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(t);
   const p = Object.fromEntries(f.map(x => [x.type, x.value]));
-  $("#fresh").innerHTML = `<i style="background:var(--${fresh ? "r-gold" : "r-refl"})"></i>Dati aggiornati il ${p.day}/${p.month} alle ${p.hour}:${p.minute} · `;
+  $("#fresh").innerHTML = `<i style="background:var(--${fresh ? "r-gold" : "r-refl"})"></i>Dati aggiornati il ${p.day}/${p.month} alle ${p.hour}:${p.minute}`;
 }
 
 async function load() {
@@ -553,8 +944,8 @@ async function load() {
     const res = await fetch("/data/site.json", { cache: "no-cache", signal: AbortSignal.timeout(20000) });
     if (!res.ok) throw new Error(res.status);
     DATA = await res.json();
-  } catch (e) {
-    $("#page").innerHTML = `<p class="notice warn">Dati non disponibili (${esc(e.message)}). Riprova fra qualche minuto.</p>`;
+  } catch {
+    route();
     return;
   }
   const style = document.createElement("style");

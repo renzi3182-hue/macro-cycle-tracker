@@ -844,6 +844,31 @@ def css() -> str:
             + _CSS.replace("__DONUT_TIPS__", tips).replace("__WAVE__", _WAVE_MASK))
 
 
+def advice_market(ctx: dict) -> list[dict]:
+    """Letture e date già disponibili in cache per la preparazione del colloquio."""
+    trends = (world_data(ctx) or {}).get("trends", {})
+    rows = []
+    for area in ("Italia", "Eurozona", "USA"):
+        assessment = ctx["assessments"].get(area)
+        trend = trends.get(area, {})
+        yields = load_indicator(area, "yield_10y").dropna()
+        if area == "USA" and yields.empty:
+            yields = load_indicator(im.AREA, "DGS10").dropna()
+        if not assessment and not trend and yields.empty:
+            continue
+        rows.append({
+            "area": area,
+            "regime": assessment["regime_label"] if assessment else "Regime non disponibile",
+            "phase": assessment["phase"] if assessment else None,
+            "macro_month": month_it(assessment["month"]) if assessment else None,
+            "trend": trend.get("positive"),
+            "trend_month": month_it(pd.Timestamp(trend["month"])) if trend else None,
+            "yield_10y": f"{yields.iloc[-1]:.2f}".replace(".", ",") + "%" if not yields.empty else None,
+            "yield_month": month_it(yields.index[-1]) if not yields.empty else None,
+        })
+    return rows
+
+
 def build() -> dict:
     ctx = {"assessments": {area: a for area in AREAS if (a := load_assessment(area))}, "charts": {}}
     if not ctx["assessments"]:
@@ -857,7 +882,7 @@ def build() -> dict:
         "pages": {"mondo": page_world(ctx), "oggi": page_today(ctx), "paese": paese, "asset": page_ranking(), "portafoglio": portfolio,
                   "metodo": page_method(), "cot": page_cot(ctx), "calendario": page_calendar(), "mercati": page_markets(),
                   "allocazione": page_allocation()},
-        "charts": ctx["charts"], "stress": stress,
+        "charts": ctx["charts"], "stress": stress, "advice_market": advice_market(ctx),
     }
 
 
