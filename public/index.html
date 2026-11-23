@@ -11,6 +11,8 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"
         integrity="sha384-OK7vELvjHdhUFi31JYioPIcRHTROLdcDa6ZsNWgvgLaKj+9JqhU0Ad8g4wz3CXjA" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/motion@12.23.12/dist/motion.js"
+        integrity="sha384-L8F6MBCtza31dSRnyAsxhtWvL4lBh6NwQ27N+T2yd16CGe7UKTa7EVaTDmAP5Wv/" crossorigin="anonymous"></script>
 <style>
 /* Token del design system Soft Glass: stessi valori di src/ui/theme.py. I blocchi .si arrivano con il loro CSS in site.json. */
 :root {
@@ -38,15 +40,17 @@ header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, v
 header .in { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 16px; }
 header .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.03em; font-size: 17px; color: var(--fg); text-decoration: none; flex: none; }
 header .brand img { width: 30px; height: 30px; }
-@media (max-width: 520px) { header .brand span { display: none; } header .in { gap: 8px; padding: 10px 12px; } nav { gap: 0; } nav a { padding: 7px 6px; font-size: 14px; } }
+@media (max-width: 520px) { header .brand span { display: none; } header .in { gap: 8px; padding: 10px 12px; } nav { gap: 0; } nav a { padding: 8px 6px; font-size: 14px; } }
 nav { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; align-items: center; }
-nav a, nav summary { color: var(--muted); text-decoration: none; padding: 7px 12px; border-radius: 10px; white-space: nowrap; font-weight: 500; cursor: pointer; }
+nav a, nav summary { color: var(--muted); text-decoration: none; padding: 8px 12px; border-radius: 10px; white-space: nowrap; font-weight: 500; cursor: pointer; }
 nav a:hover, nav summary:hover { color: var(--fg); background: var(--raised); }
 nav a.on { color: var(--fg); background: var(--raised); font-weight: 600; }
 nav details { position: relative; }
 nav summary { list-style: none; }
 nav summary::-webkit-details-marker { display: none; }
 nav details[open] summary, nav details.on summary { color: var(--fg); }
+#moreBtn { display: inline-flex; align-items: center; gap: 4px; }
+#moreBtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 #more { position: fixed; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px;
   box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 180px; z-index: 20; }
 #more a { color: var(--muted); text-decoration: none; border-radius: 10px; font-weight: 500; }
@@ -55,58 +59,61 @@ nav details[open] summary, nav details.on summary { color: var(--fg); }
 .fresh { font-size: 13px; color: var(--muted); margin-top: 12px; }
 .fresh i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
-.seg { display: inline-flex; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 2px; max-width: 100%; }
-.seg button { font: inherit; border: 0; background: transparent; padding: 6px 13px; border-radius: 9px; white-space: nowrap; color: var(--muted); cursor: pointer; }
-.seg button.on { background: var(--raised); color: var(--fg); font-weight: 600; }
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 2px; max-width: 100%; }
+.seg button { font: inherit; border: 0; background: transparent; padding: 6px 12px; border-radius: 8px; white-space: nowrap; color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--raised); color: var(--fg); font-weight: 500; }
 .seg.multi button.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
 .toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; width: fit-content; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
 .lbl { font-size: 13px; color: var(--muted); margin: 0 0 4px; }
 .cols { display: grid; gap: 16px; align-items: start; }
 @media (max-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr) !important; } }
-.box { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: var(--shadow); }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; }
 .box > * + * { margin-top: 12px; }
-.box .box { box-shadow: none; }
 .prose p, .prose ul { margin: 0 0 10px; } .prose ul { padding-left: 20px; } .prose h3, h3.h { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
 .prose code { font-family: "DM Mono", monospace; font-size: 13px; }
 .cap { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 .cap b { color: var(--fg); font-weight: 600; }
-.notice { margin: 12px 0 0; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent);
+.notice { margin: 12px 0 0; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent);
   background: var(--surface); font-size: 14px; }
 .notice.warn { border-left-color: var(--r-refl); }
+.notice details { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.notice summary { cursor: pointer; }
 details.box summary { cursor: pointer; font-weight: 600; }
 pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; background: var(--raised); padding: 12px; border-radius: 12px; }
 .metrics { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 .metric { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .metric .k { font-size: 13px; color: var(--muted); }
-.metric .v { font: 500 26px/1.2 "DM Mono", monospace; letter-spacing: -.02em; }
+.metric .v { font: 500 26px/1.2 "DM Mono", monospace; font-variant-numeric: tabular-nums; }
 .metric .d { font-size: 13px; }
 .metric .spark { width: 100%; height: 34px; margin-top: 6px; }
 .lwc { height: 300px; margin-top: 8px; }
 .loading { color: var(--muted); padding: 40px 0; }
 
 /* Preparazione del colloquio */
-.advice h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.12; letter-spacing: -.04em; margin: 0; }
-.advice h2 { margin: 0; letter-spacing: -.02em; }
+.advice h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.12; font-weight: 800; letter-spacing: -.03em; margin: 0; }
+.advice h2 { margin: 0; font-weight: 600; letter-spacing: -.01em; }
 .advice p { margin-bottom: 0; }
 .advice .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .advice .metrics { margin-top: 12px; }
-.advice .metric .v { font: 700 16px/1.4 "Plus Jakarta Sans", system-ui, sans-serif; }
+.advice .metric .v { font: 600 16px/1.4 "Plus Jakarta Sans", system-ui, sans-serif; }
 .advice a { text-underline-offset: 3px; }
 
 .advice-fields { display: flex; flex-wrap: wrap; gap: 10px; }
 .advice-fields label, .advice-position label { display: grid; gap: 3px; min-width: 0; font-size: 13px; color: var(--muted); }
 .advice input:not([type=checkbox]), .advice select {
-  width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 9px;
+  width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--raised); color: var(--fg); font: inherit;
 }
-.advice-position { margin: 0 0 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px;
+.advice-position { margin: 0 0 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px;
   display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .advice-position .advice-reference { grid-column: 1 / -1; }
 .advice-position .toggle { display: flex; }
 .advice-position .btn { justify-self: end; }
 .advice button[hidden], .advice [hidden] { display: none; }
-.advice-plot { width: 100%; height: auto; display: block; margin-top: 14px; }
+.advice-plot { width: 100%; height: auto; display: block; margin-top: 16px; }
+/* reveal() nasconde i blocchi fuori vista finche' non ci si scorre sopra: in stampa vanno mostrati tutti */
+@media print { #page .card, #page .box, #page .metric, .advice-plot .mc-data { opacity: 1 !important; transform: none !important; clip-path: none !important; } }
 .advice-key { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; }
 .advice-key span::before { content: ""; display: inline-block; width: 16px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--key); }
 
@@ -114,9 +121,9 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 .edit { width: 100%; border-collapse: collapse; font-size: 14px; }
 .edit th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 4px; }
 .edit td { padding: 3px 4px; border-top: 1px solid var(--line); }
-.edit select, .edit input { font: inherit; color: var(--fg); background: var(--raised); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; width: 100%; }
+.edit select, .edit input { font: inherit; color: var(--fg); background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 100%; }
 .edit input { font-family: "DM Mono", monospace; text-align: right; width: 84px; }
-.edit button, .btn { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 9px; padding: 5px 10px; cursor: pointer; }
+.edit button, .btn { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 .edit button:hover, .btn:hover { color: var(--fg); }
 </style>
 </head>
@@ -199,6 +206,25 @@ const dark = matchMedia("(prefers-color-scheme: dark)");
 const token = name => getComputedStyle(document.documentElement).getPropertyValue("--" + name).trim();
 function setLogo() { $("#logo").src = dark.matches ? "/logo-mark.svg" : "/logo-mark-light.svg"; }
 
+// Movimento (Motion, motion.dev): solo se la libreria e' caricata e senza prefers-reduced-motion, altrimenti niente
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+const motion = () => !still.matches && window.Motion;
+const EASE = [0.22, 1, 0.36, 1];
+// Ogni blocco della pagina compare quando entra nello schermo, una volta sola (prima si animavano anche quelli fuori vista)
+function reveal(page) {
+  const M = motion();
+  if (!M) return;
+  const blocks = $$(".card, .box, .metric", page).filter(el => !el.parentElement.closest(".card, .box, .metric"));
+  blocks.forEach(el => { el.style.opacity = 0; });
+  M.inView(blocks, el => { M.animate(el, { opacity: [0, 1], y: [8, 0] }, { duration: 0.4, ease: EASE }); }, { margin: "0px 0px -40px 0px" });
+}
+// Grafico Monte Carlo: fasce e mediane si scoprono da oggi verso il futuro
+function drawPlot(root) {
+  const M = motion(), g = $(".advice-plot .mc-data", root);
+  if (!M || !g) return;
+  M.animate(g, { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"] }, { duration: 1.1, ease: EASE });
+}
+
 function pageName() {
   const p = location.pathname.replace(/^\/|\/$/g, "");
   if (p.startsWith("paese/")) return "paese";
@@ -210,7 +236,7 @@ function renderNav() {
   const cur = pageName();
   const inMore = MORE.some(([k]) => k === cur);
   $("#nav").innerHTML = MAIN.map(([k, t]) => `<a href="/${k}" data-link class="${k === cur ? "on" : ""}">${t}</a>`).join("")
-    + `<a href="#" id="moreBtn" class="${inMore ? "on" : ""}">Strumenti ▾</a>`;
+    + `<a href="#" id="moreBtn" class="${inMore ? "on" : ""}">Strumenti<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></a>`;
   $("#more").innerHTML = MORE.map(([k, t]) => `<a href="/${k}" data-link class="${k === cur ? "on" : ""}" style="padding:8px 12px">${t}</a>`).join("");
 }
 
@@ -226,6 +252,7 @@ document.addEventListener("click", e => {
     const r = e.target.getBoundingClientRect();
     more.style.top = r.bottom + 6 + "px"; more.style.left = Math.min(r.left, innerWidth - 200) + "px";
     more.classList.toggle("hidden");
+    if (!more.classList.contains("hidden") && motion()) Motion.animate(more, { opacity: [0, 1], y: [-4, 0] }, { duration: 0.16, ease: EASE });
     return;
   }
   more.classList.add("hidden");
@@ -798,7 +825,7 @@ const advice = {
       ${i ? 'stroke-dasharray="6 4"' : ""} points="${points(bands, 1).join(" ")}"/>`).join("");
     return `<svg class="advice-plot" viewBox="0 0 ${width} ${height}" role="img"
       aria-label="Valore simulato nel tempo. Fascia dal quinto al novantacinquesimo percentile e mediana."
-      fill="var(--muted)" font-size="13">${grid}${ticks}${marker}${shapes}</svg>
+      fill="var(--muted)" font-size="13">${grid}${ticks}${marker}<g class="mc-data">${shapes}</g></svg>
       <div class="advice-key"><span style="--key:var(--r-defl)">Situazione attuale</span>
         ${series.length > 1 ? '<span style="--key:var(--accent)">Proposta (linea tratteggiata)</span>' : ""}</div>`;
   },
@@ -870,6 +897,7 @@ const advice = {
     }
     const heading = goal.amount ? "Valori al mese della spesa" : "Valori dopo 10 anni";
     const history = sim.history ? ` Campione storico comune da ${S.months[sim.history[0]]} a ${S.months[sim.history[1]]}.` : "";
+    queueMicrotask(() => drawPlot(result));
     result.insertAdjacentHTML("beforeend", `<h3>Monte Carlo sul patrimonio simulabile</h3>
       ${this.plot(sim.series, horizon, goal.months)}<h3>${heading}</h3><div class="metrics">${measures}</div>
       ${prompts.length ? `<h3>Cosa approfondire</h3><ul>${prompts.map(note => `<li>${note}</li>`).join("")}</ul>` : ""}
@@ -925,6 +953,7 @@ function route() {
   applyState(page);
   runScripts(page);
   heroVideo(page);
+  reveal(page);
   if (location.hash) $(location.hash)?.scrollIntoView();
 }
 

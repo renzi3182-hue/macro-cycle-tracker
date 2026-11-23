@@ -88,6 +88,12 @@ def notice(text: str, kind: str = "info") -> str:
     return f'<p class="notice {kind}">{escape(text)}</p>'
 
 
+def notice_detail(text: str, technical: str) -> str:
+    """Avviso in parole semplici, con l'elenco tecnico (nomi delle serie) apribile sotto."""
+    return (f'<div class="notice warn">{escape(text)}<details><summary>Dettagli</summary>{escape(technical)}</details>'
+            '</div>')
+
+
 def details(summary: str, body: str, open_: bool = False) -> str:
     return f'<details class="box"{" open" if open_ else ""}><summary>{escape(summary)}</summary>{body}</details>'
 
@@ -826,13 +832,13 @@ def warnings_html() -> str:
     out = []
     late = stale_high_freq({k: (s.index[-1] if not (s := load_indicator(*k)).empty else None) for k in HIGH_FREQ_MAX_DAYS})
     if late:
-        out.append(notice("Serie giornaliere/settimanali ferme: " + ", ".join(f"{k[1]} ({k[0]})" for k in late)
-                          + ". Possibile problema di aggiornamento.", "warn"))
+        out.append(notice_detail("Alcuni dati di mercato non si aggiornano da qualche giorno",
+                                 ", ".join(f"{k[1]} ({k[0]})" for k in late)))
     failures = json.loads(cache.read_meta("fetch_failures") or "[]")
     if failures:
-        out.append(notice("Fetch falliti nell'ultimo aggiornamento: " + ", ".join(
-            f'{f["indicator"]} ({f["area"]}, {pd.Timestamp(f["time"]):%H:%M}) — {f["message"]}' for f in failures
-        ) + ". Tengo i dati in cache.", "warn"))
+        out.append(notice_detail("L'ultimo aggiornamento non ha scaricato alcuni dati, restano quelli già salvati",
+                                 ", ".join(f'{f["indicator"]} ({f["area"]}, {pd.Timestamp(f["time"]):%H:%M}): '
+                                           f'{f["message"]}' for f in failures)))
     return "".join(out)
 
 

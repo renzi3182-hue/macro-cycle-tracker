@@ -209,7 +209,7 @@ def stat_tile_html(href: str, eyebrow: str, value: int, total: int, state: str, 
         f'{f"<span style=\"align-self:flex-start;margin-top:-6px\">{badge_html(kind)}</span>" if kind else ""}'
         f'<div class="total" style="border-top:0;padding-top:0;flex-wrap:wrap"><span class="big" style="font-size:44px;line-height:48px">{value}</span>'
         f'<span class="muted" style="font-size:16px">/{total}</span>'
-        f'<span style="font-size:20px;font-weight:800;color:{color}">{escape(state)}</span></div>{bar}<p class="note">{note}</p></a>'
+        f'<span style="font-size:20px;font-weight:600;color:{color}">{escape(state)}</span></div>{bar}<p class="note">{note}</p></a>'
     )
 
 
@@ -359,10 +359,10 @@ def area_hero_html(a: dict, sentence: str, markets: tuple[int, int] | None = Non
     return (
         f'<div class="si card" style="padding:32px;border-radius:28px;background:linear-gradient(160deg,color-mix(in srgb,{color} 14%,var(--surface)),var(--surface) 55%)">'
         f'<span class="eyebrow">Crescita e inflazione oggi · dati PIL a {month_it(a["month"])}</span>'
-        f'<h1 style="font-size:clamp(30px,4.6vw,52px);line-height:1.05;font-weight:800;letter-spacing:-0.035em;color:{color}">'
+        f'<h1 style="font-size:clamp(30px,4.6vw,52px);line-height:1.05;font-weight:800;letter-spacing:-0.03em;color:{color}">'
         f'{escape(cap(axes_phrase(a["growth_state"], a["inflation_state"])))}</h1>'
         f'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px"><span class="muted" style="font-size:14px">Regime</span>'
-        f'<span class="chip tint" style="--c:{color};font-weight:700">{escape(a["regime_label"])}</span></div>'
+        f'<span class="chip tint" style="--c:{color};font-weight:500">{escape(a["regime_label"])}</span></div>'
         + (f'<p style="font-size:15px;line-height:22px;max-width:720px;color:var(--muted)">{escape(note)}</p>' if note else "")
         + f'<p style="font-size:17px;line-height:26px;max-width:720px">{sentence}</p>{reliability_html("regime")}'
         f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-top:8px">{cells}</div></div>'
@@ -683,7 +683,7 @@ def ranking_html(rows: list[dict], month: pd.Timestamp, title: str = "Classifica
         f'{ACTIVE if r["attivo"] else ""}{escape(r["perche"])}</small></span>'
         f'<span class="opt">{ribbon_html(r["storico"], score_color, 12, thin=True, ticks=False)}</span>'
         f'<span class="mono r opt">{r["Tendenza"] * 100:+.1f}%</span><span class="mono r opt">{r["prob"] * 100:.0f}%</span>'
-        f'<span class="r"><span class="chip tint mono" style="--c:{score_color(r["punteggio"])};font-weight:700">{r["punteggio"]:.0f}</span></span>'
+        f'<span class="r"><span class="chip tint mono" style="--c:{score_color(r["punteggio"])};font-weight:500">{r["punteggio"]:.0f}</span></span>'
         f'<span class="r" style="font-size:13px">{_signed(r["delta"]) if r["delta"] is not None else ""}</span></div>'
         for i, r in enumerate(rows, 1)
     )
@@ -700,7 +700,7 @@ def currency_html(row: dict, pos: int, total: int, month: pd.Timestamp, note: st
     return (f'<div class="si card"><div class="head"><h3>La valuta: {escape(row["nome"])}</h3><span class="note">punteggio '
             f'di fine {month_it(month)}, 1-100</span></div>{note}'
             f'<div class="total" style="border-top:0;padding-top:0;flex-wrap:wrap"><span class="chip tint mono" style="--c:'
-            f'{score_color(row["punteggio"])};font-size:22px;font-weight:700">{row["punteggio"]:.0f}</span>'
+            f'{score_color(row["punteggio"])};font-size:22px;font-weight:500">{row["punteggio"]:.0f}</span>'
             f'<span style="font-size:17px;font-weight:600">{pos}ª su {total} valute</span>'
             f'<span class="muted" style="font-size:14px">{escape(row["perche"])}</span></div>'
             f'<p>Probabilità che tenere liquidità in {escape(row["nome"].lower() if row["item"] != "USD" else "dollari")} renda più '

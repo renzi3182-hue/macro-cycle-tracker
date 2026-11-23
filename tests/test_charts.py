@@ -126,11 +126,11 @@ def test_country_hero_shows_currency_image_state_and_rule_sentence():
     trend = {"label": "Tendenza negativa", "positive": False, "dist_pct": -3.7, "near": False, "since": "2026-08",
              "history": [{"month": "2026-10", "positive": False, "dist_pct": -3.7}]}
     html = ch.country_hero_html("Italia", trend, pd.Timestamp("2026-10-01"))
-    assert "/media/valuta-eur.webp" in html and "€ EUR" in html and "lettura di ottobre 2026" in html
+    assert "valuta-" not in html and "€ EUR" in html and "lettura di ottobre 2026" in html
     assert "sotto la media a 10 mesi da agosto 2026" in html and "−3,7%" in html and "liquidità" in html
     assert "vicina alla media" not in html and not re.search(r"#[0-9a-fA-F]{3,6}\b", html)
 
 
 def test_country_hero_without_trend():
     html = ch.country_hero_html("Cina", None, None)
-    assert "Tendenza n/d" in html and "valuta-cny.webp" in html and "lettura" not in html
+    assert "Tendenza n/d" in html and "CNY" in html and "lettura" not in html
