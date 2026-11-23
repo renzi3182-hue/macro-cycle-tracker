@@ -19,9 +19,10 @@ import pandas as pd
 
 from src.classify import changes
 from src.classify import exposure as ex
-from src.classify.allocation import CCY, COUNTRY_ETF, ENTER, EXIT, HORIZON as AL_HORIZON
+from src.classify.allocation import AREA as ALLOC_AREA, CCY, COUNTRY_ETF, ENTER, EXIT, HORIZON as AL_HORIZON
 from src.classify import intermarket as im
 from src.classify import opportunities as opp
+from src.classify import advice_refs
 from src.classify.assess import HIGH_FREQ_MAX_DAYS, axis_trail, label_regimes, phase_trail, stale_high_freq
 from src.classify.leading import SIGNALS
 from src.classify.positioning import percentile_rank, zscore
@@ -29,7 +30,7 @@ from src.classify.recession import sahm_gap
 from src.classify.regime import monthly
 from src.classify.risk import label as risk_label
 from src.classify.rrg import GROUPS, MOMENTUM_WEEKS, TREND_WEEKS, quadrant, rrg
-from src.classify.score import HORIZON_MONTHS, PILLARS, TREND_MONTHS, UNIVERSE, band_table, forward_excess, hysteresis, pillars
+from src.classify.score import ASSET_AREA, HORIZON_MONTHS, PILLARS, TREND_MONTHS, UNIVERSE, band_table, forward_excess, hysteresis, monthly_prices, pillars
 from src.classify.stress import EXTRA_ETF, MC_RUNS, MC_YEARS, PROXY, SCENARIOS, VAR_LEVEL
 from src.config import cot_guide
 from src.config.asset_allocation import (
@@ -620,7 +621,19 @@ def stress_data(px: pd.DataFrame, bases: dict) -> dict:
                       for name, (a, b) in SCENARIOS.items()],
         "assets": STRESS_ASSETS, "bases": bases,
         "ucits": {"head": empty[:head_end], "tail": empty[empty.index("</table>"):], "rows": rows},
+        "refs": advice_references(p.index, usd),
     }
+
+
+def advice_references(index: pd.DatetimeIndex, usd_per_eur: pd.Series) -> dict:
+    """Riferimenti in euro della home Consulenza (src/classify/advice_refs.py): rendimenti mensili già in euro,
+    sugli stessi mesi di stress_data. Un riferimento senza dati in cache resta fuori."""
+    tickers = list(advice_refs.EQUITY_WORLD)
+    px = monthly_prices({t: load_indicator(ASSET_AREA, t) for t in tickers}).reindex(columns=tickers)
+    series = advice_refs.references(index, px, usd_per_eur, load_indicator(ALLOC_AREA, "Eurozona_yield_10y"),
+                                    load_indicator(ALLOC_AREA, "Eurozona_rate_3m"))
+    nums = lambda s: [None if pd.isna(v) else round(float(v), 6) for v in s]
+    return {name: {"label": advice_refs.LABELS[name], "r": nums(s)} for name, s in series.items() if s.notna().any()}
 
 
 def page_method() -> str:

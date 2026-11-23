@@ -109,7 +109,7 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
   display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .advice-position .advice-reference { grid-column: 1 / -1; }
 .advice-position .toggle { display: flex; }
-.advice-position .btn { justify-self: end; }
+.advice-position .btn { grid-column: 2; justify-self: end; }
 .advice button[hidden], .advice [hidden] { display: none; }
 .advice-plot { width: 100%; height: auto; display: block; margin-top: 16px; }
 /* reveal() nasconde i blocchi fuori vista finche' non ci si scorre sopra: in stampa vanno mostrati tutti */
@@ -673,23 +673,28 @@ const advice = {
     };
     this.invalidate();
   },
-  add(container, row = { category: this.categories[0], amount: null, reference: "fixed", available: false }) {
+  add(container, row = { category: this.categories[0], amount: null, reference: "fixed", cost: 0, available: false }) {
     const position = document.createElement("div");
     position.className = "advice-position";
     const references = Object.keys(DATA?.stress?.proxy ?? {}).filter(name => name !== "Cash");
+    const euro = Object.entries(DATA?.stress?.refs ?? {});
     position.innerHTML = `<label>Categoria <select data-field="category">${this.categories.map(name =>
       `<option>${esc(name)}</option>`).join("")}</select></label>
       <label>Valore in euro <input data-field="amount" type="number" min="0" max="1000000000000" step=".01"></label>
       <label class="advice-reference">Modello per la simulazione <select data-field="reference">
         <option value="">Da approfondire</option><option value="fixed">Liquidità a valore costante</option>
-        ${references.map(name => `<option value="${esc(name)}">${esc(name)} (${esc(DATA.stress.proxy[name])})</option>`).join("")}
+        ${euro.length ? `<optgroup label="Riferimenti in euro">${euro.map(([name, ref]) =>
+          `<option value="${esc(name)}">${esc(name)} (${esc(ref.label)})</option>`).join("")}</optgroup>` : ""}
+        <optgroup label="ETF in dollari">${references.map(name => `<option value="${esc(name)}">${esc(name)} (${esc(DATA.stress.proxy[name])})</option>`).join("")}</optgroup>
       </select></label>
+      <label>Costi annui in % <input data-field="cost" type="number" min="0" max="10" step=".01"></label>
       <label class="toggle"><input data-field="available" type="checkbox"> Disponibile per la spesa</label>
       <button type="button" class="btn">Rimuovi</button>`;
     for (const key of ["category", "reference"]) {
       $(`[data-field=${key}]`, position).value = row[key] ?? "";
     }
     $("[data-field=amount]", position).value = row.amount === null ? "" : row.amount / 100;
+    $("[data-field=cost]", position).value = row.cost ? row.cost * 100 : "";
     $("[data-field=available]", position).checked = row.available;
     $("[data-field=category]", position).addEventListener("change", event => {
       $("[data-field=reference]", position).value = event.target.value === this.categories[0] ? "fixed" : "";
@@ -704,13 +709,14 @@ const advice = {
     const rows = [];
     for (const position of $$(".advice-position", container)) {
       const field = key => $(`[data-field=${key}]`, position);
-      const amount = field("amount");
-      if (!amount.validity.valid) return null;
+      const amount = field("amount"), cost = field("cost");
+      if (!amount.validity.valid || !cost.validity.valid) return null;
       if (!amount.value || amount.valueAsNumber === 0) continue;
       rows.push({
         category: field("category").value,
         reference: field("reference").value,
         amount: Math.round(amount.valueAsNumber * 100),
+        cost: cost.value ? cost.valueAsNumber / 100 : 0,
         available: field("available").checked,
       });
     }
@@ -740,14 +746,17 @@ const advice = {
     return { amount: Math.round(amount.valueAsNumber * 100), months };
   },
   model(rows, S) {
-    const modeled = rows.filter(row => row.reference === "fixed" || S?.px?.[S.proxy[row.reference]]);
+    const modeled = rows.filter(row => row.reference === "fixed" || S?.refs?.[row.reference] || S?.px?.[S.proxy[row.reference]]);
     const eligible = modeled.filter(row => row.available);
     const unknownEligible = rows.some(row => row.available && !modeled.includes(row));
     const group = positions => {
       const start = this.total(positions);
-      const columns = positions.map(row => row.reference === "fixed"
-        ? Array(S?.months.length ?? 1).fill(0)
-        : stress.eur(stress.ret(S.px[S.proxy[row.reference]]), S.usd_per_eur));
+      const columns = positions.map(row => {
+        const gross = row.reference === "fixed" ? Array(S?.months.length ?? 1).fill(0)
+          : S.refs?.[row.reference]?.r ?? stress.eur(stress.ret(S.px[S.proxy[row.reference]]), S.usd_per_eur);
+        const keep = (1 - row.cost) ** (1 / 12);  // costo annuo tolto ogni mese
+        return gross.map(r => r === null ? null : (1 + r) * keep - 1);
+      });
       return { start, returns: start ? stress.combine(positions.map(row => row.amount / start), columns) : null };
     };
     return {
@@ -903,8 +912,9 @@ const advice = {
       ${prompts.length ? `<h3>Cosa approfondire</h3><ul>${prompts.map(note => `<li>${note}</li>`).join("")}</ul>` : ""}
       <p class="cap">${sim.history ? `${runs.toLocaleString("it-IT")} percorsi con gli stessi mesi estratti per ogni portafoglio.${history}`
         : "Le voci simulate hanno valore costante in ogni percorso."}
-      Fasce dal 5° al 95° percentile a ogni data. Valori nominali in euro prima di costi e tasse. Liquidità a rendimento zero.
-      Per le posizioni modellate tramite ETF, rendimenti storici convertiti in euro e pesi costanti mese per mese all’interno delle due quote, disponibile e restante.
+      Fasce dal 5° al 95° percentile a ogni data. Valori nominali in euro prima delle tasse, al netto dei soli costi annui indicati per ogni posizione. Liquidità a rendimento zero.
+      Riferimenti in euro: azioni mondo da ETF quotati in dollari convertiti in euro, obbligazioni e liquidità area euro ricostruite dal decennale e dal tasso a 3 mesi.
+      Per le posizioni modellate tramite ETF in dollari, rendimenti storici convertiti in euro e pesi costanti mese per mese all’interno delle due quote, disponibile e restante.
       La spesa è verificata al mese indicato senza sottrarla dai percorsi. Le percentuali valgono per queste ipotesi.</p>`);
   },
 };
