@@ -1,0 +1,53 @@
+.desk { display:grid; gap:18px; }
+.desk h1 {font-size:clamp(32px,5vw,58px);line-height:1.05;letter-spacing:-.05em;margin:8px 0 16px}
+.desk h2 {font-size:23px;font-weight:600;letter-spacing:-.035em;margin:0 0 12px}
+.desk p {margin:6px 0}
+.desk .mast {padding:clamp(22px,4vw,48px);border:1px solid var(--line);border-radius:28px;background:linear-gradient(110deg,var(--surface) 35%,color-mix(in srgb,var(--accent) 12%,var(--surface)))}
+.desk .tiles {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:12px}
+.desk .panel,.desk .tile,.meeting {padding:20px;border:1px solid var(--line);border-radius:18px;background:var(--surface)}
+.desk .tile {display:grid;gap:6px;text-decoration:none;color:var(--fg)}
+.desk .tile:hover {border-color:var(--accent)}
+.desk small,.desk .meta,.meeting small {color:var(--muted)}
+.desk .number {font:500 24px "DM Mono",monospace}
+.desk .spark {width:100%;height:40px;color:var(--accent)}
+.desk .rows {display:grid;gap:0}
+.desk .row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);text-decoration:none;color:var(--fg)}
+.desk .row span:last-child {color:var(--accent)}
+.desk input,.meeting input,.meeting textarea,.meeting select {font:inherit;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--bg);color:var(--fg);max-width:100%}
+.desk .tools,.meeting .tools {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0}
+.desk .figure {width:100%;max-height:330px;display:block;color:var(--accent)}
+.desk .legend {display:flex;justify-content:space-between;color:var(--muted);font-size:13px}
+.meeting {display:grid;gap:10px}.meeting textarea {width:100%}
+
+.advice:has(.client-overview) {display:grid;gap:20px}
+.client-overview {display:grid;gap:20px}
+.client-heading,.client-spread,.wealth-facts,.allocation-body {display:flex;gap:24px}
+.client-heading {align-items:end;justify-content:space-between}
+.client-heading a {color:var(--muted);font-size:14px;text-decoration:none}
+.client-heading h1 {margin:8px 0 0;font-size:clamp(26px,3vw,42px)}
+.client-heading .btn {border-radius:12px;padding:10px 16px}
+.client-spread {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.07fr);gap:16px}
+.wealth,.allocation {border-radius:22px;padding:clamp(20px,2.4vw,32px);min-width:0}
+.wealth {display:flex;flex-direction:column;background:#0f1720 linear-gradient(95deg,rgba(15,23,32,.97),rgba(15,23,32,.64)),url('/media/onde-scuro.webp');color:#eaf2f5;background-color:#0f1720;background-image:linear-gradient(95deg,rgba(15,23,32,.97),rgba(15,23,32,.58)),url('/media/onde-scuro.webp');background-size:cover;background-position:center}
+.client-overview h2 {font-size:18px;font-weight:600}
+.wealth [data-worth] {display:block;margin:16px 0 32px;font:500 clamp(30px,4vw,58px)/1.12 "DM Mono",monospace;letter-spacing:-.055em;overflow-wrap:anywhere}
+.wealth-facts {margin-top:auto;border-top:1px solid rgba(255,255,255,.24);padding-top:16px;flex-wrap:wrap}
+.wealth-facts small,.allocation-ring small,.allocation-list small {display:block}
+.wealth-facts small {color:#ccd9df;font-size:13px}
+.wealth-facts b {display:block;font:500 18px/1.6 "DM Mono",monospace}
+.allocation {background:var(--surface);border:1px solid var(--line)}
+.allocation-body {align-items:center;margin-top:22px}
+.allocation-ring {width:clamp(104px,11vw,148px);aspect-ratio:1;flex:none;border-radius:50%;display:grid;place-items:center}
+.allocation-ring>div {border-radius:50%;width:75%;height:75%;display:grid;align-content:center;text-align:center;background:var(--surface)}
+.allocation-ring b {font:500 30px "DM Mono",monospace}
+.allocation-ring small,.allocation-list small {color:var(--muted);font-size:12px}
+.allocation-list {flex:1;list-style:none;margin:0;padding:0;min-width:0}
+.allocation-list li {display:grid;grid-template-columns:8px 1fr auto;gap:8px;align-items:center;padding:8px 0;font-size:14px}
+.allocation-list li+li {border-top:1px solid var(--line)}
+.allocation-list i {width:8px;height:8px;border-radius:50%}
+.allocation-list b {font:500 14px "DM Mono",monospace}
+.allocation-list .allocation-empty {display:block;color:var(--muted)}
+@media(max-width:850px){.client-spread {grid-template-columns:1fr}.wealth [data-worth]{margin-bottom:24px}}
+@media(max-width:520px){.client-heading{align-items:start;flex-direction:column;gap:12px}.allocation-body{gap:14px}.allocation-ring{width:88px}.wealth-facts{gap:16px}.allocation-list li{font-size:13px}}
+
+.advice:has(#monthly-saving) .advice-position .toggle {display:none}

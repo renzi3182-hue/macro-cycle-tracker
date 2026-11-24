@@ -23,6 +23,7 @@ from src.classify.allocation import AREA as ALLOC_AREA, CCY, COUNTRY_ETF, ENTER,
 from src.classify import intermarket as im
 from src.classify import opportunities as opp
 from src.classify import advice_refs
+from src.classify.instrument_catalog import catalog
 from src.classify.assess import HIGH_FREQ_MAX_DAYS, axis_trail, label_regimes, phase_trail, stale_high_freq
 from src.classify.leading import SIGNALS
 from src.classify.positioning import percentile_rank, zscore
@@ -901,7 +902,7 @@ def build() -> dict:
         "pages": {"mondo": page_world(ctx), "oggi": page_today(ctx), "paese": paese, "asset": page_ranking(), "portafoglio": portfolio,
                   "metodo": page_method(), "cot": page_cot(ctx), "calendario": page_calendar(), "mercati": page_markets(),
                   "allocazione": page_allocation()},
-        "charts": ctx["charts"], "stress": stress, "advice_market": advice_market(ctx),
+        "charts": ctx["charts"], "stress": stress, "catalog": catalog(), "advice_market": advice_market(ctx),
     }
 
 

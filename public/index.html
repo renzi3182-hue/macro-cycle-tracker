@@ -126,6 +126,7 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 .edit button, .btn { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
 .edit button:hover, .btn:hover { color: var(--fg); }
 </style>
+<link rel="stylesheet" href="/workbench.css">
 </head>
 <body>
 <header><div class="in">
@@ -138,6 +139,7 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
   <div id="page"><p class="loading">Carico i dati…</p></div>
 </main>
 <div id="more" class="hidden"></div>
+<script src="/workbench.js"></script>
 <template id="advice">
   <section class="advice">
     <div class="box">
@@ -191,10 +193,10 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 </template>
 <script>
 "use strict";
-const MAIN = [["consulenza", "Consulenza"], ["mondo", "Mondo"], ["paese", "Paese"]];
-const MORE = [["oggi", "Oggi"], ["metodo", "Metodo"], ["asset", "Classifica asset"], ["portafoglio", "Portafoglio e stress test"], ["allocazione", "Allocazione"],
+const MAIN = [["panoramica","Panoramica"], ["strumento","Catalogo"], ...(privateMode() ? [["clienti","Clienti"]] : []), ["consulenza","Consulenza"]];
+const MORE = [["mondo","Mondo"], ["paese","Paese"], ["oggi", "Oggi"], ["metodo", "Metodo"], ["asset", "Classifica asset"], ["portafoglio", "Portafoglio e stress test"], ["allocazione", "Allocazione"],
               ["cot", "COT report"], ["calendario", "Calendario"], ["mercati", "Mercati"]];
-const OLD = { aree: "paese", classifica: "asset", valute: "allocazione", "": "consulenza" };
+const OLD = { aree: "paese", classifica: "asset", valute: "allocazione", "": "panoramica" };
 // /paese/italia -> /paese?area=Italia: sigle corte maiuscole (USA, UK), il resto con l'iniziale maiuscola
 const areaFromSlug = s => s.length <= 3 ? s.toUpperCase() : s[0].toUpperCase() + s.slice(1).toLowerCase();
 const $ = (s, el = document) => el.querySelector(s);
@@ -257,7 +259,7 @@ document.addEventListener("click", e => {
   }
   more.classList.add("hidden");
   const a = e.target.closest("a[href]");
-  if (!a || a.target === "_blank" || e.metaKey || e.ctrlKey) return;
+  if (!a || a.hasAttribute("download") || a.target === "_blank" || e.metaKey || e.ctrlKey) return;
   const href = a.getAttribute("href");
   if (href.startsWith("#")) return;  // ancora nella pagina (es. #cosa-vuol-dire)
   const url = new URL(href, location.origin + "/");
@@ -729,12 +731,14 @@ const advice = {
       $("#advice-total-" + id, this.root).textContent = rows
         ? "Totale inserito " + this.euros(this.total(rows)) : "Verifica gli importi.";
     }
+    if (this.root.querySelector(".client-overview")) updateClientOverview(this.root, this.read(current));
     $("#advice-reset", this.root).hidden = proposed.hidden;
     $("#advice-result", this.root).textContent = "Calcola per aggiornare il confronto.";
   },
   total(rows) { return rows.reduce((sum, row) => sum + row.amount, 0); },
   euros(cents) { return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(cents / 100); },
   goal() {
+    if ($("#monthly-saving",this.root)) return {};
     const amount = $("#advice-goal", this.root), date = $("#advice-date", this.root);
     if (!amount.value && !date.value && amount.validity.valid && date.validity.valid) return {};
     if (!amount.validity.valid || !date.validity.valid || !(amount.valueAsNumber > 0) || !date.value) {
@@ -915,7 +919,7 @@ const advice = {
       Fasce dal 5° al 95° percentile a ogni data. Valori nominali in euro prima delle tasse, al netto dei soli costi annui indicati per ogni posizione. Liquidità a rendimento zero.
       Riferimenti in euro: azioni mondo da ETF quotati in dollari convertiti in euro, obbligazioni e liquidità area euro ricostruite dal decennale e dal tasso a 3 mesi.
       Per le posizioni modellate tramite ETF in dollari, rendimenti storici convertiti in euro e pesi costanti mese per mese all’interno delle due quote, disponibile e restante.
-      La spesa è verificata al mese indicato senza sottrarla dai percorsi. Le percentuali valgono per queste ipotesi.</p>`);
+      ${goal.amount ? "La spesa è verificata al mese indicato senza sottrarla dai percorsi." : "La simulazione considera il capitale iniziale senza versamenti successivi."} Le percentuali valgono per queste ipotesi.</p>`);
   },
 };
 
@@ -952,7 +956,9 @@ function route() {
   renderNav();
   document.title = [...MAIN, ...MORE].find(([k]) => k === name)[1] + " · Soft Investing";
   const page = $("#page");
-  if (name === "consulenza") renderAdvice(page);
+  if (name === "panoramica" || name === "strumento") return marketPage(page, name);
+  if (name === "clienti") return clientPage(page);
+  if (name === "consulenza") { renderAdvice(page); meetingTools(page); }
   else if (DATA) page.innerHTML = DATA.pages[name];
   else {
     page.innerHTML = '<p class="notice warn">Dati di mercato non disponibili. Riprova fra qualche minuto.</p>';
@@ -977,6 +983,7 @@ function freshness() {
 }
 
 async function load() {
+  await loadPrivateFunds();
   setLogo();
   renderNav();
   try {
