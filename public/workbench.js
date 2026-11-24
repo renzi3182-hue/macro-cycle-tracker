@@ -42,11 +42,20 @@ function marketPage(page,name) {
         const change=100*(last[1]/prev[1]-1);
         return '<a class="tile" href="'+instrumentUrl(symbol)+'"><b>'+region+'</b><small>'+symbol+' · '+day(last[0])+'</small><span class="number">'+(change>=0?'+':'')+fmt(change)+'%</span>'+spark(prices)+'<small>Rispetto al '+day(prev[0])+'</small></a>';
       }).join("")+'</div>';
+    const upcoming = (DATA?.catalog?.events || [])
+      .filter(event => Date.parse(event.date) >= Date.now())
+      .sort((a,b) => Date.parse(a.date) - Date.parse(b.date)).slice(0,3);
+    desk.insertAdjacentHTML("beforeend", '<section class="panel"><h2>Prossimi eventi</h2>' +
+      (upcoming.map(event => '<p>'+day(event.date)+' · '+esc(event.country)+' · '+esc(event.title)+'</p>').join("") ||
+        '<p>Nessun evento futuro nei dati disponibili.</p>') +
+      '<a href="/panoramica?vista=calendario">Apri il calendario</a></section>');
+    return;
   }
   desk.insertAdjacentHTML("beforeend",'<div class="panel"><h2>Catalogo strumenti</h2><input aria-label="Cerca strumento" placeholder="Cerca per nome, ticker o ISIN"><div class="rows"></div></div>');
   const input=$("input",desk), list=$(".rows",desk);
+  const rank = new Map((DATA?.asset_order || []).map((ticker, i) => [ticker, i]));
   function filter() {
-    list.innerHTML=Object.entries(assets).filter(([k,a])=>(k+" "+a.name).toLowerCase().includes(input.value.toLowerCase())).map(([k,a])=>
+    list.innerHTML=Object.entries(assets).sort(([a], [b]) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity)).filter(([k,a])=>(k+" "+a.name).toLowerCase().includes(input.value.toLowerCase())).map(([k,a])=>
       '<a class="row" href="'+instrumentUrl(k)+'"><strong>'+esc(a.name)+'</strong><span>'+esc(a.kind)+' · '+esc(k)+' →</span></a>').join("") || "<p>Nessuno strumento disponibile.</p>";
   }
   input.oninput=filter; filter();
@@ -75,6 +84,7 @@ function scenarioFigure(asset, months) {
 function instrumentPage(desk,key,asset) {
   const h=asset.history,last=h.at(-1);
   desk.innerHTML='<div class="mast"><a href="/strumento">← Catalogo</a><h1>'+esc(asset.name)+'</h1><p>'+esc(asset.kind)+' · '+esc(key)+(last?' · '+priceLabel(asset)+' '+fmt(last[1])+' '+unit(asset)+' al '+day(last[0]):' · NAV di classe indisponibile')+'</p></div>';
+  if (asset.cot) desk.insertAdjacentHTML("beforeend", '<section class="panel"><h2>Posizionamento COT</h2>'+'<p>COT · '+esc(asset.contract)+' · Non-commercial · Variazione settimanale della posizione netta '+fmt(asset.cot[1])+' punti di open interest. Rilevazione '+day(asset.cot[0])+'. Data effettiva di pubblicazione indisponibile. Peso nello scenario pari a zero.</p></section>');
   if (!last) return;
   const limit=maxMonths(asset);
   if (asset.maturity) desk.insertAdjacentHTML("beforeend",'<p>Rimborso previsto il '+day(asset.maturity)+'. Durate selezionabili fino all’ultimo mese intero prima del rimborso.</p>');
@@ -96,7 +106,7 @@ function instrumentPage(desk,key,asset) {
   let reading="Nessuna rottura seguita da rientro rispetto alle 20 sedute precedenti.";
   if (prior.length===20 && ((prev>Math.max(...prior) || prev<Math.min(...prior)) && last[1]>=Math.min(...prior) && last[1]<=Math.max(...prior))) reading="Il prezzo è uscito dall’intervallo delle precedenti 20 sedute ed è rientrato nell’ultima seduta.";
   desk.insertAdjacentHTML("beforeend",'<section class="panel"><h2>Prezzi e posizionamento</h2><p>'+reading+' Volumi e flussi indisponibili per confermare accumulo o distribuzione.</p>'+
-    (asset.cot?'<p>COT · '+esc(asset.contract)+' · Non-commercial · Variazione settimanale della posizione netta '+fmt(asset.cot[1])+' punti di open interest. Rilevazione '+day(asset.cot[0])+'. Data effettiva di pubblicazione indisponibile. Peso nello scenario pari a zero.</p>':'')+'</section>');
+    '</section>');
   const events=(DATA.catalog.events || []).filter(e=>e.country===asset.country).slice(-5).reverse();
   desk.insertAdjacentHTML("beforeend",'<section class="panel"><h2>Calendario del mercato</h2>'+ (events.map(e=>'<div class="row"><div><strong>'+esc(e.title)+'</strong><p>'+day(e.date)+' · Forex Factory</p><small>Precedente '+esc(e.previous||"n.d.")+' · Atteso '+esc(e.forecast||"n.d.")+' · Pubblicato n.d.</small></div></div>').join('') || '<p>Nessun evento associato in cache.</p>')+'<p class="meta">La cache non contiene una misura della reazione alla pubblicazione.</p></section>');
 }

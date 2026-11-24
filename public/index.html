@@ -49,13 +49,10 @@ nav details { position: relative; }
 nav summary { list-style: none; }
 nav summary::-webkit-details-marker { display: none; }
 nav details[open] summary, nav details.on summary { color: var(--fg); }
-#moreBtn { display: inline-flex; align-items: center; gap: 4px; }
-#moreBtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-#more { position: fixed; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px;
-  box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 180px; z-index: 20; }
-#more a { color: var(--muted); text-decoration: none; border-radius: 10px; font-weight: 500; }
-#more a:hover, #more a.on { color: var(--fg); background: var(--raised); }
-#more a.on { font-weight: 600; }
+#sectionNav { display:flex; flex-wrap:wrap; gap:4px; margin:16px 0; }
+#sectionNav:empty { display:none; }
+#sectionNav a { color:var(--muted); text-decoration:none; padding:6px 10px; border-radius:8px; }
+#sectionNav a[aria-current], #sectionNav a:hover { background:var(--raised); color:var(--fg); }
 .fresh { font-size: 13px; color: var(--muted); margin-top: 12px; }
 .fresh i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
@@ -136,9 +133,10 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 <main>
   <div class="fresh"><span id="fresh"></span></div>
   <div id="warnings"></div>
+  <nav id="sectionNav" aria-label="Viste della sezione"></nav>
   <div id="page"><p class="loading">Carico i dati…</p></div>
 </main>
-<div id="more" class="hidden"></div>
+
 <script src="/workbench.js"></script>
 <template id="advice">
   <section class="advice">
@@ -194,9 +192,12 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 <script>
 "use strict";
 const MAIN = [["panoramica","Panoramica"], ["strumento","Catalogo"], ...(privateMode() ? [["clienti","Clienti"]] : []), ["consulenza","Consulenza"]];
-const MORE = [["mondo","Mondo"], ["paese","Paese"], ["oggi", "Oggi"], ["metodo", "Metodo"], ["asset", "Classifica asset"], ["portafoglio", "Portafoglio e stress test"], ["allocazione", "Allocazione"],
-              ["cot", "COT report"], ["calendario", "Calendario"], ["mercati", "Mercati"]];
-const OLD = { aree: "paese", classifica: "asset", valute: "allocazione", "": "panoramica" };
+const sections = {
+  panoramica: [["", "Oggi"], ["mondo", "Mondo"], ["paese", "Paese"], ["calendario", "Calendario"]],
+  strumento: [["", "Elenco strumenti"], ["asset", "Classifica asset"]],
+  consulenza: [["", "Colloquio"], ["allocazione", "Allocazione"], ["portafoglio", "Portafoglio e stress test"]]
+};
+const legacy = { oggi:"panoramica", metodo:"paese", mercati:"panoramica", cot:"strumento", aree:"paese", classifica:"asset", valute:"allocazione" };
 // /paese/italia -> /paese?area=Italia: sigle corte maiuscole (USA, UK), il resto con l'iniziale maiuscola
 const areaFromSlug = s => s.length <= 3 ? s.toUpperCase() : s[0].toUpperCase() + s.slice(1).toLowerCase();
 const $ = (s, el = document) => el.querySelector(s);
@@ -227,19 +228,30 @@ function drawPlot(root) {
   M.animate(g, { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"] }, { duration: 1.1, ease: EASE });
 }
 
-function pageName() {
-  const p = location.pathname.replace(/^\/|\/$/g, "");
-  if (p.startsWith("paese/")) return "paese";
-  return OLD[p] ?? ([...MAIN, ...MORE].some(([k]) => k === p) ? p : "consulenza");
-}
 function params() { return new URLSearchParams(location.search); }
 
-function renderNav() {
-  const cur = pageName();
-  const inMore = MORE.some(([k]) => k === cur);
-  $("#nav").innerHTML = MAIN.map(([k, t]) => `<a href="/${k}" data-link class="${k === cur ? "on" : ""}">${t}</a>`).join("")
-    + `<a href="#" id="moreBtn" class="${inMore ? "on" : ""}">Strumenti<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></a>`;
-  $("#more").innerHTML = MORE.map(([k, t]) => `<a href="/${k}" data-link class="${k === cur ? "on" : ""}" style="padding:8px 12px">${t}</a>`).join("");
+function currentView() {
+  const path = location.pathname.replace(/^\/|\/$/g, "");
+  const query = params();
+  let key = legacy[path] || path || "panoramica";
+  if (path.startsWith("paese/")) {
+    key = "paese";
+    query.set("area", areaFromSlug(decodeURIComponent(path.slice(6))));
+  }
+  const parent = Object.keys(sections).find(section => sections[section].some(([view]) => view === key));
+  const section = parent || (MAIN.some(([k]) => k === key) ? key : "panoramica");
+  if (parent) query.set("vista", key);
+  const view = (sections[section] || []).find(([v]) => v === query.get("vista"))?.[0] || "";
+  if (path && path !== section) {
+    history.replaceState(null, "", "/" + section + (query.size ? "?" + query : "") + location.hash);
+  }
+  return {section, view};
+}
+
+function renderNav(section, view) {
+  $("#nav").innerHTML = MAIN.map(([k,t]) => `<a href="/${k}" class="${k === section ? "on" : ""}">${t}</a>`).join("");
+  $("#sectionNav").innerHTML = (sections[section] || []).map(([k,t]) =>
+    `<a href="/${section}${k ? "?vista=" + k : ""}" ${k === view ? 'aria-current="page"' : ""}>${t}</a>`).join("");
 }
 
 function go(url, replace = false) {
@@ -248,16 +260,6 @@ function go(url, replace = false) {
 }
 
 document.addEventListener("click", e => {
-  const more = $("#more");
-  if (e.target.id === "moreBtn") {
-    e.preventDefault();
-    const r = e.target.getBoundingClientRect();
-    more.style.top = r.bottom + 6 + "px"; more.style.left = Math.min(r.left, innerWidth - 200) + "px";
-    more.classList.toggle("hidden");
-    if (!more.classList.contains("hidden") && motion()) Motion.animate(more, { opacity: [0, 1], y: [-4, 0] }, { duration: 0.16, ease: EASE });
-    return;
-  }
-  more.classList.add("hidden");
   const a = e.target.closest("a[href]");
   if (!a || a.hasAttribute("download") || a.target === "_blank" || e.metaKey || e.ctrlKey) return;
   const href = a.getAttribute("href");
@@ -949,17 +951,21 @@ function renderAdvice(page) {
 }
 
 function route() {
-  const name = pageName();
-  const path = location.pathname.replace(/^\/|\/$/g, "");
-  if (OLD[path] !== undefined && path) history.replaceState(null, "", "/" + OLD[path] + location.search);
-  if (path.startsWith("paese/")) history.replaceState(null, "", "/paese?area=" + encodeURIComponent(areaFromSlug(decodeURIComponent(path.slice(6)))));
-  renderNav();
-  document.title = [...MAIN, ...MORE].find(([k]) => k === name)[1] + " · Soft Investing";
+  const {section, view} = currentView();
+  renderNav(section, view);
+  document.title = MAIN.find(([k]) => k === section)[1] + " · Soft Investing";
   const page = $("#page");
-  if (name === "panoramica" || name === "strumento") return marketPage(page, name);
-  if (name === "clienti") return clientPage(page);
-  if (name === "consulenza") { renderAdvice(page); meetingTools(page); }
-  else if (DATA) page.innerHTML = DATA.pages[name];
+  if (!view && section === "strumento") return marketPage(page, section);
+  if (section === "clienti") return clientPage(page);
+  if (!view && section === "consulenza") { renderAdvice(page); meetingTools(page); }
+  else if (!view && section === "panoramica") {
+    marketPage(page, section);
+    if (DATA?.pages.oggi) page.insertAdjacentHTML("beforeend", DATA.pages.oggi);
+  }
+  else if (DATA) {
+    page.innerHTML = DATA.pages[view];
+    if (view === "paese") page.insertAdjacentHTML("afterbegin", '<p class="note">Il regime combina la variazione della crescita annua del PIL rispetto al trimestre precedente e quella dell’inflazione degli ultimi tre mesi rispetto ai tre precedenti.</p>');
+  }
   else {
     page.innerHTML = '<p class="notice warn">Dati di mercato non disponibili. Riprova fra qualche minuto.</p>';
     return;
@@ -985,7 +991,6 @@ function freshness() {
 async function load() {
   await loadPrivateFunds();
   setLogo();
-  renderNav();
   try {
     const res = await fetch("/data/site.json", { cache: "no-cache", signal: AbortSignal.timeout(20000) });
     if (!res.ok) throw new Error(res.status);

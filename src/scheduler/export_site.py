@@ -896,13 +896,15 @@ def build() -> dict:
     areas = list(AREAS)
     paese = switch("area", areas, "USA") + "".join(when(f"area={a}", page_area(a, ctx)) for a in areas)
     portfolio, stress = page_portfolio(ctx)
+    scores = load_model()["score"]
+    asset_order = [] if scores.empty else scores.iloc[-1].dropna().sort_values(ascending=False).index.tolist()
     return {
         "updated_at": cache.read_meta("updated_at"), "exported_at": pd.Timestamp.now(tz="UTC").isoformat(),
         "css": css(), "warnings": warnings_html(),
         "pages": {"mondo": page_world(ctx), "oggi": page_today(ctx), "paese": paese, "asset": page_ranking(), "portafoglio": portfolio,
                   "metodo": page_method(), "cot": page_cot(ctx), "calendario": page_calendar(), "mercati": page_markets(),
                   "allocazione": page_allocation()},
-        "charts": ctx["charts"], "stress": stress, "catalog": catalog(), "advice_market": advice_market(ctx),
+        "asset_order": asset_order, "charts": ctx["charts"], "stress": stress, "catalog": catalog(), "advice_market": advice_market(ctx),
     }
 
 
