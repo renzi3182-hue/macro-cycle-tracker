@@ -74,7 +74,17 @@ function scenarioFigure(asset, months) {
   const past=history.map((r,i)=>(320*i/Math.max(history.length-1,1))+','+y(r[1]));
   const tested=model.checks.filter(([i])=>i+months<model.levels.length);
   const hits=tested.filter(([i,mu,vol])=>Math.abs(Math.log(model.levels[i+months]/model.levels[i])-mu*months)<=1.644854*vol*Math.sqrt(months)).length;
-  return '<svg class="figure" viewBox="0 0 770 230" role="img" aria-label="Storico e scenario a '+months+' mesi, scala logaritmica"><polygon fill="currentColor" opacity=".17" points="'+line(1.644854).concat(line(-1.644854).reverse()).join(' ')+'"/><polyline fill="none" stroke="var(--fg)" stroke-width="2" points="'+past.join(' ')+'"/><line x1="320" x2="320" y1="6" y2="218" stroke="var(--muted)" stroke-dasharray="3 4"/><polyline fill="none" stroke="currentColor" stroke-width="3" points="'+line(0).join(' ')+'"/></svg>'+
+  const currency = esc(unit(asset));
+  const levels = Array.from({length: 6}, (_, i) => Math.exp(low + span * i / 5))
+    .filter(value => Math.abs(y(value) - y(last)) > 17);
+  const priceFormat = new Intl.NumberFormat("it-IT", {
+    maximumSignificantDigits: Math.min(15, Math.max(4, 2 - Math.floor(Math.log10(span / 5))))
+  });
+  const grid = levels.map(value => `<line x1="0" x2="760" y1="${y(value)}" y2="${y(value)}" stroke="var(--line)"/>`).join("");
+  const label = (value, current = false) => `<span class="${current ? "last-price" : ""}" style="top:${100*y(value)/230}%">${priceFormat.format(value)}</span>`;
+  return '<div class="price-chart"><svg class="figure" viewBox="0 0 760 230" preserveAspectRatio="none" role="img" aria-label="Storico e scenario a '+months+' mesi, prezzi in '+currency+', scala logaritmica">'+grid+
+    `<line x1="0" x2="760" y1="${y(last)}" y2="${y(last)}" stroke="var(--accent)" stroke-dasharray="3 4"/>`+
+    '<polygon fill="currentColor" opacity=".17" points="'+line(1.644854).concat(line(-1.644854).reverse()).join(' ')+'"/><polyline fill="none" stroke="var(--fg)" stroke-width="2" points="'+past.join(' ')+'"/><line x1="320" x2="320" y1="6" y2="218" stroke="var(--muted)" stroke-dasharray="3 4"/><polyline fill="none" stroke="currentColor" stroke-width="3" points="'+line(0).join(' ')+'"/></svg><div class="price-scale"><small>'+currency+'</small>'+levels.map(value => label(value)).join("")+label(last, true)+'</div></div>'+
     '<div class="legend"><span>'+day(history[0][0])+'</span><span>Ultimo prezzo · '+day(history.at(-1)[0])+'</span><span>+'+months+' mesi</span></div>'+
     '<p><b>'+fmt(bounds(months,0))+' '+unit(asset)+'</b> al centro · fascia '+fmt(bounds(months,-1.644854))+' – '+fmt(bounds(months,1.644854))+' '+unit(asset)+'.</p>'+
     '<p class="meta">Scala logaritmica. Storico e proiezione hanno scale temporali distinte. Scenario a '+months+' mesi con media e volatilità costanti, stimate sugli ultimi 36 rendimenti mensili completi. La fascia teorica al 90% assume rendimenti logaritmici indipendenti e normali. Un cambio di regime può invalidare queste ipotesi.</p>'+

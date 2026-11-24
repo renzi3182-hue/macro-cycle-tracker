@@ -51,3 +51,10 @@
 @media(max-width:520px){.client-heading{align-items:start;flex-direction:column;gap:12px}.allocation-body{gap:14px}.allocation-ring{width:88px}.wealth-facts{gap:16px}.allocation-list li{font-size:13px}}
 
 .advice:has(#monthly-saving) .advice-position .toggle {display:none}
+
+.desk .price-chart {display:grid;grid-template-columns:minmax(0,1fr) auto;height:clamp(230px,29vw,330px);margin-top:1rem}
+.desk .price-chart .figure {height:100%}
+.price-scale {position:relative;display:grid;align-items:start;border-left:1px solid var(--line);color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.price-scale small {position:absolute;bottom:100%;left:6px;font-size:inherit}
+.price-scale span {position:relative;grid-area:1/1;transform:translateY(-50%);padding:1px 6px;white-space:nowrap}
+.price-scale .last-price {color:var(--surface);background:var(--accent);border-radius:3px;font-weight:600}
