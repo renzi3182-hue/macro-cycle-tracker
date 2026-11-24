@@ -75,17 +75,45 @@ function scenarioFigure(asset, months) {
   const tested=model.checks.filter(([i])=>i+months<model.levels.length);
   const hits=tested.filter(([i,mu,vol])=>Math.abs(Math.log(model.levels[i+months]/model.levels[i])-mu*months)<=1.644854*vol*Math.sqrt(months)).length;
   const currency = esc(unit(asset));
-  const levels = Array.from({length: 6}, (_, i) => Math.exp(low + span * i / 5))
-    .filter(value => Math.abs(y(value) - y(last)) > 17);
-  const priceFormat = new Intl.NumberFormat("it-IT", {
-    maximumSignificantDigits: Math.min(15, Math.max(4, 2 - Math.floor(Math.log10(span / 5))))
-  });
+  const minPrice = Math.min(...all), maxPrice = Math.max(...all);
+  const roughStep = (maxPrice - minPrice) / 9 || minPrice / 10;
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const step = [1, 2, 2.5, 5, 10].find(n => n * magnitude >= roughStep) * magnitude;
+  const candidates = [];
+  if (span < Math.log(10)) {
+    for (let i = Math.ceil(minPrice / step); i <= Math.floor(maxPrice / step); i++) candidates.push(i * step);
+  } else {
+    for (let power = Math.floor(Math.log10(minPrice)); power <= Math.ceil(Math.log10(maxPrice)); power++) {
+      for (const factor of [1, 2, 5]) candidates.push(factor * 10 ** power);
+    }
+  }
+  const levels = [];
+  for (const value of candidates) {
+    if (value >= minPrice && value <= maxPrice && Math.abs(y(value) - y(last)) > 13 &&
+        (!levels.length || y(levels.at(-1)) - y(value) > 14)) levels.push(value);
+  }
+  const priceFormat = new Intl.NumberFormat("it-IT", {maximumSignificantDigits: 8});
+  const dateFormat = new Intl.DateTimeFormat("it-IT", {month:"short", year:"2-digit", timeZone:"UTC"});
+  const lastDate = new Date(history.at(-1)[0]);
+  const ticks = [0, 0.5, 1].map(fraction => ({
+    x: 320 * fraction,
+    date: new Date(history[Math.round(fraction * (history.length - 1))][0])
+  }));
+  const divisions = Math.min(4, months);
+  for (let i = 1; i <= divisions; i++) {
+    const offset = Math.round(months * i / divisions);
+    const date = new Date(lastDate);
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() + offset);
+    ticks.push({x:320 + 440 * offset / months, date});
+  }
+  const timeGrid = ticks.map(t => `<line x1="${t.x}" x2="${t.x}" y1="0" y2="230" stroke="var(--line)" stroke-dasharray="2 3"/>`).join("");
+  const timeAxis = ticks.map(t => `<span style="left:${100*t.x/760}%">${dateFormat.format(t.date)}</span>`).join("");
   const grid = levels.map(value => `<line x1="0" x2="760" y1="${y(value)}" y2="${y(value)}" stroke="var(--line)"/>`).join("");
   const label = (value, current = false) => `<span class="${current ? "last-price" : ""}" style="top:${100*y(value)/230}%">${priceFormat.format(value)}</span>`;
-  return '<div class="price-chart"><svg class="figure" viewBox="0 0 760 230" preserveAspectRatio="none" role="img" aria-label="Storico e scenario a '+months+' mesi, prezzi in '+currency+', scala logaritmica">'+grid+
+  return '<div class="price-chart"><svg class="figure" viewBox="0 0 760 230" preserveAspectRatio="none" role="img" aria-label="Storico e scenario a '+months+' mesi, prezzi in '+currency+', scala logaritmica">'+grid+timeGrid+
     `<line x1="0" x2="760" y1="${y(last)}" y2="${y(last)}" stroke="var(--accent)" stroke-dasharray="3 4"/>`+
-    '<polygon fill="currentColor" opacity=".17" points="'+line(1.644854).concat(line(-1.644854).reverse()).join(' ')+'"/><polyline fill="none" stroke="var(--fg)" stroke-width="2" points="'+past.join(' ')+'"/><line x1="320" x2="320" y1="6" y2="218" stroke="var(--muted)" stroke-dasharray="3 4"/><polyline fill="none" stroke="currentColor" stroke-width="3" points="'+line(0).join(' ')+'"/></svg><div class="price-scale"><small>'+currency+'</small>'+levels.map(value => label(value)).join("")+label(last, true)+'</div></div>'+
-    '<div class="legend"><span>'+day(history[0][0])+'</span><span>Ultimo prezzo · '+day(history.at(-1)[0])+'</span><span>+'+months+' mesi</span></div>'+
+    '<polygon fill="currentColor" opacity=".17" points="'+line(1.644854).concat(line(-1.644854).reverse()).join(' ')+'"/><polyline fill="none" stroke="var(--fg)" stroke-width="2" points="'+past.join(' ')+'"/><line x1="320" x2="320" y1="6" y2="218" stroke="var(--muted)" stroke-dasharray="3 4"/><polyline fill="none" stroke="currentColor" stroke-width="3" points="'+line(0).join(' ')+'"/></svg><div class="price-scale"><small>'+currency+'</small>'+levels.map(value => label(value)).join("")+label(last, true)+'</div><div class="time-scale">'+timeAxis+'</div></div>'+
     '<p><b>'+fmt(bounds(months,0))+' '+unit(asset)+'</b> al centro · fascia '+fmt(bounds(months,-1.644854))+' – '+fmt(bounds(months,1.644854))+' '+unit(asset)+'.</p>'+
     '<p class="meta">Scala logaritmica. Storico e proiezione hanno scale temporali distinte. Scenario a '+months+' mesi con media e volatilità costanti, stimate sugli ultimi 36 rendimenti mensili completi. La fascia teorica al 90% assume rendimenti logaritmici indipendenti e normali. Un cambio di regime può invalidare queste ipotesi.</p>'+
     '<p class="meta">'+(tested.length?'Verifica storica progressiva: '+hits+' esiti nella fascia su '+tested.length+' finestre sovrapposte a '+months+' mesi.':'Storico insufficiente per verificare la copertura a questa durata.')+'</p>';
