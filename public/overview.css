@@ -1,0 +1,64 @@
+html[data-overview-theme=light] {
+  color-scheme:light; --bg:#f5f6fa; --surface:#fff; --raised:#e7edf6; --fg:#15263e;
+  --muted:#52647c; --line:#d6dfeb; --accent:#385e96; --brief:#15263e;
+}
+html[data-overview-theme=dark] {
+  color-scheme:dark; --bg:#0e1521; --surface:#192332; --raised:#233349; --fg:#edf2fa;
+  --muted:#afbdcf; --line:#34445a; --accent:#aac9f7; --brief:#1b2b44;
+}
+.overview {display:grid;gap:clamp(20px,3vw,34px);font-family:Inter,system-ui,sans-serif}
+.overview :is(h1,h2,h3,p) {margin:0}
+.overview h1 {font-size:clamp(32px,4vw,46px);letter-spacing:-.055em}
+.overview h2 {font-size:clamp(20px,2vw,26px);letter-spacing:-.04em}
+.overview h3 {font-size:15px;font-weight:600;margin-bottom:8px}
+.ov-head,.ov-tools,.ov-facts,.ov-brief {display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ov-head,.ov-brief {justify-content:space-between}
+.overview :is(button,select,input[type=date]) {background:var(--surface);color:var(--fg);border:1px solid var(--line);padding:7px 11px;border-radius:7px;font:inherit}
+.overview button,.overview summary {cursor:pointer}
+.overview button:disabled {cursor:default}
+.ov-hero {background:linear-gradient(110deg,var(--brief) 35%,transparent 140%),url('/media/onde-scuro.webp') center/cover;color:#f7faff;padding:clamp(24px,4vw,50px);border-radius:16px}
+.ov-eyebrow {font-size:14px;font-weight:600;letter-spacing:.025em}
+.ov-demo {display:inline-block;vertical-align:middle;font:500 11px/1 Inter,system-ui,sans-serif;letter-spacing:.03em;border:1px solid currentColor;border-radius:4px;padding:3px 5px;margin-left:5px;color:var(--muted)}
+.ov-hero .ov-demo {color:#cad8eb}
+.ov-brief {padding:22px 0;gap:24px}
+.ov-brief>div:first-child {flex:1 1 320px}
+.ov-brief h2 {font-size:clamp(34px,4.6vw,62px);line-height:1.02;letter-spacing:-.055em}
+.ov-brief p {margin-top:16px;max-width:65ch;color:#d5e0ee}
+.ov-gauge {width:145px;height:145px;display:grid;align-content:center;text-align:center;gap:4px;border-radius:50%;background:radial-gradient(closest-side,var(--brief) 88%,transparent 90%),conic-gradient(#9dbfeb 62%,#415573 0)}
+.ov-gauge strong {font-size:46px;line-height:1}
+.ov-gauge span {font-size:11px}
+.ov-facts {border-top:1px solid #55667c;padding:15px 0;gap:30px}
+.ov-facts b {margin-left:8px}
+.ov-hero details {border-top:1px solid #55667c;padding-top:12px}
+.ov-hero details p,.ov-hero details label {display:block;margin:12px 0}
+.ov-pair,.ov-market,.ov-scores {display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.ov-market,.ov-scores {margin-top:14px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.ov-scores {grid-template-columns:repeat(5,minmax(0,1fr))}
+.ov-card,.overview article {background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:clamp(16px,2vw,24px);min-width:0}
+.overview article strong {font-size:clamp(22px,2.4vw,34px);letter-spacing:-.05em}
+.overview article small,.overview article span,.ov-card small {color:var(--muted)}
+.overview article span {display:block;font-size:13px}
+.overview meter {display:block;width:100%;height:14px;margin:8px 0;accent-color:var(--accent)}
+.overview .spark {display:block;width:100%;height:40px;margin:12px 0;color:var(--accent)}
+.ov-card ul {padding:0;list-style:none;margin:10px 0 0}
+.ov-card li {padding:8px 0;border-bottom:1px solid var(--line)}
+.ov-card li:last-child {border:0}
+.ov-card label,.ov-card p {display:block;margin:12px 0}
+.ov-chart svg {display:block;width:100%;margin-top:14px}
+.ov-chart line {stroke:var(--line)}
+.ov-chart polygon {fill:var(--accent);opacity:.12}
+.ov-chart polyline {fill:none;stroke:var(--accent);stroke-width:3}
+.ov-chart circle {fill:var(--accent)}
+.ov-chart text {font:12px system-ui;fill:var(--muted)}
+.ov-table {overflow:auto;margin:15px 0}
+.ov-table table {width:100%;font-size:13px;border-spacing:3px}
+.ov-table th {text-align:left;font-weight:500}
+.ov-table td {text-align:center;border-radius:3px;color:var(--fg);background:color-mix(in srgb,#c6a14c 28%,var(--surface))}
+.ov-table td[data-signal="1"] {background:color-mix(in srgb,#299b76 35%,var(--surface))}
+.ov-table td[data-signal="-1"] {background:color-mix(in srgb,#bd6262 35%,var(--surface))}
+.overview dialog {background:var(--surface);color:var(--fg);border:1px solid var(--line);padding:24px;margin:0 0 0 auto;height:100%;max-height:none;width:min(380px,100vw)}
+.overview dialog::backdrop {background:#0e15217a}
+.overview dialog form {text-align:right;margin-bottom:24px}
+.overview dialog label {display:block;padding:8px 0}
+@media(max-width:800px){.ov-scores,.ov-market {grid-template-columns:repeat(auto-fit,minmax(min(145px,100%),1fr))}.ov-pair{grid-template-columns:1fr}}
+@media(max-width:520px){.ov-tools{gap:5px}.ov-tools button{font-size:13px}.ov-gauge{width:105px;height:105px}.ov-gauge span{max-width:80px;margin:auto}}

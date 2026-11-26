@@ -8,7 +8,7 @@
 <link rel="icon" href="/logo-mark.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"
         integrity="sha384-OK7vELvjHdhUFi31JYioPIcRHTROLdcDa6ZsNWgvgLaKj+9JqhU0Ad8g4wz3CXjA" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/motion@12.23.12/dist/motion.js"
@@ -51,6 +51,9 @@ nav summary::-webkit-details-marker { display: none; }
 nav details[open] summary, nav details.on summary { color: var(--fg); }
 #sectionNav { display:flex; flex-wrap:wrap; gap:4px; margin:16px 0; }
 #sectionNav:empty { display:none; }
+#nav .planned-tab { padding:8px 12px;color:var(--muted);white-space:nowrap;font-size:inherit; }
+#nav:has(.planned-tab) { scrollbar-width:thin; }
+html[data-overview-theme] #page {margin-top:18px}
 #sectionNav a { color:var(--muted); text-decoration:none; padding:6px 10px; border-radius:8px; }
 #sectionNav a[aria-current], #sectionNav a:hover { background:var(--raised); color:var(--fg); }
 .fresh { font-size: 13px; color: var(--muted); margin-top: 12px; }
@@ -124,6 +127,7 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 .edit button:hover, .btn:hover { color: var(--fg); }
 </style>
 <link rel="stylesheet" href="/workbench.css?v=chart-axes-2">
+<link rel="stylesheet" href="/overview.css">
 </head>
 <body>
 <header><div class="in">
@@ -138,6 +142,7 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 </main>
 
 <script src="/workbench.js?v=chart-axes-2"></script>
+<script src="/overview.js"></script>
 <template id="advice">
   <section class="advice">
     <div class="box">
@@ -193,11 +198,11 @@ pre.copy { white-space: pre-wrap; font: 13px/1.5 "DM Mono", monospace; backgroun
 "use strict";
 const MAIN = [["panoramica","Panoramica"], ["strumento","Catalogo"], ...(privateMode() ? [["clienti","Clienti"]] : []), ["consulenza","Consulenza"]];
 const sections = {
-  panoramica: [["", "Oggi"], ["mondo", "Mondo"], ["paese", "Paese"], ["calendario", "Calendario"]],
+  panoramica: [["", "Overview"], ["oggi", "Oggi"], ["mondo", "Mondo"], ["paese", "Paese"], ["calendario", "Calendario"]],
   strumento: [["", "Elenco strumenti"], ["asset", "Classifica asset"]],
   consulenza: [["", "Colloquio"], ["allocazione", "Allocazione"], ["portafoglio", "Portafoglio e stress test"]]
 };
-const legacy = { oggi:"panoramica", metodo:"paese", mercati:"panoramica", cot:"strumento", aree:"paese", classifica:"asset", valute:"allocazione" };
+const legacy = { metodo:"paese", mercati:"panoramica", cot:"strumento", aree:"paese", classifica:"asset", valute:"allocazione" };
 // /paese/italia -> /paese?area=Italia: sigle corte maiuscole (USA, UK), il resto con l'iniziale maiuscola
 const areaFromSlug = s => s.length <= 3 ? s.toUpperCase() : s[0].toUpperCase() + s.slice(1).toLowerCase();
 const $ = (s, el = document) => el.querySelector(s);
@@ -207,7 +212,7 @@ const filters = {};  // filtri del calendario, solo per questa visita (come in S
 
 const dark = matchMedia("(prefers-color-scheme: dark)");
 const token = name => getComputedStyle(document.documentElement).getPropertyValue("--" + name).trim();
-function setLogo() { $("#logo").src = dark.matches ? "/logo-mark.svg" : "/logo-mark-light.svg"; }
+function setLogo() { $("#logo").src = (document.documentElement.dataset.overviewTheme || (dark.matches ? "dark" : "light")) === "dark" ? "/logo-mark.svg" : "/logo-mark-light.svg"; }
 
 // Movimento (Motion, motion.dev): solo se la libreria e' caricata e senza prefers-reduced-motion, altrimenti niente
 const still = matchMedia("(prefers-reduced-motion: reduce)");
@@ -248,7 +253,19 @@ function currentView() {
   return {section, view};
 }
 
+const panoramaTabs = [
+  ["", "Overview"], [null, "Macro Monitor"], [null, "Market Monitor"],
+  [null, "Economic Outlook"], [null, "Portfolio Strategy"], ["calendario", "Calendar & News"]
+];
+
 function renderNav(section, view) {
+  if (section === "panoramica" && panoramaTabs.some(([key]) => key === view)) {
+    $("#nav").innerHTML = panoramaTabs.map(([key,label]) => key === null
+      ? `<span class="planned-tab" aria-disabled="true" title="Scheda in progettazione">${label}</span>`
+      : `<a href="/panoramica${key ? "?vista=" + key : ""}" ${key === view ? 'aria-current="page" class="on"' : ""}>${label}</a>`).join("");
+    $("#sectionNav").replaceChildren();
+    return;
+  }
   $("#nav").innerHTML = MAIN.map(([k,t]) => `<a href="/${k}" class="${k === section ? "on" : ""}">${t}</a>`).join("");
   $("#sectionNav").innerHTML = (sections[section] || []).map(([k,t]) =>
     `<a href="/${section}${k ? "?vista=" + k : ""}" ${k === view ? 'aria-current="page"' : ""}>${t}</a>`).join("");
@@ -952,13 +969,19 @@ function renderAdvice(page) {
 
 function route() {
   const {section, view} = currentView();
+  const overview = section === "panoramica" && !view;
+  if (overview) applyOverviewTheme();
+  else delete document.documentElement.dataset.overviewTheme;
+  $("#logo").nextElementSibling.textContent = (overview || view === "calendario") ? "Macro Cycle Tracker" : "Soft Investing";
+  setLogo();
   renderNav(section, view);
   document.title = MAIN.find(([k]) => k === section)[1] + " · Soft Investing";
   const page = $("#page");
   if (!view && section === "strumento") return marketPage(page, section);
   if (section === "clienti") return clientPage(page);
   if (!view && section === "consulenza") { renderAdvice(page); meetingTools(page); }
-  else if (!view && section === "panoramica") {
+  else if (overview) return renderOverview(page);
+  else if (section === "panoramica" && view === "oggi") {
     marketPage(page, section);
     if (DATA?.pages.oggi) page.insertAdjacentHTML("beforeend", DATA.pages.oggi);
   }
