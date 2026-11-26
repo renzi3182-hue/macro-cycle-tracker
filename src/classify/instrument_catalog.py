@@ -40,4 +40,17 @@ def catalog():
             if len(cot) >= 2:
                 item["cot"] = [cot.index[-1].date().isoformat(), round(float(cot.iloc[-1]-cot.iloc[-2]), 2)]
         assets[symbol] = item
-    return {"assets": assets, "events": cache.read_events()}
+    return {"assets": assets, "events": cache.read_events(), "fx": fx_series()}
+
+
+# Cambi per il Market Snapshot della Overview: area, indicatore, sessioni esportate.
+FX_SERIES = {"EURUSD": ("Valute", "eurusd")}
+FX_SESSIONS = 260
+
+
+def fx_series():
+    out = {}
+    for key, (area, indicator) in FX_SERIES.items():
+        rates = cache.read_indicator_series(area, indicator).dropna().sort_index().iloc[-FX_SESSIONS:]
+        out[key] = [[date.date().isoformat(), round(float(rate), 4)] for date, rate in rates.items() if rate > 0]
+    return out
