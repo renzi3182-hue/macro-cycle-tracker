@@ -21,6 +21,8 @@ from src.classify import changes
 from src.classify import exposure as ex
 from src.classify.allocation import AREA as ALLOC_AREA, CCY, COUNTRY_ETF, ENTER, EXIT, HORIZON as AL_HORIZON
 from src.classify import intermarket as im
+from src.classify import macro_score as ms
+from src.classify import pricing as pr
 from src.classify import opportunities as opp
 from src.classify import advice_refs
 from src.classify.instrument_catalog import catalog
@@ -889,6 +891,94 @@ def advice_market(ctx: dict) -> list[dict]:
     return rows
 
 
+# --- Overview: dati della prima pagina (public/overview.js li mostra, non calcola nulla) ---
+OVERVIEW_CARDS = [("USA", "Stati Uniti"), ("Eurozona", "Eurozona"), ("Italia", "Italia"), ("Emergenti", "Emergenti"),
+                  ("Globale", "Globale")]
+ALARM_TEXT = {"Credito": "Credito in tensione: spread societari alti rispetto alla storia",
+              "Curva": "Curva dei rendimenti USA invertita (10 anni sotto 3 mesi)",
+              "Struttura VIX": "Paura concentrata sul breve termine: VIX sopra il VIX a 3 mesi",
+              "SKEW": "Domanda alta di protezione dai crolli (SKEW)", "Put/call": "Put/call alto: molte coperture in acquisto"}
+RISK_TONE = {"Risk Off estremo": "mercati in fuga dal rischio", "Risk Off": "mercati difensivi", "Neutrale": "mercati prudenti",
+             "Risk On": "mercati propensi al rischio", "Risk On estremo": "mercati euforici"}
+
+
+def overview_risks(risk_row, alarms_row, phases: dict, scores: dict, trends: dict, k: int = 3) -> list[dict]:
+    """Rischi in ordine di priorita': allarmi di mercato, canarino, recessioni, clima debole, borse in calo."""
+    out = []
+    if alarms_row is not None:
+        out += [{"title": ALARM_TEXT[n], "source": "Cosa prezza il mercato"} for n, v in alarms_row.items() if v == 1]
+    if risk_row is not None:
+        if risk_row["Allarme"] < 0:
+            out.append({"title": "Canarino TIP in allarme: momentum dei titoli indicizzati negativo", "source": "Risk On/Off"})
+        if risk_label(risk_row["Punteggio"]).startswith("Risk Off"):
+            out.append({"title": f"{risk_label(risk_row['Punteggio'])}: investitori in riduzione del rischio", "source": "Risk On/Off"})
+    out += [{"title": f"{a}: fase di recessione", "source": "Ciclo macro"} for a, p in phases.items() if p == "Recessione"]
+    weak = sorted((s["score"], a) for a, s in scores.items() if a in AREAS and s["score"] < 40)
+    out += [{"title": f"{a}: clima congiunturale debole, Macro Score {v}/100", "source": "Macro Score"} for v, a in weak]
+    neg = sorted((t["dist_pct"], a) for a, t in trends.items() if not t["positive"])
+    out += [{"title": f"Borsa {a} sotto la media a 10 mesi ({ch.pct_it(d)})", "source": "Tendenza"} for d, a in neg]
+    return out[:k]
+
+
+def overview_data(ctx: dict) -> dict:
+    """Overview dai dati in cache: Macro Score, briefing scritto con regole fisse, opportunita', rischi, heatmap e
+    notifiche. Ogni blocco porta la data dei dati che usa."""
+    assessments = ctx["assessments"]
+    eco = ms.economies(list(AREAS), load_indicator)
+    scores = {k: ms.summary(v) for k, v in eco.items()}
+    w = world_data(ctx) or {}
+    trends = w.get("trends", {})
+    phases = {a: x["phase"] for a, x in assessments.items()}
+    risk = load_risk()
+    r = None if risk.empty else risk.iloc[-1]
+    al = pr.alarms(pr.load(load_indicator)).dropna(how="all")
+    alarms_row = None if al.empty else al.iloc[-1]
+    risk_info = None if r is None else {"score": max(1, round(r["Punteggio"])), "label": risk_label(r["Punteggio"]),
+                                        "date": f"{risk.index[-1]:%Y-%m-%d}", "say": RISK_SAY[risk_label(r["Punteggio"])],
+                                        "canary_alarm": bool(r["Allarme"] < 0)}
+    opps = []
+    alloc = load_allocation()
+    if alloc:
+        cl = alloc["Classi di asset"]
+        month, grid = opp.grid(cl["score"], cl["prob"], cl["raw"]["Tendenza"], phases)
+        opps = [{"title": f"{c['nome']} · {a}", "detail": opp.sentence(a, c).split(": ", 1)[1], "month": f"{month:%Y-%m}"}
+                for a, c in opp.best(grid)] if grid else []
+    risks = overview_risks(r, alarms_row, phases, scores, trends)
+    top_phase = Counter(p for p in phases.values() if p).most_common(1)
+    phase_name = ch.PHASE_SHORT.get(top_phase[0][0], top_phase[0][0]) if top_phase else None
+    g = scores.get("Globale")
+    ranked = sorted(((s["score"], a) for a, s in scores.items() if a in AREAS), reverse=True)
+    up = sum(t["positive"] for t in trends.values())
+    brief = None
+    if g:
+        title = f"Ciclo globale {ms.band(g['score'])}" + (f", {RISK_TONE[risk_info['label']]}." if risk_info else ".")
+        text = (f"Il Macro Score globale è {g['score']}/100 a {month_it(pd.Timestamp(g['month'] + '-01'))}"
+                + (f" ({g['delta']:+d} sul mese)" if g["delta"] is not None else "") + ". "
+                + (f"Clima più solido in {ranked[0][1]} ({ranked[0][0]}), più debole in {ranked[-1][1]} ({ranked[-1][0]}). " if ranked else "")
+                + (f"{up} borse su {len(trends)} sono sopra la media a 10 mesi." if trends else ""))
+        brief = {"title": title, "text": text.replace("-", "−"),
+                 "phase": phase_name, "phase_count": top_phase[0][1] if top_phase else 0, "areas": len(phases)}
+    heat = []
+    for a in AREAS:
+        bci = eco.get(a, {}).get("components", {}).get("bci")
+        heat.append({"area": a, "cells": ms.heat_row(a, load_indicator, bci, trends.get(a))})
+    notes = []
+    for a, x in assessments.items():
+        if text := change_text(x["history"], trends.get(a)):
+            notes.append({"title": a, "text": text, "kind": "Ciclo e tendenza"})
+    notes += [{"title": "Mercati", "text": t["title"], "kind": t["source"]} for t in risks if t["source"] in ("Cosa prezza il mercato", "Risk On/Off")]
+    notes += [{"title": n, "text": f"Macro Score {s['delta']:+d} sul mese, ora {s['score']}/100".replace("-", "−"), "kind": "Macro Score"}
+              for n, s in scores.items() if s["delta"] is not None and abs(s["delta"]) >= 5]
+    return {"date": f"{pd.Timestamp.now(tz='Europe/Rome'):%Y-%m-%d}", "updated_at": cache.read_meta("updated_at"),
+            "cards": [{"key": k, "name": n, **scores[k]} for k, n in OVERVIEW_CARDS if k in scores],
+            "areas": {a: scores[a] for a in AREAS if a in scores}, "briefing": brief, "risk": risk_info,
+            "opportunities": opps, "risks": risks, "heat_columns": ms.HEAT_COLUMNS, "heat": heat, "notifications": notes,
+            "trend_up": up, "trend_total": len(trends),
+            "key_events": [{"title": e["Evento"], "date": f"{e['Data']:%Y-%m-%d}", "country": "USD"} for e in upcoming_events()],
+            "method": "Media dei percentili decennali di leading indicator, fiducia imprese e fiducia consumatori OCSE. "
+                      "50 = situazione tipica del decennio per il paese. Descrittivo, non verificato come previsione."}
+
+
 def build() -> dict:
     ctx = {"assessments": {area: a for area in AREAS if (a := load_assessment(area))}, "charts": {}}
     if not ctx["assessments"]:
@@ -905,6 +995,7 @@ def build() -> dict:
                   "metodo": page_method(), "cot": page_cot(ctx), "calendario": page_calendar(), "mercati": page_markets(),
                   "allocazione": page_allocation()},
         "asset_order": asset_order, "charts": ctx["charts"], "stress": stress, "catalog": catalog(), "advice_market": advice_market(ctx),
+        "overview": overview_data(ctx),
     }
 
 

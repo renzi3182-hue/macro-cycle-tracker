@@ -91,3 +91,24 @@ def test_favored_html_splits_more_and_less_weight_with_trend_colors():
     assert "var(--r-gold)\">Titoli di Stato" in more and "var(--r-stag)\">Azionario difensivo" in more
     assert "var(--muted)\">Oro" in more and "{paese}" not in html
     assert "Nessuno." in favored_html("Ripresa (sotto trend)", {}, {})
+
+
+@pytest.mark.skipif(not DB_PATH.exists(), reason="serve data/cache.db")
+def test_overview_data_has_every_block():
+    from src.scheduler.export_site import build
+
+    ov = build()["overview"]
+    assert [c["name"] for c in ov["cards"]][-1] == "Globale"
+    assert all(0 <= c["score"] <= 100 and c["history"] for c in ov["cards"])
+    assert ov["briefing"]["title"] and len(ov["heat"]) == 9 and len(ov["risks"]) <= 3
+
+
+def test_overview_risks_order_and_limit():
+    import pandas as pd
+    from src.scheduler.export_site import overview_risks
+
+    risk = pd.Series({"Punteggio": 15.0, "Allarme": -1.0})
+    alarms = pd.Series({"Credito": 1.0, "Curva": 0.0})
+    out = overview_risks(risk, alarms, {"Italia": "Recessione"}, {}, {})
+    assert [r["source"] for r in out] == ["Cosa prezza il mercato", "Risk On/Off", "Risk On/Off"]
+    assert overview_risks(None, None, {"Italia": "Recessione"}, {}, {})[0]["title"] == "Italia: fase di recessione"
